@@ -25,6 +25,10 @@ dependencies = [
     "httpx>=0.25.0",
     "openai>=1.12.0",
     "pyyaml>=6.0",
+    "langchain>=0.3.0",
+    "langgraph>=0.2.0",
+    "langchain-openai>=0.2.0",
+    "langchain-core>=0.3.0",
 
     "summit-cap-db",
 ]
