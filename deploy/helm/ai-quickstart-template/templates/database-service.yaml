@@ -1,0 +1,17 @@
+{{- if .Values.database.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Values.database.name }}
+  labels:
+    {{- include "ai-quickstart-template.database.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.database.service.type }}
+  ports:
+    - port: {{ .Values.database.service.port }}
+      targetPort: postgres
+      protocol: TCP
+      name: postgres
+  selector:
+    {{- include "ai-quickstart-template.database.selectorLabels" . | nindent 4 }}
+{{- end }}

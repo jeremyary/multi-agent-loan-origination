@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ai-quickstart-template-db"
+dynamic = ["version"]
+description = "Database package for ai-quickstart-template"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = [
+    "sqlalchemy>=2.0.0",
+    "alembic>=1.13.0",
+    "asyncpg>=0.29.0",
+    "psycopg2-binary>=2.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/db"]
+
+[tool.hatch.version]
+path = "src/db/__init__.py"
+
+[tool.ruff]
+extend = "../../configs/ruff/pyproject.toml"

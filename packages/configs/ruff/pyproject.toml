@@ -1,0 +1,36 @@
+# Shared ruff configuration for Python packages
+# Import this in your pyproject.toml with: 
+# [tool.ruff]
+# extend = "../../configs/ruff/pyproject.toml"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "SIM", # flake8-simplify
+  "I",   # isort
+]
+ignore = [
+  "E501",  # line too long (handled by formatter)
+  "B008",  # function calls in argument defaults
+  "UP007", # use X | Y for union types (requires Python 3.10+)
+]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+
+[tool.ruff.isort]
+combine-as-imports = true
+force-sort-within-sections = true
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+strict_optional = true

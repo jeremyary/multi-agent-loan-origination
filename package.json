@@ -1,0 +1,59 @@
+{
+  "name": "ai-quickstart-template",
+  "version": "0.1.0",
+  "description": "A ready-made template for creating new AI Quickstarts",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "postinstall": "husky",
+    "setup": "pnpm install && pnpm -r --if-present install:deps",
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "db:start": "pnpm --filter @*/db db:start",
+    "db:stop": "pnpm --filter @*/db db:stop",
+    "db:migrate": "pnpm --filter @*/db migrate",
+    "db:migrate:new": "pnpm --filter @*/db migrate:new",
+    "db:migrate:down": "pnpm --filter @*/db migrate:down",
+    "db:migrate:history": "pnpm --filter @*/db migrate:history",
+    "compose:up": "podman-compose up -d",
+    "compose:down": "podman-compose down",
+    "compose:logs": "podman-compose logs -f",
+    "containers:build": "podman-compose build",
+    "lint": "turbo lint",
+    "lint:fix": "turbo lint:fix",
+    "format": "turbo format",
+    "format:check": "turbo format:check",
+    "test": "turbo test",
+    "type-check": "turbo type-check",
+    "storybook": "turbo storybook",
+    "build-storybook": "turbo build-storybook",
+    "prepare": "husky",
+    "release": "semantic-release"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
+    "@commitlint/cli": "^19.4.0",
+    "@commitlint/config-conventional": "^19.4.0",
+    "semantic-release": "^24.2.7"
+  },
+  "lint-staged": {
+    "packages/ui/**/*.{js,jsx,ts,tsx,css,md,html,json}": [
+      "cd packages/ui && pnpm prettier --write --",
+      "cd packages/ui && pnpm eslint --max-warnings 0 --"
+    ],
+    "packages/api/**/*.py": [
+      "cd packages/api && uv run ruff format -- --respect-gitignore",
+      "cd packages/api && uv run ruff check --"
+    ]
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "^0.27.0"
+    }
+  },
+  "packageManager": "pnpm@9.0.0"
+}

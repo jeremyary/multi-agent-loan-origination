@@ -1,0 +1,21 @@
+services:
+  ai-quickstart-template-db:
+    image: docker.io/postgres:16
+    labels:
+      com.quickstart.package: db
+    environment:
+      POSTGRES_DB: ai-quickstart-template
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - ai-quickstart-template_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d ai-quickstart-template"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  ai-quickstart-template_postgres_data:

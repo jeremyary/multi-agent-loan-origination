@@ -1,0 +1,124 @@
+{
+  "_hooks": {
+    "instructions": "To enable the sensitive data scanner, copy the 'hooks' object below into your settings.local.json at the top level (next to 'permissions'). This runs .claude/hooks/sensitive-data-check.sh before every tool use, catching credentials, Red Hat internal hostnames, and PII before they reach AI tools.",
+    "example_hooks": {
+      "PreToolUse": [
+        {
+          "matcher": ".*",
+          "command": ".claude/hooks/sensitive-data-check.sh"
+        }
+      ]
+    }
+  },
+  "_template": {
+    "instructions": "Copy this file to settings.local.json and customize. settings.local.json is gitignored — it's your personal config. Remove the _template key from your copy — it's documentation only.",
+    "org_specific": "Domains under [ORG] in the allow list are Red Hat / OpenShift defaults. Replace with your organization's equivalents or remove if not needed.",
+    "org_domains": [
+      "docs.openshift.com",
+      "*.openshift.com",
+      "docs.redhat.com",
+      "access.redhat.com",
+      "developers.redhat.com",
+      "catalog.redhat.com",
+      "connect.redhat.com",
+      "quay.io",
+      "docs.opendatahub.io",
+      "opendatahub.io",
+      "ai-on-openshift.io",
+      "tekton.dev",
+      "knative.dev",
+      "olm.operatorframework.io",
+      "sdk.operatorframework.io"
+    ],
+    "available_domains": {
+      "_instructions": "These are additional domains you may find useful. Copy any you want into the permissions.allow array below, prefixed with WebFetch(domain:...).",
+      "cloud_providers": [
+        "docs.aws.amazon.com",
+        "cloud.google.com",
+        "learn.microsoft.com"
+      ],
+      "langchain_ecosystem": [
+        "*.langchain.com              — covers python/js/api docs + LangSmith",
+        "langchain-ai.github.io       — LangGraph docs"
+      ],
+      "llm_observability": [
+        "langfuse.com                  — LangFuse tracing + analytics"
+      ],
+      "llama_ecosystem": [
+        "llama-stack.readthedocs.io    — LlamaStack docs",
+        "llama.meta.com               — Meta Llama model docs"
+      ],
+      "frontend": [
+        "www.patternfly.org           — PatternFly design system",
+        "react.dev                    — React docs",
+        "vitejs.dev                   — Vite build tool",
+        "reactrouter.com              — React Router"
+      ],
+      "llm_provider_apis": [
+        "docs.anthropic.com           — Claude API",
+        "platform.openai.com          — OpenAI API",
+        "docs.mistral.ai              — Mistral API"
+      ],
+      "python_ai_ml": [
+        "docs.llamaindex.ai           — LlamaIndex (RAG framework)",
+        "docs.pydantic.dev            — Pydantic (data validation)",
+        "fastapi.tiangolo.com         — FastAPI"
+      ],
+      "vector_databases": [
+        "docs.trychroma.com           — ChromaDB",
+        "weaviate.io                  — Weaviate",
+        "qdrant.tech                  — Qdrant",
+        "milvus.io                    — Milvus"
+      ],
+      "model_serving_and_tooling": [
+        "docs.vllm.ai                 — vLLM model serving",
+        "streamlit.io                 — Streamlit (AI app UIs)",
+        "gradio.app                   — Gradio (model demo UIs)",
+        "mlflow.org                   — MLflow (experiment tracking)"
+      ]
+    }
+  },
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:stackoverflow.com)",
+      "WebFetch(domain:*.stackexchange.com)",
+      "WebFetch(domain:registry.npmjs.org)",
+      "WebFetch(domain:caniuse.com)",
+
+      "WebFetch(domain:docs.openshift.com)",
+      "WebFetch(domain:*.openshift.com)",
+      "WebFetch(domain:docs.redhat.com)",
+      "WebFetch(domain:access.redhat.com)",
+      "WebFetch(domain:developers.redhat.com)",
+      "WebFetch(domain:catalog.redhat.com)",
+      "WebFetch(domain:connect.redhat.com)",
+      "WebFetch(domain:quay.io)",
+
+      "WebFetch(domain:docs.opendatahub.io)",
+      "WebFetch(domain:opendatahub.io)",
+      "WebFetch(domain:huggingface.co)",
+      "WebFetch(domain:ai-on-openshift.io)",
+
+      "WebFetch(domain:kubernetes.io)",
+      "WebFetch(domain:docs.docker.com)",
+      "WebFetch(domain:helm.sh)",
+      "WebFetch(domain:operatorhub.io)",
+      "WebFetch(domain:olm.operatorframework.io)",
+      "WebFetch(domain:sdk.operatorframework.io)",
+      "WebFetch(domain:tekton.dev)",
+      "WebFetch(domain:knative.dev)",
+      "WebFetch(domain:istio.io)",
+      "WebFetch(domain:kustomize.io)",
+
+      "WebFetch(domain:prometheus.io)",
+      "WebFetch(domain:grafana.com)",
+
+      "WebFetch(domain:terraform.io)",
+      "WebFetch(domain:ansible.readthedocs.io)",
+      "WebFetch(domain:docs.ansible.com)",
+
+      "WebFetch(domain:pytorch.org)",
+      "WebFetch(domain:tensorflow.org)"
+    ]
+  }
+}

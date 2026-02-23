@@ -1,0 +1,153 @@
+# Default values for ai-quickstart-template
+global:
+  imageRegistry: quay.io
+  imageRepository: ai-quickstart-template
+  imageTag: latest
+  imagePullPolicy: Always
+  storageClass: ""
+
+# Secrets configuration - these values should be overridden with actual secrets
+secrets:
+  # Database secrets
+  POSTGRES_DB: "ai-quickstart-template"
+  POSTGRES_USER: "user"
+  POSTGRES_PASSWORD: "changeme"
+
+  # API secrets
+  DATABASE_URL: "postgresql+asyncpg://user:changeme@ai-quickstart-template-db:5432/ai-quickstart-template"
+  DEBUG: "false"
+  ALLOWED_HOSTS: '["*"]'
+
+  # UI secrets
+  VITE_API_BASE_URL: "http://localhost:8000"
+  VITE_ENVIRONMENT: "production"
+# OpenShift Routes configuration
+routes:
+  enabled: true
+  annotations: {}
+  sharedHost: ""  # Set custom hostname or leave empty (will use ui.host fallback)
+  ui:
+    host: ""  # Used as fallback if sharedHost is empty
+    tls:
+      enabled: true
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+  api:
+    host: ""  # Ignored - uses sharedHost or ui.host
+    tls:
+      enabled: true
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+
+# API configuration
+api:
+  enabled: true
+  name: ai-quickstart-template-api
+  image:
+    repository: ai-quickstart-template-api
+    tag: latest
+  service:
+    type: ClusterIP
+    port: 8000
+  replicas: 1
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+  healthCheck:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 30
+    periodSeconds: 10
+# UI configuration
+ui:
+  enabled: true
+  name: ai-quickstart-template-ui
+  image:
+    repository: ai-quickstart-template-ui
+    tag: latest
+  service:
+    type: ClusterIP
+    port: 8080
+  replicas: 1
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+  healthCheck:
+    enabled: true
+    path: /
+    initialDelaySeconds: 10
+    periodSeconds: 10
+# Database configuration
+database:
+  enabled: true
+  name: ai-quickstart-template-db
+  image:
+    repository: pgvector/pgvector
+    tag: pg16
+  service:
+    type: ClusterIP
+    port: 5432
+  persistence:
+    enabled: true
+    size: 10Gi
+    accessMode: ReadWriteOnce
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+# Database migration configuration
+migration:
+  enabled: true
+  name: ai-quickstart-template-migration
+  image:
+    repository: ai-quickstart-template-db
+    tag: latest
+  restartPolicy: Never
+  backoffLimit: 1
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "250m"
+    limits:
+      memory: "2Gi"
+      cpu: "1000m"
+# ServiceAccount
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod Security Context
+podSecurityContext: {}
+
+# Security Context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

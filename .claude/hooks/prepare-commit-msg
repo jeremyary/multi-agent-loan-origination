@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# This project was developed with assistance from AI tools.
+#
+# prepare-commit-msg — Automatically append AI assistance trailers to commits
+# made through Claude Code.
+#
+# SETUP:
+#   Option 1 — Symlink into your project's .git/hooks/:
+#     ln -sf ../../.claude/hooks/prepare-commit-msg .git/hooks/prepare-commit-msg
+#
+#   Option 2 — Configure git to use this hooks directory:
+#     git config core.hooksPath .claude/hooks
+#     (Note: this replaces ALL hooks paths, so copy any existing hooks here first)
+#
+#   Option 3 — Copy into .git/hooks/:
+#     cp .claude/hooks/prepare-commit-msg .git/hooks/prepare-commit-msg
+#     chmod +x .git/hooks/prepare-commit-msg
+#
+# BEHAVIOR:
+#   - Detects Claude Code commits by checking for the Co-Authored-By trailer
+#     or the CLAUDE_CODE environment variable
+#   - Appends "Assisted-by: Claude Code" if no Assisted-by or Generated-by
+#     trailer is already present
+#   - Does nothing for merge commits, squash commits, or amend commits
+#
+# CUSTOMIZATION:
+#   - Change DEFAULT_TRAILER to use "Generated-by" if your workflow produces
+#     substantially AI-generated code by default
+#   - Set CLAUDE_COMMIT_TRAILER env var to override the trailer text
+
+set -euo pipefail
+
+COMMIT_MSG_FILE="$1"
+COMMIT_SOURCE="${2:-}"
+
+DEFAULT_TRAILER="Assisted-by: Claude Code"
+TRAILER="${CLAUDE_COMMIT_TRAILER:-$DEFAULT_TRAILER}"
+
+# Skip for merge commits, squash messages, explicit -m messages, or commit templates
+if [ "$COMMIT_SOURCE" = "merge" ] || [ "$COMMIT_SOURCE" = "squash" ] || [ "$COMMIT_SOURCE" = "message" ]; then
+    exit 0
+fi
+
+# Detect if this is a Claude Code commit
+is_claude_commit() {
+    # Check for CLAUDE_CODE env var (set by Claude Code when it drives git)
+    if [ -n "${CLAUDE_CODE:-}" ]; then
+        return 0
+    fi
+
+    # Check for Co-Authored-By: Claude trailer in the commit message
+    if grep -qi "Co-Authored-By:.*Claude" "$COMMIT_MSG_FILE" 2>/dev/null; then
+        return 0
+    fi
+
+    return 1
+}
+
+# Check if an AI trailer already exists
+has_ai_trailer() {
+    if grep -qiE "^(Assisted-by|Generated-by):" "$COMMIT_MSG_FILE" 2>/dev/null; then
+        return 0
+    fi
+    return 1
+}
+
+# Main logic
+if is_claude_commit && ! has_ai_trailer; then
+    # Ensure there's a blank line before the trailer
+    # Read the current message
+    MSG=$(cat "$COMMIT_MSG_FILE")
+
+    # Check if the message ends with a newline
+    if [ -n "$MSG" ]; then
+        # Append trailer with proper formatting (blank line before trailers)
+        printf '\n%s\n' "$TRAILER" >> "$COMMIT_MSG_FILE"
+    fi
+fi

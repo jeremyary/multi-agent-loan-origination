@@ -1,0 +1,17 @@
+{
+  "name": "@ai-quickstart-template/db",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "CONTAINER_STARTED=0; \\\nif ! podman-compose -f ../../compose.yml ps ai-quickstart-template-db 2>/dev/null | grep -q \"Up\"; then \\\n  echo \"Starting database container...\"; \\\n  podman-compose -f ../../compose.yml up -d ai-quickstart-template-db; \\\n  CONTAINER_STARTED=1; \\\nelse \\\n  echo \"Database container is already running\"; \\\nfi; \\\ncleanup() { \\\n  if [ \"$$CONTAINER_STARTED\" = \"1\" ]; then \\\n    echo \"Stopping database container...\"; \\\n    podman-compose -f ../../compose.yml down ai-quickstart-template-db; \\\n  fi; \\\n}; \\\ntrap cleanup EXIT INT TERM; \\\npnpm migrate && podman-compose -f ../../compose.yml logs -f ai-quickstart-template-db",
+    "db:start": "podman-compose -f ../../compose.yml up -d ai-quickstart-template-db",
+    "db:stop": "podman-compose -f ../../compose.yml down ai-quickstart-template-db",
+    "db:logs": "podman-compose -f ../../compose.yml logs -f ai-quickstart-template-db",
+    "migrate": "uv run alembic upgrade head",
+    "migrate:down": "uv run alembic downgrade -1",
+    "migrate:new": "uv run alembic revision --autogenerate",
+    "migrate:history": "uv run alembic history",
+    "migrate:current": "uv run alembic current",
+    "install:deps": "uv sync"
+  }
+}
