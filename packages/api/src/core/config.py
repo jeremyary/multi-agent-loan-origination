@@ -44,5 +44,23 @@ class Settings(BaseSettings):
         description="JWKS cache lifetime in seconds (default 5 minutes).",
     )
 
+    # -- LLM --
+    LLM_API_KEY: str = Field(
+        default="not-needed",
+        description="API key for OpenAI-compatible LLM endpoint.",
+    )
+    LLM_BASE_URL: str = Field(
+        default="https://api.openai.com/v1",
+        description="Base URL for OpenAI-compatible LLM endpoint.",
+    )
+    LLM_MODEL_FAST: str = Field(
+        default="gpt-4o-mini",
+        description="Model name for the fast_small tier (simple queries).",
+    )
+    LLM_MODEL_CAPABLE: str = Field(
+        default="gpt-4o-mini",
+        description="Model name for the capable_large tier (complex reasoning + tools).",
+    )
+
 
 settings = Settings()
