@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     ALLOWED_HOSTS: list[str] = ["http://localhost:5173"]
     
     # Database settings
-    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5432/summit-cap"
+    DATABASE_URL: str = "postgresql+asyncpg://user:password@localhost:5433/summit-cap"
     
     class Config:
         env_file = ".env"

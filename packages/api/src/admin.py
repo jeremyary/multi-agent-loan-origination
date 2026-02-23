@@ -20,7 +20,7 @@ from db import (
 from sqladmin import Admin, ModelView
 from sqlalchemy import create_engine
 
-DATABASE_URL = "postgresql://user:password@localhost:5432/summit-cap"
+DATABASE_URL = "postgresql://user:password@localhost:5433/summit-cap"
 engine = create_engine(DATABASE_URL, echo=False)
 
 
