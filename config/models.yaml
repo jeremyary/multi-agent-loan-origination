@@ -1,0 +1,29 @@
+# Model routing configuration for Summit Cap Financial.
+#
+# Both tiers currently point to the same endpoint for local dev.
+# When two models are available, update endpoints/model_names independently.
+# Hot-reloaded per conversation via mtime check -- no restart required.
+
+routing:
+  default_tier: capable_large
+  classification:
+    strategy: rule_based
+    rules:
+      simple:
+        max_query_words: 10
+        requires_tools: false
+        patterns: ["status", "when", "what is", "show me", "how much", "my application"]
+      complex:
+        default: true
+
+models:
+  fast_small:
+    provider: openai_compatible
+    model_name: "${LLM_MODEL_FAST:-gpt-4o-mini}"
+    description: "Fast model for simple factual queries"
+    endpoint: "${LLM_BASE_URL:-https://api.openai.com/v1}"
+  capable_large:
+    provider: openai_compatible
+    model_name: "${LLM_MODEL_CAPABLE:-gpt-4o-mini}"
+    description: "Capable model for complex reasoning and tool use"
+    endpoint: "${LLM_BASE_URL:-https://api.openai.com/v1}"
