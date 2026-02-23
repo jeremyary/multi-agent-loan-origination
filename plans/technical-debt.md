@@ -30,6 +30,10 @@ The first migration (`fe5adcef3769_add_domain_models.py`) was written manually r
 
 The cache-bust-on-kid-mismatch logic in `middleware/auth.py` (lines 60-77) handles Keycloak key rotation by refetching JWKS when a token's `kid` isn't found in the cached key set. This path has no automated test coverage. Unit testing it requires heavy mocking of the JWKS fetch machinery. Add an integration test once Keycloak is running in CI that actually rotates keys and verifies tokens still validate.
 
+## Data scope query filtering lacks integration tests
+
+The `_apply_scope` function in `services/application.py` filters application queries by role (borrower sees own, LO sees assigned, CEO/admin sees all). This is the core RBAC enforcement on data access, but it can only be meaningfully tested against a real database. Add integration tests with a test DB fixture and seed data that verify: borrower query returns only their apps, LO query returns only assigned apps, and cross-scope access returns empty results (not errors).
+
 ## Ruff config extends nonexistent shared config
 
 `packages/db/pyproject.toml` has `extend = "../../configs/ruff/pyproject.toml"` but that file doesn't exist. Ruff silently ignores this but it should either be created or the extend removed.

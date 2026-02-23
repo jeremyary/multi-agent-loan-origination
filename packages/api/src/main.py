@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .admin import setup_admin
 from .core.config import settings
-from .routes import health, public
+from .routes import applications, health, public
 
 app = FastAPI(
     title="Summit Cap Financial API",
@@ -27,6 +27,7 @@ app.add_middleware(
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(public.router, prefix="/api/public", tags=["public"])
+app.include_router(applications.router, prefix="/api/applications", tags=["applications"])
 
 # Setup SQLAdmin dashboard at /admin
 setup_admin(app)
