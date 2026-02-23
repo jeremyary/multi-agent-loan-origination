@@ -21,6 +21,8 @@ dependencies = [
     "asyncpg>=0.29.0",
     "greenlet>=3.2.3",
     "sqladmin>=0.16.0",
+    "PyJWT[crypto]>=2.8.0",
+    "httpx>=0.25.0",
 
     "summit-cap-db",
 ]
