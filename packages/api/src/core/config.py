@@ -32,10 +32,16 @@ class Settings(BaseSettings):
         description="Async SQLAlchemy connection string (asyncpg driver).",
     )
 
-    # -- Auth (PR 4) --
+    # -- Auth --
     AUTH_DISABLED: bool = Field(
         default=False,
         description="Bypass JWT validation. Set True for tests and local dev without Keycloak.",
+    )
+    KEYCLOAK_URL: str = "http://localhost:8080"
+    KEYCLOAK_REALM: str = "summit-cap"
+    JWKS_CACHE_TTL: int = Field(
+        default=300,
+        description="JWKS cache lifetime in seconds (default 5 minutes).",
     )
 
 
