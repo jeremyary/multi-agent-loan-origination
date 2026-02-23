@@ -4,7 +4,7 @@ kind: Job
 metadata:
   name: {{ .Values.migration.name }}
   labels:
-    {{- include "ai-quickstart-template.migration.labels" . | nindent 4 }}
+    {{- include "summit-cap.migration.labels" . | nindent 4 }}
   annotations:
     # This ensures the job runs after database is deployed
     "helm.sh/hook": post-install,post-upgrade
@@ -16,10 +16,10 @@ spec:
   template:
     metadata:
       labels:
-        {{- include "ai-quickstart-template.migration.selectorLabels" . | nindent 8 }}
+        {{- include "summit-cap.migration.selectorLabels" . | nindent 8 }}
     spec:
       restartPolicy: {{ .Values.migration.restartPolicy }}
-      serviceAccountName: {{ include "ai-quickstart-template.serviceAccountName" . }}
+      serviceAccountName: {{ include "summit-cap.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
@@ -39,17 +39,17 @@ spec:
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: POSTGRES_USER
             - name: POSTGRES_DB
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: POSTGRES_DB
             - name: PGPASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: POSTGRES_PASSWORD
       containers:
         - name: migration
@@ -64,22 +64,22 @@ spec:
             - name: POSTGRES_DB
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: POSTGRES_DB
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: POSTGRES_PASSWORD
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: DATABASE_URL
             # Python path for module imports
             - name: PYTHONPATH

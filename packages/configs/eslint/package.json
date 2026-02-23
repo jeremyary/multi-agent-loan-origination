@@ -1,5 +1,5 @@
 {
-  "name": "@ai-quickstart-template/eslint-config",
+  "name": "@summit-cap/eslint-config",
   "version": "0.0.0",
   "private": true,
   "type": "module",

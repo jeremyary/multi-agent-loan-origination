@@ -30,7 +30,7 @@ async def health_check(
         name="API",
         status="healthy",
         message="API is running",
-        version="0.0.0",
+        version="0.1.0",
         start_time=API_START_TIME.isoformat()
     )
     

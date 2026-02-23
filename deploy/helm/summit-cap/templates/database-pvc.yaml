@@ -4,7 +4,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: {{ .Values.database.name }}-pvc
   labels:
-    {{- include "ai-quickstart-template.database.labels" . | nindent 4 }}
+    {{- include "summit-cap.database.labels" . | nindent 4 }}
 spec:
   accessModes:
     - {{ .Values.database.persistence.accessMode }}

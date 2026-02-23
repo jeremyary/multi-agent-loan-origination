@@ -1,4 +1,4 @@
-# ai-quickstart-template Database
+# summit-cap Database
 
 PostgreSQL database setup with Podman Compose and Alembic migrations.
 
@@ -399,7 +399,7 @@ Database configuration is managed via environment variables:
 
 ```env
 # Database connection (project root .env file)
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/ai-quickstart-template
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/summit-cap
 DB_ECHO=false  # Set to true for SQL query logging
 ```
 
@@ -419,10 +419,10 @@ postgresql+asyncpg://[user[:password]@][host[:port]][/database]
 
 The database runs in a Podman container managed from the project root:
 
-- **Service Name**: ai-quickstart-template-db
+- **Service Name**: summit-cap-db
 - **Host**: localhost
 - **Port**: 5432
-- **Database**: ai-quickstart-template
+- **Database**: summit-cap
 - **Username**: user
 - **Password**: password
 

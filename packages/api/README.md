@@ -1,4 +1,4 @@
-# ai-quickstart-template API
+# summit-cap API
 
 FastAPI backend application architecture and development guide.
 
@@ -231,7 +231,7 @@ Configuration is managed through Pydantic Settings in `src/core/config.py`:
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    APP_NAME: str = "ai-quickstart-template"
+    APP_NAME: str = "summit-cap"
     DEBUG: bool = False
     ALLOWED_HOSTS: list[str] = ["http://localhost:5173"]
     DATABASE_URL: str = "postgresql+asyncpg://..."

@@ -1,4 +1,4 @@
-# ai-quickstart-template
+# summit-cap
 
 A ready-made template for creating new AI Quickstarts
 
@@ -14,7 +14,7 @@ This project is built with:
 ## Project Structure
 
 ```
-ai-quickstart-template/
+summit-cap/
 ├── packages/
 │   ├── ui/           # React frontend application
 │   ├── api/          # FastAPI backend service
@@ -176,15 +176,15 @@ Before deploying to OpenShift, build and push your container images:
 ```bash
 # Build API image (if API is enabled)
 cd packages/api
-podman build -t ai-quickstart-template-api:latest .
-podman tag ai-quickstart-template-api:latest registry.example.com/ai-quickstart-template-api:latest
-podman push registry.example.com/ai-quickstart-template-api:latest
+podman build -t summit-cap-api:latest .
+podman tag summit-cap-api:latest registry.example.com/summit-cap-api:latest
+podman push registry.example.com/summit-cap-api:latest
 
 # Build UI image (if UI is enabled)
 cd packages/ui
-podman build -t ai-quickstart-template-ui:latest .
-podman tag ai-quickstart-template-ui:latest registry.example.com/ai-quickstart-template-ui:latest
-podman push registry.example.com/ai-quickstart-template-ui:latest
+podman build -t summit-cap-ui:latest .
+podman tag summit-cap-ui:latest registry.example.com/summit-cap-ui:latest
+podman push registry.example.com/summit-cap-ui:latest
 ```
 
 #### Deploying with Helm
@@ -198,10 +198,10 @@ The easiest way to deploy is using the provided Makefile targets:
    Create a `.env` file in the project root:
 
    ```env
-   POSTGRES_DB=ai-quickstart-template
+   POSTGRES_DB=summit-cap
    POSTGRES_USER=your-db-user
    POSTGRES_PASSWORD=your-secure-password
-   DATABASE_URL=postgresql+asyncpg://user:password@ai-quickstart-template-db:5432/ai-quickstart-template
+   DATABASE_URL=postgresql+asyncpg://user:password@summit-cap-db:5432/summit-cap
    DEBUG=false
    ALLOWED_HOSTS=["*"]
    VITE_API_BASE_URL=https://api.example.com
@@ -232,10 +232,10 @@ For more control, use Helm CLI directly:
    Export environment variables or create a `.env` file:
 
    ```bash
-   export POSTGRES_DB="ai-quickstart-template"
+   export POSTGRES_DB="summit-cap"
    export POSTGRES_USER="your-db-user"
    export POSTGRES_PASSWORD="your-secure-password"
-   export DATABASE_URL="postgresql+asyncpg://user:password@ai-quickstart-template-db:5432/ai-quickstart-template"
+   export DATABASE_URL="postgresql+asyncpg://user:password@summit-cap-db:5432/summit-cap"
    export DEBUG="false"
    export ALLOWED_HOSTS='["*"]'
    export VITE_API_BASE_URL="https://api.example.com"
@@ -246,14 +246,14 @@ For more control, use Helm CLI directly:
 
    **For OpenShift** (recommended):
    ```bash
-   cd deploy/helm/ai-quickstart-template
+   cd deploy/helm/summit-cap
    
    # Create OpenShift project first
-   oc new-project ai-quickstart-template || oc project ai-quickstart-template
+   oc new-project summit-cap || oc project summit-cap
    
    # Install with default values
-   helm install ai-quickstart-template . \
-     --namespace ai-quickstart-template \
+   helm install summit-cap . \
+     --namespace summit-cap \
      --set secrets.POSTGRES_DB="$POSTGRES_DB" \
      --set secrets.POSTGRES_USER="$POSTGRES_USER" \
      --set secrets.POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
@@ -265,11 +265,11 @@ For more control, use Helm CLI directly:
 
    **For Kubernetes** (alternative):
    ```bash
-   cd deploy/helm/ai-quickstart-template
+   cd deploy/helm/summit-cap
    
    # Install with default values
-   helm install ai-quickstart-template . \
-     --namespace ai-quickstart-template \
+   helm install summit-cap . \
+     --namespace summit-cap \
      --create-namespace \
      --set secrets.POSTGRES_DB="$POSTGRES_DB" \
      --set secrets.POSTGRES_USER="$POSTGRES_USER" \
@@ -287,18 +287,18 @@ For more control, use Helm CLI directly:
    make deploy REGISTRY_URL=registry.example.com REPOSITORY=myorg IMAGE_TAG=v1.0.0
    ```
 
-   Or edit `deploy/helm/ai-quickstart-template/values.yaml` directly:
+   Or edit `deploy/helm/summit-cap/values.yaml` directly:
 
-   Edit `deploy/helm/ai-quickstart-template/values.yaml` and update image repository/tag:
+   Edit `deploy/helm/summit-cap/values.yaml` and update image repository/tag:
 
    ```yaml
    api:
      image:
-       repository: registry.example.com/ai-quickstart-template-api
+       repository: registry.example.com/summit-cap-api
        tag: latest
    ui:
      image:
-       repository: registry.example.com/ai-quickstart-template-ui
+       repository: registry.example.com/summit-cap-ui
        tag: latest
    ```
 
@@ -307,10 +307,10 @@ For more control, use Helm CLI directly:
    ```bash
    # Migrations run automatically via an OpenShift/Kubernetes Job on first deployment
    # To manually trigger migrations (OpenShift):
-   oc create job --from=cronjob/ai-quickstart-template-migration ai-quickstart-template-migration-manual -n ai-quickstart-template
+   oc create job --from=cronjob/summit-cap-migration summit-cap-migration-manual -n summit-cap
    
    # Or using kubectl (Kubernetes):
-   kubectl create job --from=cronjob/ai-quickstart-template-migration ai-quickstart-template-migration-manual -n ai-quickstart-template
+   kubectl create job --from=cronjob/summit-cap-migration summit-cap-migration-manual -n summit-cap
    ```
 
 5. **Verify deployment**:
@@ -318,32 +318,32 @@ For more control, use Helm CLI directly:
    **Using OpenShift CLI** (`oc`):
    ```bash
    # Check pod status
-   oc get pods -n ai-quickstart-template
+   oc get pods -n summit-cap
    
    # Check services
-   oc get svc -n ai-quickstart-template
+   oc get svc -n summit-cap
    
    # Check routes (OpenShift)
-   oc get routes -n ai-quickstart-template
+   oc get routes -n summit-cap
    
    # View logs
-   oc logs -n ai-quickstart-template -l app=ai-quickstart-template-api
-   oc logs -n ai-quickstart-template -l app=ai-quickstart-template-ui
-   oc logs -n ai-quickstart-template -l app=ai-quickstart-template-db
+   oc logs -n summit-cap -l app=summit-cap-api
+   oc logs -n summit-cap -l app=summit-cap-ui
+   oc logs -n summit-cap -l app=summit-cap-db
    ```
 
    **Using Kubernetes CLI** (`kubectl` - alternative):
    ```bash
    # Check pod status
-   kubectl get pods -n ai-quickstart-template
+   kubectl get pods -n summit-cap
    
    # Check services
-   kubectl get svc -n ai-quickstart-template
+   kubectl get svc -n summit-cap
    
    # View logs
-   kubectl logs -n ai-quickstart-template -l app=ai-quickstart-template-api
-   kubectl logs -n ai-quickstart-template -l app=ai-quickstart-template-ui
-   kubectl logs -n ai-quickstart-template -l app=ai-quickstart-template-db
+   kubectl logs -n summit-cap -l app=summit-cap-api
+   kubectl logs -n summit-cap -l app=summit-cap-ui
+   kubectl logs -n summit-cap -l app=summit-cap-db
    ```
 
 #### Upgrading a Deployment
@@ -359,11 +359,11 @@ make deploy HELM_EXTRA_ARGS="--set api.replicas=3"
 
 Using Helm CLI:
 ```bash
-cd deploy/helm/ai-quickstart-template
+cd deploy/helm/summit-cap
 
 # Upgrade with new values
-helm upgrade ai-quickstart-template . \
-  --namespace ai-quickstart-template \
+helm upgrade summit-cap . \
+  --namespace summit-cap \
   --reuse-values \
   --set api.image.tag=v1.1.0
 ```
@@ -377,14 +377,14 @@ make undeploy
 
 Using OpenShift CLI (`oc`):
 ```bash
-helm uninstall ai-quickstart-template --namespace ai-quickstart-template
-oc delete project ai-quickstart-template
+helm uninstall summit-cap --namespace summit-cap
+oc delete project summit-cap
 ```
 
 Using Kubernetes CLI (`kubectl` - alternative):
 ```bash
-helm uninstall ai-quickstart-template --namespace ai-quickstart-template
-kubectl delete namespace ai-quickstart-template
+helm uninstall summit-cap --namespace summit-cap
+kubectl delete namespace summit-cap
 ```
 
 ### Environment Configuration
@@ -395,7 +395,7 @@ Create a `.env` file in the project root for local development:
 
 ```env
 # Database
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/ai-quickstart-template
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/summit-cap
 DB_ECHO=false
 # API
 DEBUG=true
@@ -417,14 +417,14 @@ For production deployments:
 2. **Use environment-specific values files**:
    ```bash
    # Create production values
-   cp deploy/helm/ai-quickstart-template/values.yaml deploy/helm/ai-quickstart-template/values.prod.yaml
+   cp deploy/helm/summit-cap/values.yaml deploy/helm/summit-cap/values.prod.yaml
    
    # Deploy with production values
-   helm install ai-quickstart-template . -f values.prod.yaml
+   helm install summit-cap . -f values.prod.yaml
    ```
 
 3. **Configure resource limits**:
-   Edit `deploy/helm/ai-quickstart-template/values.yaml` to adjust CPU/memory limits based on your workload.
+   Edit `deploy/helm/summit-cap/values.yaml` to adjust CPU/memory limits based on your workload.
 
 ### Production Considerations
 
@@ -445,29 +445,29 @@ For production deployments:
 
 Using OpenShift CLI (`oc`):
 ```bash
-oc describe pod <pod-name> -n ai-quickstart-template
-oc logs <pod-name> -n ai-quickstart-template
-oc get events -n ai-quickstart-template --sort-by='.lastTimestamp'
+oc describe pod <pod-name> -n summit-cap
+oc logs <pod-name> -n summit-cap
+oc get events -n summit-cap --sort-by='.lastTimestamp'
 ```
 
 Using Kubernetes CLI (`kubectl` - alternative):
 ```bash
-kubectl describe pod <pod-name> -n ai-quickstart-template
-kubectl logs <pod-name> -n ai-quickstart-template
-kubectl get events -n ai-quickstart-template --sort-by='.lastTimestamp'
+kubectl describe pod <pod-name> -n summit-cap
+kubectl logs <pod-name> -n summit-cap
+kubectl get events -n summit-cap --sort-by='.lastTimestamp'
 ```
 
 **Database connection issues**:
-- Verify database service is running: `oc get svc -n ai-quickstart-template` (or `kubectl get svc -n ai-quickstart-template`)
+- Verify database service is running: `oc get svc -n summit-cap` (or `kubectl get svc -n summit-cap`)
 - Check DATABASE_URL format matches your database configuration
-- Verify secrets are correctly set: `oc get secret -n ai-quickstart-template` (or `kubectl get secret -n ai-quickstart-template`)
+- Verify secrets are correctly set: `oc get secret -n summit-cap` (or `kubectl get secret -n summit-cap`)
 
 **Image pull errors**:
 - Verify image registry credentials
 - Check image pull policy in values.yaml
 - Ensure images are pushed to the registry
 
-For more details, see the [Helm chart documentation](deploy/helm/ai-quickstart-template/README.md) (if available) or the [Helm values file](deploy/helm/ai-quickstart-template/values.yaml).
+For more details, see the [Helm chart documentation](deploy/helm/summit-cap/README.md) (if available) or the [Helm values file](deploy/helm/summit-cap/values.yaml).
 
 ## Extending the Template
 
@@ -482,10 +482,10 @@ After creating a repository from this template, rename the project to match your
 # Example: renaming to "my-chatbot"
 
 # On macOS/Linux:
-find . -type f -not -path './.git/*' -exec sed -i '' 's/ai-quickstart-template/my-chatbot/g' {} +
+find . -type f -not -path './.git/*' -exec sed -i '' 's/summit-cap/my-chatbot/g' {} +
 
 # Rename the Helm chart directory
-mv deploy/helm/ai-quickstart-template deploy/helm/my-chatbot
+mv deploy/helm/summit-cap deploy/helm/my-chatbot
 ```
 
 **Files affected:**

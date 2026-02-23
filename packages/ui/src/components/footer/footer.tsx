@@ -7,12 +7,12 @@ export function Footer() {
         <div className="flex items-center gap-0">
           <Logo />
           <span className="font-medium text-foreground">
-            Built with the <span className="font-bold">AI QuickStart Template</span>
+            <span className="font-bold">Summit Cap Financial</span>
           </span>
         </div>
         <div className="flex items-center gap-3">
           <span className="text-muted-foreground">·</span>
-          <a className="hover:underline" href="https://github.com/rh-ai-quickstart/ai-quickstart-template" target="_blank" rel="noopener noreferrer">
+          <a className="hover:underline" href="https://github.com/rh-ai-quickstart/mortgage-ai" target="_blank" rel="noopener noreferrer">
             GitHub
           </a>
         </div>

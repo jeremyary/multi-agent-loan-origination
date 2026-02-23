@@ -1,9 +1,9 @@
 {
-  "name": "@ai-quickstart-template/ui",
+  "name": "@summit-cap/ui",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "prettier": "@ai-quickstart-template/prettier-config",
+  "prettier": "@summit-cap/prettier-config",
   "scripts": {
     "dev:vite": "vite",
     "dev:storybook": "storybook dev -p 6006 --no-open",
@@ -37,8 +37,8 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@ai-quickstart-template/eslint-config": "workspace:*",
-    "@ai-quickstart-template/prettier-config": "workspace:*",
+    "@summit-cap/eslint-config": "workspace:*",
+    "@summit-cap/prettier-config": "workspace:*",
     "vitest": "^4.0.8",
     "@testing-library/react": "^16.3.0",
     "@testing-library/jest-dom": "^6.4.2",

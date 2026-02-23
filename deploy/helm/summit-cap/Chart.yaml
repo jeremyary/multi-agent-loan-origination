@@ -1,0 +1,14 @@
+apiVersion: v2
+name: summit-cap
+description: Multi-agent loan origination system for Summit Cap Financial
+type: application
+version: 0.1.0
+appVersion: "latest"
+keywords:
+  - summit-cap
+home: https://github.com/example/summit-cap
+sources:
+  - https://github.com/example/summit-cap
+maintainers:
+  - name: Development Team
+    email: dev@example.com

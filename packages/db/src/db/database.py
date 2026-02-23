@@ -10,7 +10,7 @@ from typing import Dict, Any
 import logging
 from datetime import datetime, timezone
 
-DATABASE_URL = "postgresql+asyncpg://user:password@localhost:5432/ai-quickstart-template"
+DATABASE_URL = "postgresql+asyncpg://user:password@localhost:5432/summit-cap"
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
