@@ -51,7 +51,7 @@ class DatabaseService:
                 "name": "Database",
                 "status": "healthy",
                 "message": "PostgreSQL connection successful",
-                "version": "0.0.0",
+                "version": "0.1.0",
                 "start_time": self.start_time.isoformat()
             }
         except Exception as e:
@@ -60,7 +60,7 @@ class DatabaseService:
                 "name": "Database", 
                 "status": "down",
                 "message": f"PostgreSQL connection failed: {str(e)[:100]}",
-                "version": "0.0.0",
+                "version": "0.1.0",
                 "start_time": self.start_time.isoformat()
             }
     
