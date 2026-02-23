@@ -1,4 +1,4 @@
-// ai-quickstart-template - Root Route
+// Summit Cap Financial - Root Route
 // React import required for JSX (ESLint requirement)
 // @ts-expect-error - React is used implicitly by JSX transform
 import React from 'react';

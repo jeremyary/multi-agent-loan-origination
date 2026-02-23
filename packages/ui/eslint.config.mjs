@@ -1,3 +1,3 @@
-import config from '@ai-quickstart-template/eslint-config';
+import config from '@summit-cap/eslint-config';
 
 export default [...config];

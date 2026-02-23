@@ -1,5 +1,5 @@
 {
-  "name": "@ai-quickstart-template/prettier-config",
+  "name": "@summit-cap/prettier-config",
   "version": "0.0.0",
   "private": true,
   "main": "index.json",

@@ -1,21 +1,21 @@
 services:
-  ai-quickstart-template-db:
+  summit-cap-db:
     image: docker.io/postgres:16
     labels:
       com.quickstart.package: db
     environment:
-      POSTGRES_DB: ai-quickstart-template
+      POSTGRES_DB: summit-cap
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
     ports:
       - "5432:5432"
     volumes:
-      - ai-quickstart-template_postgres_data:/var/lib/postgresql/data
+      - summit_cap_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U user -d ai-quickstart-template"]
+      test: ["CMD-SHELL", "pg_isready -U user -d summit-cap"]
       interval: 5s
       timeout: 5s
       retries: 5
 
 volumes:
-  ai-quickstart-template_postgres_data:
+  summit_cap_postgres_data:

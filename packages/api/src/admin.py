@@ -9,7 +9,7 @@ from sqladmin import Admin, ModelView
 from sqlalchemy import create_engine
 
 # Create sync engine for SQLAdmin (it requires a sync engine internally)
-DATABASE_URL = "postgresql://user:password@localhost:5432/ai-quickstart-template"
+DATABASE_URL = "postgresql://user:password@localhost:5432/summit-cap"
 engine = create_engine(DATABASE_URL, echo=False)
 
 
@@ -39,7 +39,7 @@ def setup_admin(app):
     Args:
         app: FastAPI application instance
     """
-    admin = Admin(app, engine, title="AI QuickStart Admin")
+    admin = Admin(app, engine, title="Summit Cap Admin")
 
     # Example model - delete this when you remove the Dog model
     admin.add_view(DogAdmin)

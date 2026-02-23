@@ -1,7 +1,7 @@
-# Default values for ai-quickstart-template
+# Default values for summit-cap
 global:
   imageRegistry: quay.io
-  imageRepository: ai-quickstart-template
+  imageRepository: summit-cap
   imageTag: latest
   imagePullPolicy: Always
   storageClass: ""
@@ -9,12 +9,12 @@ global:
 # Secrets configuration - these values should be overridden with actual secrets
 secrets:
   # Database secrets
-  POSTGRES_DB: "ai-quickstart-template"
+  POSTGRES_DB: "summit-cap"
   POSTGRES_USER: "user"
   POSTGRES_PASSWORD: "changeme"
 
   # API secrets
-  DATABASE_URL: "postgresql+asyncpg://user:changeme@ai-quickstart-template-db:5432/ai-quickstart-template"
+  DATABASE_URL: "postgresql+asyncpg://user:changeme@summit-cap-db:5432/summit-cap"
   DEBUG: "false"
   ALLOWED_HOSTS: '["*"]'
 
@@ -42,9 +42,9 @@ routes:
 # API configuration
 api:
   enabled: true
-  name: ai-quickstart-template-api
+  name: summit-cap-api
   image:
-    repository: ai-quickstart-template-api
+    repository: summit-cap-api
     tag: latest
   service:
     type: ClusterIP
@@ -65,9 +65,9 @@ api:
 # UI configuration
 ui:
   enabled: true
-  name: ai-quickstart-template-ui
+  name: summit-cap-ui
   image:
-    repository: ai-quickstart-template-ui
+    repository: summit-cap-ui
     tag: latest
   service:
     type: ClusterIP
@@ -88,7 +88,7 @@ ui:
 # Database configuration
 database:
   enabled: true
-  name: ai-quickstart-template-db
+  name: summit-cap-db
   image:
     repository: pgvector/pgvector
     tag: pg16
@@ -109,9 +109,9 @@ database:
 # Database migration configuration
 migration:
   enabled: true
-  name: ai-quickstart-template-migration
+  name: summit-cap-migration
   image:
-    repository: ai-quickstart-template-db
+    repository: summit-cap-db
     tag: latest
   restartPolicy: Never
   backoffLimit: 1

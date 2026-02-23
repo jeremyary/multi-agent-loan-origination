@@ -1,7 +1,7 @@
 {
-  "name": "ai-quickstart-template",
+  "name": "summit-cap",
   "version": "0.1.0",
-  "description": "A ready-made template for creating new AI Quickstarts",
+  "description": "Multi-agent loan origination system for Summit Cap Financial",
   "private": true,
   "workspaces": [
     "packages/*"

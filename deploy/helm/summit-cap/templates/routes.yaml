@@ -6,7 +6,7 @@ kind: Route
 metadata:
   name: {{ .Values.ui.name }}-route
   labels:
-    {{- include "ai-quickstart-template.ui.labels" . | nindent 4 }}
+    {{- include "summit-cap.ui.labels" . | nindent 4 }}
   {{- with .Values.routes.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -40,7 +40,7 @@ kind: Route
 metadata:
   name: {{ .Values.api.name }}-route
   labels:
-    {{- include "ai-quickstart-template.api.labels" . | nindent 4 }}
+    {{- include "summit-cap.api.labels" . | nindent 4 }}
   {{- with .Values.routes.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -75,7 +75,7 @@ kind: Route
 metadata:
   name: {{ .Values.api.name }}-health-route
   labels:
-    {{- include "ai-quickstart-template.api.labels" . | nindent 4 }}
+    {{- include "summit-cap.api.labels" . | nindent 4 }}
   {{- with .Values.routes.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}

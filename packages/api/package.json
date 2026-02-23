@@ -1,5 +1,5 @@
 {
-  "name": "@ai-quickstart-template/api",
+  "name": "@summit-cap/api",
   "private": true,
   "version": "0.0.0",
   "description": "FastAPI backend application",

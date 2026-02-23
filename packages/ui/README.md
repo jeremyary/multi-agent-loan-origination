@@ -1,4 +1,4 @@
-# ai-quickstart-template UI
+# summit-cap UI
 
 React frontend application architecture and development guide.
 

@@ -1,3 +1,3 @@
-"""FastAPI application for ai-quickstart-template"""
+"""FastAPI application for Summit Cap Financial"""
 
-__version__ = "0.0.0"
+__version__ = "0.1.0"

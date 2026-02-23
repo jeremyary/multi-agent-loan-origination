@@ -22,7 +22,7 @@ dependencies = [
     "greenlet>=3.2.3",
     "sqladmin>=0.16.0",
 
-    "ai-quickstart-template-db",
+    "summit-cap-db",
 ]
 
 [project.optional-dependencies]
@@ -35,8 +35,8 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/example/ai-quickstart-template"
-Repository = "https://github.com/example/ai-quickstart-template.git"
+Homepage = "https://github.com/rh-ai-quickstart/mortgage-ai"
+Repository = "https://github.com/rh-ai-quickstart/mortgage-ai.git"
 
 [tool.hatch.version]
 path = "src/__init__.py"
@@ -68,4 +68,4 @@ ignore_missing_imports = true
 packages = ["src"]
 
 [tool.uv.sources]
-"ai-quickstart-template-db" = { path = "../db", editable = true }
+"summit-cap-db" = { path = "../db", editable = true }

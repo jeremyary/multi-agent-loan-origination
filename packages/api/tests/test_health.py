@@ -26,7 +26,7 @@ def test_health_check_api_service(health_response):
 
     assert api_service["status"] == "healthy"
     assert api_service["message"] == "API is running"
-    assert api_service["version"] == "0.0.0"
+    assert api_service["version"] == "0.1.0"
 
 
 def test_root_endpoint(client):

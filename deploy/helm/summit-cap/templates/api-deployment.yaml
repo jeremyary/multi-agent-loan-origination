@@ -4,25 +4,25 @@ kind: Deployment
 metadata:
   name: {{ .Values.api.name }}
   labels:
-    {{- include "ai-quickstart-template.api.labels" . | nindent 4 }}
+    {{- include "summit-cap.api.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.api.replicas }}
   selector:
     matchLabels:
-      {{- include "ai-quickstart-template.api.selectorLabels" . | nindent 6 }}
+      {{- include "summit-cap.api.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "ai-quickstart-template.api.selectorLabels" . | nindent 8 }}
+        {{- include "summit-cap.api.selectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "ai-quickstart-template.serviceAccountName" . }}
+      serviceAccountName: {{ include "summit-cap.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: api
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: {{ include "ai-quickstart-template.image" (dict "name" .Values.api.image.repository "tag" .Values.api.image.tag "Values" .Values) }}
+          image: {{ include "summit-cap.image" (dict "name" .Values.api.image.repository "tag" .Values.api.image.tag "Values" .Values) }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           ports:
             - name: http
@@ -33,18 +33,18 @@ spec:
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: DATABASE_URL
             {{- end }}
             - name: DEBUG
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: DEBUG
             - name: ALLOWED_HOSTS
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: ALLOWED_HOSTS
           {{- if .Values.api.healthCheck.enabled }}
           livenessProbe:

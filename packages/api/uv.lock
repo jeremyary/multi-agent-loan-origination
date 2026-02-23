@@ -3,27 +3,6 @@ revision = 3
 requires-python = ">=3.11"
 
 [[package]]
-name = "ai-quickstart-template-db"
-source = { editable = "../db" }
-dependencies = [
-    { name = "alembic" },
-    { name = "asyncpg" },
-    { name = "psycopg2-binary" },
-    { name = "sqlalchemy" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "alembic", specifier = ">=1.13.0" },
-    { name = "asyncpg", specifier = ">=0.29.0" },
-    { name = "psycopg2-binary", specifier = ">=2.9.0" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
-    { name = "sqlalchemy", specifier = ">=2.0.0" },
-]
-provides-extras = ["dev"]
-
-[[package]]
 name = "alembic"
 version = "1.18.1"
 source = { registry = "https://pypi.org/simple" }
@@ -72,7 +51,6 @@ wheels = [
 name = "api"
 source = { editable = "." }
 dependencies = [
-    { name = "ai-quickstart-template-db" },
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "fastapi" },
@@ -81,6 +59,7 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "sqladmin" },
     { name = "sqlalchemy" },
+    { name = "summit-cap-db" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -95,7 +74,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ai-quickstart-template-db", editable = "../db" },
     { name = "alembic", specifier = ">=1.13.0" },
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "fastapi", specifier = ">=0.104.0" },
@@ -109,6 +87,7 @@ requires-dist = [
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
     { name = "sqladmin", specifier = ">=0.16.0" },
     { name = "sqlalchemy", specifier = ">=2.0.0" },
+    { name = "summit-cap-db", editable = "../db" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.24.0" },
 ]
 provides-extras = ["dev"]
@@ -965,6 +944,27 @@ sdist = { url = "https://files.pythonhosted.org/packages/ba/b8/73a0e6a6e079a9d9c
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d9/52/1064f510b141bd54025f9b55105e26d1fa970b9be67ad766380a3c9b74b0/starlette-0.50.0-py3-none-any.whl", hash = "sha256:9e5391843ec9b6e472eed1365a78c8098cfceb7a74bfd4d6b1c0c0095efb3bca", size = 74033, upload-time = "2025-11-01T15:25:25.461Z" },
 ]
+
+[[package]]
+name = "summit-cap-db"
+source = { editable = "../db" }
+dependencies = [
+    { name = "alembic" },
+    { name = "asyncpg" },
+    { name = "psycopg2-binary" },
+    { name = "sqlalchemy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "alembic", specifier = ">=1.13.0" },
+    { name = "asyncpg", specifier = ">=0.29.0" },
+    { name = "psycopg2-binary", specifier = ">=2.9.0" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.4.0" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
+    { name = "sqlalchemy", specifier = ">=2.0.0" },
+]
+provides-extras = ["dev"]
 
 [[package]]
 name = "typing-extensions"

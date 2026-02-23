@@ -4,20 +4,20 @@ kind: Deployment
 metadata:
   name: {{ .Values.database.name }}
   labels:
-    {{- include "ai-quickstart-template.database.labels" . | nindent 4 }}
+    {{- include "summit-cap.database.labels" . | nindent 4 }}
 spec:
   replicas: 1
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      {{- include "ai-quickstart-template.database.selectorLabels" . | nindent 6 }}
+      {{- include "summit-cap.database.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "ai-quickstart-template.database.selectorLabels" . | nindent 8 }}
+        {{- include "summit-cap.database.selectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "ai-quickstart-template.serviceAccountName" . }}
+      serviceAccountName: {{ include "summit-cap.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
@@ -32,17 +32,17 @@ spec:
             - name: POSTGRES_DB
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: POSTGRES_DB
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: POSTGRES_USER
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "ai-quickstart-template.fullname" . }}-secret
+                  name: {{ include "summit-cap.fullname" . }}-secret
                   key: POSTGRES_PASSWORD
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata

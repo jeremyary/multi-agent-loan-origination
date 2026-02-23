@@ -10,9 +10,9 @@ from .core.config import settings
 from .routes import health
 
 app = FastAPI(
-    title="ai-quickstart-template API",
-    description="A ready-made template for creating new AI Quickstarts",
-    version="0.0.0",
+    title="Summit Cap Financial API",
+    description="Multi-agent loan origination system for Summit Cap Financial",
+    version="0.1.0",
 )
 
 # Configure CORS
@@ -33,4 +33,4 @@ setup_admin(app)
 @app.get("/")
 async def root() -> dict[str, str]:
     """Root endpoint"""
-    return {"message": "Welcome to ai-quickstart-template API"}
+    return {"message": "Welcome to Summit Cap Financial API"}
