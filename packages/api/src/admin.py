@@ -20,8 +20,11 @@ from db import (
 from sqladmin import Admin, ModelView
 from sqlalchemy import create_engine
 
-DATABASE_URL = "postgresql://user:password@localhost:5433/summit-cap"
-engine = create_engine(DATABASE_URL, echo=False)
+from .core.config import settings
+
+# SQLAdmin requires a sync engine; derive from the async DATABASE_URL
+_sync_url = settings.DATABASE_URL.replace("+asyncpg", "")
+engine = create_engine(_sync_url, echo=False)
 
 
 class BorrowerAdmin(ModelView, model=Borrower):

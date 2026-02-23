@@ -118,9 +118,9 @@ async def calculate_affordability(req: AffordabilityRequest) -> AffordabilityRes
     pmi_warning = None
     if estimated_purchase_price > 0:
         down_pct = req.down_payment / estimated_purchase_price * 100
-        if down_pct < 3:
+        if down_pct < 20:
             pmi_warning = (
-                f"A down payment of {down_pct:.1f}% is below 3% of the estimated "
+                f"A down payment of {down_pct:.1f}% is below 20% of the estimated "
                 "purchase price and may require private mortgage insurance (PMI)."
             )
 

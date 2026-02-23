@@ -1,16 +1,22 @@
+# This project was developed with assistance from AI tools.
 """
 Database configuration and utilities
 """
 
+import logging
+import os
+from datetime import datetime, timezone
+from typing import Dict, Any
+
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import text
-from typing import Dict, Any
-import logging
-from datetime import datetime, timezone
 
-DATABASE_URL = "postgresql+asyncpg://user:password@localhost:5433/summit-cap"
+DATABASE_URL = os.environ.get(
+    "DATABASE_URL",
+    "postgresql+asyncpg://user:password@localhost:5433/summit-cap",
+)
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
