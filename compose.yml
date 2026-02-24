@@ -159,7 +159,7 @@ services:
       LLM_BASE_URL: "${LLM_BASE_URL:-http://host.docker.internal:1234/v1}"
       LLM_API_KEY: "${LLM_API_KEY:-not-needed}"
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8321/health || exit 1"]
+      test: ["CMD-SHELL", "curl -sf http://localhost:8321/v1/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
