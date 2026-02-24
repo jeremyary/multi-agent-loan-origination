@@ -24,63 +24,35 @@ def _clear_checker_cache():
     safety_mod._checker_instance = None
 
 
-# -- SafetyResult parsing --
+# -- Response parsing (the real logic) --
 
 
-def test_parse_response_safe():
+def test_parse_safe_verdict():
     """should return is_safe=True when Llama Guard says 'safe'."""
     result = SafetyChecker._parse_response("safe")
     assert result.is_safe is True
     assert result.violation_categories == []
 
 
-def test_parse_response_unsafe_with_categories():
-    """should return is_safe=False with categories when Llama Guard says 'unsafe'."""
+def test_parse_unsafe_verdict_with_categories():
+    """should return is_safe=False with parsed categories from second line."""
     result = SafetyChecker._parse_response("unsafe\nS1,S3")
     assert result.is_safe is False
     assert result.violation_categories == ["S1", "S3"]
 
 
-def test_parse_response_empty():
-    """should treat empty response as safe."""
+def test_parse_empty_response_treated_as_safe():
+    """should treat empty/malformed response as safe (fail-open at parse level)."""
     result = SafetyChecker._parse_response("")
     assert result.is_safe is True
 
 
-# -- SafetyChecker.check_input --
+# -- Fail-open behavior (critical design decision) --
 
 
 @pytest.mark.asyncio
-async def test_safety_checker_returns_safe_for_normal_input():
-    """should return is_safe=True when Llama Guard classifies input as safe."""
-    mock_llm = AsyncMock()
-    mock_llm.ainvoke.return_value = AsyncMock(content="safe")
-
-    checker = SafetyChecker(model="test", endpoint="http://test", api_key="key")
-    checker._llm = mock_llm
-
-    result = await checker.check_input("What mortgage rates do you offer?")
-    assert result.is_safe is True
-    assert result.violation_categories == []
-
-
-@pytest.mark.asyncio
-async def test_safety_checker_returns_unsafe_for_harmful_input():
-    """should return is_safe=False with categories when input is flagged."""
-    mock_llm = AsyncMock()
-    mock_llm.ainvoke.return_value = AsyncMock(content="unsafe\nS1")
-
-    checker = SafetyChecker(model="test", endpoint="http://test", api_key="key")
-    checker._llm = mock_llm
-
-    result = await checker.check_input("harmful content")
-    assert result.is_safe is False
-    assert "S1" in result.violation_categories
-
-
-@pytest.mark.asyncio
-async def test_safety_checker_fails_open_on_error():
-    """should return is_safe=True when the safety model is unreachable (fail-open)."""
+async def test_input_check_fails_open_on_llm_error():
+    """should return is_safe=True when the safety model is unreachable."""
     mock_llm = AsyncMock()
     mock_llm.ainvoke.side_effect = ConnectionError("model unreachable")
 
@@ -91,39 +63,9 @@ async def test_safety_checker_fails_open_on_error():
     assert result.is_safe is True
 
 
-# -- SafetyChecker.check_output --
-
-
 @pytest.mark.asyncio
-async def test_safety_checker_output_safe():
-    """should return is_safe=True for safe agent output."""
-    mock_llm = AsyncMock()
-    mock_llm.ainvoke.return_value = AsyncMock(content="safe")
-
-    checker = SafetyChecker(model="test", endpoint="http://test", api_key="key")
-    checker._llm = mock_llm
-
-    result = await checker.check_output("what rates?", "We offer 30-year fixed at 6.5%.")
-    assert result.is_safe is True
-
-
-@pytest.mark.asyncio
-async def test_safety_checker_output_unsafe():
-    """should return is_safe=False when agent output is flagged."""
-    mock_llm = AsyncMock()
-    mock_llm.ainvoke.return_value = AsyncMock(content="unsafe\nS6")
-
-    checker = SafetyChecker(model="test", endpoint="http://test", api_key="key")
-    checker._llm = mock_llm
-
-    result = await checker.check_output("question", "harmful response")
-    assert result.is_safe is False
-    assert "S6" in result.violation_categories
-
-
-@pytest.mark.asyncio
-async def test_safety_checker_output_fails_open():
-    """should return is_safe=True when output check errors (fail-open)."""
+async def test_output_check_fails_open_on_llm_error():
+    """should return is_safe=True when output check errors."""
     mock_llm = AsyncMock()
     mock_llm.ainvoke.side_effect = RuntimeError("timeout")
 
@@ -134,7 +76,43 @@ async def test_safety_checker_output_fails_open():
     assert result.is_safe is True
 
 
-# -- get_safety_checker factory --
+# -- Prompt formatting (verify correct template is used) --
+
+
+@pytest.mark.asyncio
+async def test_check_input_sends_user_message_in_prompt():
+    """should include the user message in the Llama Guard prompt."""
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke.return_value = AsyncMock(content="safe")
+
+    checker = SafetyChecker(model="test", endpoint="http://test", api_key="key")
+    checker._llm = mock_llm
+
+    await checker.check_input("What mortgage rates do you offer?")
+
+    prompt_sent = mock_llm.ainvoke.call_args[0][0]
+    assert "What mortgage rates do you offer?" in prompt_sent
+    assert "User" in prompt_sent
+
+
+@pytest.mark.asyncio
+async def test_check_output_sends_both_messages_in_prompt():
+    """should include both user and assistant messages in the output check prompt."""
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke.return_value = AsyncMock(content="safe")
+
+    checker = SafetyChecker(model="test", endpoint="http://test", api_key="key")
+    checker._llm = mock_llm
+
+    await checker.check_output("what rates?", "We offer 30-year fixed at 6.5%.")
+
+    prompt_sent = mock_llm.ainvoke.call_args[0][0]
+    assert "what rates?" in prompt_sent
+    assert "We offer 30-year fixed at 6.5%." in prompt_sent
+    assert "Agent" in prompt_sent
+
+
+# -- Factory (config-driven activation) --
 
 
 def test_get_safety_checker_returns_none_when_not_configured(monkeypatch):
