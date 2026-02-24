@@ -130,6 +130,9 @@ test:
 lint:
 	pnpm lint
 
+lint-hmda:
+	@scripts/lint-hmda-isolation.sh
+
 clean:
 	pnpm clean
 	rm -rf node_modules
@@ -261,7 +264,7 @@ helm-template: helm-dep-update
 		--set secrets.VITE_ENVIRONMENT="$${VITE_ENVIRONMENT:-}"
 
 .PHONY: help run run-minimal run-auth run-ai run-obs stop \
-        setup dev build test lint clean \
+        setup dev build test lint lint-hmda clean \
         db-start db-stop db-logs db-upgrade \
         containers-build containers-up containers-down containers-logs \
         build-images push-images \

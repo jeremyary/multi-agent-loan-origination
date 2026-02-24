@@ -1,7 +1,14 @@
 # This project was developed with assistance from AI tools.
 __version__ = "0.1.0"
 
-from .database import Base, DatabaseService, get_db, get_db_service
+from .database import (
+    Base,
+    ComplianceSessionLocal,
+    DatabaseService,
+    get_compliance_db,
+    get_db,
+    get_db_service,
+)
 from .enums import (
     ApplicationStage,
     ConditionSeverity,
@@ -22,12 +29,15 @@ from .models import (
     DemoDataManifest,
     Document,
     DocumentExtraction,
+    HmdaDemographic,
     RateLock,
 )
 
 __all__ = [
     "Base",
+    "ComplianceSessionLocal",
     "DatabaseService",
+    "get_compliance_db",
     "get_db",
     "get_db_service",
     "__version__",
@@ -50,5 +60,6 @@ __all__ = [
     "DemoDataManifest",
     "Document",
     "DocumentExtraction",
+    "HmdaDemographic",
     "RateLock",
 ]
