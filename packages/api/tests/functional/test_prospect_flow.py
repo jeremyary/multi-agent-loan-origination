@@ -97,3 +97,18 @@ class TestProspectDenied:
         client = make_client(prospect(), make_mock_session())
         resp = client.get("/api/applications/101/documents")
         assert resp.status_code == 403
+
+    def test_upload_document_denied(self, monkeypatch, make_client):
+        from io import BytesIO
+
+        from src.core.config import settings
+
+        monkeypatch.setattr(settings, "AUTH_DISABLED", False)
+
+        client = make_client(prospect(), make_mock_session())
+        resp = client.post(
+            "/api/applications/101/documents",
+            files={"file": ("test.pdf", BytesIO(b"%PDF"), "application/pdf")},
+            data={"doc_type": "w2"},
+        )
+        assert resp.status_code == 403
