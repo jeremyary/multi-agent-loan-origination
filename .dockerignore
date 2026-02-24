@@ -1,0 +1,32 @@
+# This project was developed with assistance from AI tools.
+
+# Version control
+.git
+
+# Dependencies (rebuilt inside container)
+node_modules
+packages/*/.venv
+packages/*/node_modules
+
+# Build artifacts
+packages/*/dist
+packages/*/build
+packages/*/__pycache__
+**/__pycache__
+**/*.pyc
+
+# IDE / editor
+.vscode
+.idea
+*.swp
+*.swo
+
+# Environment and secrets
+.env
+.env.local
+
+# CI / tooling
+.claude
+.github
+plans
+deploy

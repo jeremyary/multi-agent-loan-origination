@@ -20,6 +20,7 @@ x-langfuse-environment: &langfuse-env
   NEXTAUTH_SECRET: mysecret
   SALT: mysalt
   ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+  TELEMETRY_ENABLED: "false"
   LANGFUSE_INIT_ORG_ID: summit-cap
   LANGFUSE_INIT_ORG_NAME: Summit Cap Financial
   LANGFUSE_INIT_PROJECT_ID: summit-cap-dev
@@ -29,18 +30,26 @@ x-langfuse-environment: &langfuse-env
   LANGFUSE_INIT_USER_EMAIL: admin@summitcap.dev
   LANGFUSE_INIT_USER_NAME: Admin
   LANGFUSE_INIT_USER_PASSWORD: password
-  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@clickhouse:8123/default
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@clickhouse:9000/default
   CLICKHOUSE_URL: http://clickhouse:8123
   CLICKHOUSE_USER: clickhouse
   CLICKHOUSE_PASSWORD: clickhouse
+  CLICKHOUSE_CLUSTER_ENABLED: "false"
   REDIS_HOST: redis
   REDIS_PORT: "6379"
   REDIS_AUTH: myredissecret
-  LANGFUSE_S3_ENDPOINT: http://minio:9000
-  LANGFUSE_S3_ACCESS_KEY_ID: minio
-  LANGFUSE_S3_SECRET_ACCESS_KEY: miniosecret
-  LANGFUSE_S3_BUCKET_NAME: langfuse
-  LANGFUSE_S3_REGION: us-east-1
+  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
+  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+  LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
+  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
 
 services:
   # ------------------------------------------------------------------ always --
@@ -89,7 +98,7 @@ services:
     volumes:
       - ./config:/app/config:ro
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -107,7 +116,7 @@ services:
       summit-cap-api:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/ || exit 1"]
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:8080/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -129,7 +138,7 @@ services:
     volumes:
       - ./config/keycloak/summit-cap-realm.json:/opt/keycloak/data/import/summit-cap-realm.json:ro
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health/ready || exit 1"]
+      test: ["CMD", "bash", "-c", "{ printf 'HEAD /health/ready HTTP/1.0\\r\\n\\r\\n' >&0; grep 'HTTP/1.0 200'; } 0<>/dev/tcp/localhost/9000"]
       interval: 10s
       timeout: 5s
       retries: 12
@@ -137,7 +146,7 @@ services:
 
   # ---------------------------------------------------------------------- ai --
   llamastack:
-    image: docker.io/llamastack/llamastack:latest
+    image: docker.io/llamastack/distribution-starter:latest
     profiles: ["ai", "full"]
     labels:
       com.quickstart.package: ai
@@ -145,8 +154,8 @@ services:
       - "8321:8321"
     volumes:
       - ./config/llamastack/run.yaml:/app/run.yaml:ro
-    command: ["llama", "stack", "run", "/app/run.yaml"]
     environment:
+      RUN_CONFIG_PATH: /app/run.yaml
       LLM_BASE_URL: "${LLM_BASE_URL:-http://host.docker.internal:1234/v1}"
       LLM_API_KEY: "${LLM_API_KEY:-not-needed}"
     healthcheck:
@@ -164,7 +173,7 @@ services:
       com.quickstart.package: observability
     command: --requirepass myredissecret --maxmemory-policy noeviction
     ports:
-      - "6379:6379"
+      - "6380:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "myredissecret", "ping"]
       interval: 5s
@@ -232,8 +241,9 @@ services:
         condition: service_healthy
     environment:
       <<: *langfuse-env
+      HOSTNAME: "0.0.0.0"
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000/api/public/health || exit 1"]
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3000/api/public/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10

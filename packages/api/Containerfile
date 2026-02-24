@@ -40,6 +40,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY packages/api/src/ ./packages/api/src/
 COPY packages/api/pyproject.toml ./packages/api/
 
+# Copy DB package source (API depends on it via editable install)
+COPY packages/db/ ./packages/db/
+
 # Set working directory to API package
 WORKDIR /app/packages/api
 
@@ -54,7 +57,7 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/')" || exit 1
 
 # Run the application
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
