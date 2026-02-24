@@ -1,29 +1,55 @@
 # This project was developed with assistance from AI tools.
 #
-# LlamaStack distribution config for production safety shields.
-# Used by the llamastack container in compose.yml (ai/full profiles).
-# Local dev calls Llama Guard directly via OpenAI-compatible API instead.
+# LlamaStack distribution config for the llamastack container (ai/full profiles).
+# Provides inference via an OpenAI-compatible endpoint (LMStudio in local dev)
+# and safety shields via Llama Guard.
+#
+# Env vars (set in compose.yml):
+#   LLM_BASE_URL  -- inference endpoint  (default: http://host.docker.internal:1234/v1)
+#   LLM_API_KEY   -- API key if needed   (default: not-needed)
+#   SAFETY_MODEL  -- Llama Guard model   (default: meta-llama/Llama-Guard-3-8B)
 
 version: 2
+distro_name: starter
 
-inference:
-  - provider_id: remote-openai
-    provider_type: remote::openai
-    config:
-      api_key: "${LLM_API_KEY:-not-needed}"
-      base_url: "${LLM_BASE_URL:-http://host.docker.internal:1234/v1}"
+apis:
+  - inference
+  - safety
+
+providers:
+  inference:
+    - provider_id: remote-openai
+      provider_type: remote::openai
+      config:
+        api_key: ${env.LLM_API_KEY:=not-needed}
+        base_url: ${env.LLM_BASE_URL:=http://host.docker.internal:1234/v1}
+  safety:
+    - provider_id: llama-guard
+      provider_type: inline::llama-guard
+      config:
+        excluded_categories: []
+
+registered_resources:
+  shields:
+    - shield_id: content_safety
+      provider_id: llama-guard
+      provider_shield_id: ${env.SAFETY_MODEL:=meta-llama/Llama-Guard-3-8B}
 
 safety:
-  - provider_id: llama-guard
-    provider_type: inline::llama-guard
-    config:
-      inference_provider_id: remote-openai
+  default_shield_id: content_safety
 
-shields:
-  - shield_id: content_safety
-    provider_id: llama-guard
-    config:
-      model: meta-llama/Llama-Guard-3-8B
+storage:
+  backends:
+    kv_default:
+      type: kv_sqlite
+      db_path: /tmp/llamastack/kvstore.db
+    sql_default:
+      type: sql_sqlite
+      db_path: /tmp/llamastack/sql_store.db
+  stores:
+    metadata:
+      namespace: registry
+      backend: kv_default
 
 server:
   port: 8321

@@ -22,12 +22,12 @@ RUN corepack enable && corepack prepare pnpm@latest --activate || npm install -g
 # Use --no-frozen-lockfile since lockfiles may not exist in container builds
 RUN pnpm install --no-frozen-lockfile || npm install || yarn install
 
-# Build the UI application
+# Build the UI application (vite only -- storybook is dev-only, not needed in the image)
 WORKDIR /app/packages/ui
-RUN pnpm build || npm run build || yarn build
+RUN pnpm run build:vite
 
 # Stage 2: Serve with nginx
-FROM nginx:alpine AS runtime
+FROM docker.io/nginx:alpine AS runtime
 
 # Create non-root user
 RUN addgroup -g 1001 -S appuser && \
@@ -61,7 +61,10 @@ RUN chown -R appuser:appuser /usr/share/nginx/html && \
     chown -R appuser:appuser /var/log/nginx && \
     chown -R appuser:appuser /etc/nginx/conf.d
 
-# Create nginx pid directory
+# Point nginx PID to a writable location for non-root user
+RUN sed -i 's|/run/nginx.pid|/var/run/nginx/nginx.pid|' /etc/nginx/nginx.conf
+
+# Create nginx pid directory and tmp dirs
 RUN mkdir -p /var/run/nginx && \
     chown -R appuser:appuser /var/run/nginx
 
@@ -73,7 +76,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/ || exit 1
 
 # Run nginx
 CMD ["nginx", "-g", "daemon off;"]
