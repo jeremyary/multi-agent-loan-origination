@@ -86,6 +86,14 @@ class Settings(BaseSettings):
         description="Model name for the capable_large tier (complex reasoning + tools).",
     )
 
+    # -- Storage (S3 / MinIO) --
+    S3_ENDPOINT: str = "http://localhost:9090"
+    S3_ACCESS_KEY: str = "minio"
+    S3_SECRET_KEY: str = "miniosecret"
+    S3_BUCKET: str = "documents"
+    S3_REGION: str = "us-east-1"
+    UPLOAD_MAX_SIZE_MB: int = 50
+
     # -- Observability (LangFuse) --
     LANGFUSE_PUBLIC_KEY: str | None = Field(
         default=None,

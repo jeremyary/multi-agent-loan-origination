@@ -2,8 +2,8 @@
 """Document routes with CEO content restriction (Layer 1)."""
 
 from db import get_db
-from db.enums import UserRole
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from db.enums import DocumentType, UserRole
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import CurrentUser, require_roles
@@ -11,9 +11,10 @@ from ..schemas.document import (
     DocumentDetailResponse,
     DocumentListResponse,
     DocumentResponse,
+    DocumentUploadResponse,
 )
 from ..services import document as doc_service
-from ..services.document import DocumentAccessDenied
+from ..services.document import DocumentAccessDenied, DocumentUploadError
 
 router = APIRouter()
 
@@ -31,6 +32,63 @@ _CONTENT_ROLES = (
     UserRole.LOAN_OFFICER,
     UserRole.UNDERWRITER,
 )
+
+
+_UPLOAD_ROLES = (
+    UserRole.ADMIN,
+    UserRole.BORROWER,
+    UserRole.LOAN_OFFICER,
+)
+
+
+@router.post(
+    "/applications/{application_id}/documents",
+    response_model=DocumentUploadResponse,
+    status_code=201,
+    dependencies=[Depends(require_roles(*_UPLOAD_ROLES))],
+)
+async def upload_document(
+    application_id: int,
+    user: CurrentUser,
+    file: UploadFile = File(...),
+    doc_type: DocumentType = Form(...),
+    session: AsyncSession = Depends(get_db),
+) -> DocumentUploadResponse:
+    """Upload a document for an application."""
+    # Validate content type
+    content_type = file.content_type or ""
+    if content_type not in doc_service.ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unsupported file type: {content_type}. "
+            f"Allowed: {', '.join(sorted(doc_service.ALLOWED_CONTENT_TYPES))}",
+        )
+
+    file_data = await file.read()
+
+    try:
+        doc = await doc_service.upload_document(
+            session=session,
+            user=user,
+            application_id=application_id,
+            doc_type=doc_type,
+            filename=file.filename or "document",
+            content_type=content_type,
+            file_data=file_data,
+        )
+    except DocumentUploadError as exc:
+        raise HTTPException(
+            status_code=413,
+            detail=str(exc),
+        ) from exc
+
+    if doc is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+
+    return DocumentUploadResponse.model_validate(doc)
 
 
 @router.get(
