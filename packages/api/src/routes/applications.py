@@ -50,7 +50,9 @@ async def list_applications(
     items = [ApplicationResponse.model_validate(app) for app in applications]
     if user.data_scope.pii_mask:
         items = [
-            ApplicationResponse.model_validate(mask_application_pii(item.model_dump()))
+            ApplicationResponse.model_construct(
+                **mask_application_pii(item.model_dump(mode="json"))
+            )
             for item in items
         ]
     return ApplicationListResponse(data=items, count=total)
@@ -85,7 +87,9 @@ async def get_application(
         )
     item = ApplicationResponse.model_validate(app)
     if user.data_scope.pii_mask:
-        item = ApplicationResponse.model_validate(mask_application_pii(item.model_dump()))
+        item = ApplicationResponse.model_construct(
+            **mask_application_pii(item.model_dump(mode="json"))
+        )
     return item
 
 
