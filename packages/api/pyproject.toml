@@ -65,6 +65,9 @@ ignore = ["E501"]
 pythonpath = [".", "tests"]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "functional: functional tests using the real FastAPI app with all middleware",
+]
 
 [tool.mypy]
 python_version = "3.11"
