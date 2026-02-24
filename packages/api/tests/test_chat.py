@@ -134,24 +134,43 @@ async def test_input_shield_blocks_unsafe_message(_fresh_graph, monkeypatch):
 async def test_input_shield_passes_when_disabled(_fresh_graph, monkeypatch):
     """should not block when shields are disabled (get_safety_checker returns None).
 
-    Verifies that safety_blocked is NOT set, even though the downstream LLM call
-    will fail (no real model in test env). The exception from classify/agent is
-    expected -- the assertion is that input_shield didn't cause it.
+    Verifies that safety_blocked is NOT set and the graph reaches the agent node.
+    Uses mock LLMs to avoid hitting a real model endpoint.
     """
+    from unittest.mock import AsyncMock, MagicMock
+
+    from langchain_core.messages import AIMessage, HumanMessage
+
     monkeypatch.setattr("src.agents.base.get_safety_checker", lambda: None)
 
-    from langchain_core.messages import HumanMessage
+    mock_classifier = MagicMock()
+    mock_classifier.ainvoke = AsyncMock(return_value=AIMessage(content="COMPLEX"))
 
-    from src.agents.registry import get_agent
+    mock_agent_response = AIMessage(content="Hello! How can I help?")
+    mock_agent_response.tool_calls = []
 
-    graph = get_agent("public-assistant")
-    try:
-        result = await graph.ainvoke({"messages": [HumanMessage(content="Hello")]})
-        # If we somehow get a result, safety_blocked should not be set
-        assert not result.get("safety_blocked")
-    except Exception as exc:
-        # LLM call fails (expected in test env) -- verify it's NOT a shield error
-        assert "safety" not in str(exc).lower()
+    mock_agent_llm = MagicMock()
+    mock_agent_llm.ainvoke = AsyncMock(return_value=mock_agent_response)
+    mock_agent_llm.bind_tools.return_value = mock_agent_llm
+
+    mock_llms = {"fast_small": mock_classifier, "capable_large": mock_agent_llm}
+
+    from src.agents.base import build_routed_graph
+    from src.agents.tools import affordability_calc, product_info
+
+    tools = [product_info, affordability_calc]
+    tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
+    graph = build_routed_graph(
+        system_prompt="test",
+        tools=tools,
+        llms=mock_llms,
+        tool_descriptions=tool_descriptions,
+    )
+
+    result = await graph.ainvoke({"messages": [HumanMessage(content="Hello")]})
+
+    assert not result.get("safety_blocked")
+    assert result["messages"][-1].content == "Hello! How can I help?"
 
 
 @pytest.mark.asyncio
