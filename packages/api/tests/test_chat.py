@@ -92,6 +92,128 @@ def test_existing_public_endpoint_still_works(client):
     assert data["max_loan_amount"] > 0
 
 
+# -- Safety shield graph integration --
+
+
+@pytest.fixture
+def _fresh_graph():
+    """Clear the agent registry graph cache before and after each test."""
+    from src.agents.registry import _graphs
+
+    _graphs.clear()
+    yield
+    _graphs.clear()
+
+
+@pytest.mark.asyncio
+async def test_input_shield_blocks_unsafe_message(_fresh_graph, monkeypatch):
+    """should short-circuit to END with refusal when input is flagged unsafe."""
+    from unittest.mock import AsyncMock
+
+    from langchain_core.messages import HumanMessage
+
+    from src.agents.base import SAFETY_REFUSAL_MESSAGE
+    from src.inference.safety import SafetyChecker, SafetyResult
+
+    mock_checker = AsyncMock(spec=SafetyChecker)
+    mock_checker.check_input.return_value = SafetyResult(is_safe=False, violation_categories=["S1"])
+    monkeypatch.setattr("src.agents.base.get_safety_checker", lambda: mock_checker)
+
+    from src.agents.registry import get_agent
+
+    graph = get_agent("public-assistant")
+    result = await graph.ainvoke({"messages": [HumanMessage(content="harmful request")]})
+
+    assert result.get("safety_blocked") is True
+    assert result["messages"][-1].content == SAFETY_REFUSAL_MESSAGE
+    mock_checker.check_input.assert_awaited_once()
+    mock_checker.check_output.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_input_shield_passes_when_disabled(_fresh_graph, monkeypatch):
+    """should not block when shields are disabled (get_safety_checker returns None).
+
+    Verifies that safety_blocked is NOT set, even though the downstream LLM call
+    will fail (no real model in test env). The exception from classify/agent is
+    expected -- the assertion is that input_shield didn't cause it.
+    """
+    monkeypatch.setattr("src.agents.base.get_safety_checker", lambda: None)
+
+    from langchain_core.messages import HumanMessage
+
+    from src.agents.registry import get_agent
+
+    graph = get_agent("public-assistant")
+    try:
+        result = await graph.ainvoke({"messages": [HumanMessage(content="Hello")]})
+        # If we somehow get a result, safety_blocked should not be set
+        assert not result.get("safety_blocked")
+    except Exception as exc:
+        # LLM call fails (expected in test env) -- verify it's NOT a shield error
+        assert "safety" not in str(exc).lower()
+
+
+@pytest.mark.asyncio
+async def test_output_shield_replaces_unsafe_response(_fresh_graph, monkeypatch):
+    """should replace agent response with refusal when output is flagged unsafe."""
+    from unittest.mock import AsyncMock
+
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    from src.agents.base import SAFETY_REFUSAL_MESSAGE
+    from src.inference.safety import SafetyChecker, SafetyResult
+
+    mock_checker = AsyncMock(spec=SafetyChecker)
+    mock_checker.check_input.return_value = SafetyResult(is_safe=True)
+    mock_checker.check_output.return_value = SafetyResult(
+        is_safe=False, violation_categories=["S6"]
+    )
+    monkeypatch.setattr("src.agents.base.get_safety_checker", lambda: mock_checker)
+
+    from unittest.mock import MagicMock
+
+    # Mock the classify and agent LLM calls so the graph reaches output_shield.
+    # Use MagicMock (not AsyncMock) as the base so sync methods like bind_tools
+    # return regular mocks. Only ainvoke needs to be async.
+    mock_classifier = MagicMock()
+    mock_classifier.ainvoke = AsyncMock(return_value=AIMessage(content="COMPLEX"))
+
+    mock_agent_response = AIMessage(content="Here is some unsafe advice")
+    mock_agent_response.tool_calls = []
+
+    mock_agent_llm = MagicMock()
+    mock_agent_llm.ainvoke = AsyncMock(return_value=mock_agent_response)
+    mock_agent_llm.bind_tools.return_value = mock_agent_llm
+
+    mock_llms = {"fast_small": mock_classifier, "capable_large": mock_agent_llm}
+    monkeypatch.setattr(
+        "src.agents.public_assistant.get_model_tiers", lambda: ["fast_small", "capable_large"]
+    )
+    monkeypatch.setattr(
+        "src.agents.public_assistant.get_model_config",
+        lambda tier: {"model_name": "test", "endpoint": "http://test", "api_key": "key"},
+    )
+
+    from src.agents.base import build_routed_graph
+    from src.agents.tools import affordability_calc, product_info
+
+    tools = [product_info, affordability_calc]
+    tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
+    graph = build_routed_graph(
+        system_prompt="test",
+        tools=tools,
+        llms=mock_llms,
+        tool_descriptions=tool_descriptions,
+    )
+
+    result = await graph.ainvoke({"messages": [HumanMessage(content="give me bad advice")]})
+
+    assert result["messages"][-1].content == SAFETY_REFUSAL_MESSAGE
+    mock_checker.check_input.assert_awaited_once()
+    mock_checker.check_output.assert_awaited_once()
+
+
 # -- LLM-based model routing --
 
 

@@ -1,0 +1,186 @@
+# This project was developed with assistance from AI tools.
+"""Safety shields via Llama Guard.
+
+Calls Llama Guard 3 (8B) through the OpenAI-compatible API to check user
+inputs and agent outputs against 13 safety categories (S1-S13).  The same
+ChatOpenAI infrastructure used for inference models is reused here.
+
+Design principle: shields ON by default when SAFETY_MODEL is set, degrade
+gracefully (no-op + warning) when not configured, and fail-open on errors
+so the conversation is never blocked by a transient safety-model outage.
+"""
+
+import logging
+from dataclasses import dataclass, field
+
+from langchain_openai import ChatOpenAI
+
+logger = logging.getLogger(__name__)
+
+LLAMA_GUARD_CATEGORIES = """\
+S1: Violent Crimes
+S2: Non-Violent Crimes
+S3: Sex-Related Crimes
+S4: Child Sexual Exploitation
+S5: Defamation
+S6: Specialized Advice
+S7: Privacy
+S8: Intellectual Property
+S9: Indiscriminate Weapons
+S10: Hate
+S11: Suicide & Self-Harm
+S12: Sexual Content
+S13: Elections"""
+
+INPUT_CHECK_TEMPLATE = """\
+<|begin_of_text|><|start_header_id|>user<|end_header_id|>
+
+Task: Check if there is unsafe content in 'User' messages in conversations \
+according to our safety policy with the below categories.
+
+<BEGIN UNSAFE CONTENT CATEGORIES>
+{categories}
+<END UNSAFE CONTENT CATEGORIES>
+
+<BEGIN CONVERSATION>
+
+User: {user_message}
+
+<END CONVERSATION>
+
+Provide your safety assessment for User in the above conversation:
+- First line must read 'safe' or 'unsafe'.
+- If unsafe, a second line must include a comma-separated list of violated \
+categories.<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+
+OUTPUT_CHECK_TEMPLATE = """\
+<|begin_of_text|><|start_header_id|>user<|end_header_id|>
+
+Task: Check if there is unsafe content in 'Agent' messages in conversations \
+according to our safety policy with the below categories.
+
+<BEGIN UNSAFE CONTENT CATEGORIES>
+{categories}
+<END UNSAFE CONTENT CATEGORIES>
+
+<BEGIN CONVERSATION>
+
+User: {user_message}
+
+Agent: {assistant_response}
+
+<END CONVERSATION>
+
+Provide your safety assessment for Agent in the above conversation:
+- First line must read 'safe' or 'unsafe'.
+- If unsafe, a second line must include a comma-separated list of violated \
+categories.<|eot_id|><|start_header_id|>assistant<|end_header_id|>"""
+
+
+@dataclass
+class SafetyResult:
+    """Result of a Llama Guard safety check."""
+
+    is_safe: bool
+    violation_categories: list[str] = field(default_factory=list)
+    explanation: str = ""
+
+
+class SafetyChecker:
+    """Thin wrapper around Llama Guard via OpenAI-compatible API."""
+
+    def __init__(self, *, model: str, endpoint: str, api_key: str) -> None:
+        self._llm = ChatOpenAI(
+            model=model,
+            base_url=endpoint,
+            api_key=api_key,
+            temperature=0.0,
+            max_tokens=100,
+        )
+
+    @staticmethod
+    def _parse_response(text: str) -> SafetyResult:
+        """Parse Llama Guard response into a SafetyResult."""
+        lines = text.strip().splitlines()
+        if not lines:
+            return SafetyResult(is_safe=True, explanation="Empty response, treating as safe")
+
+        verdict = lines[0].strip().lower()
+        if verdict == "safe":
+            return SafetyResult(is_safe=True)
+
+        categories: list[str] = []
+        if len(lines) > 1:
+            categories = [c.strip() for c in lines[1].split(",") if c.strip()]
+
+        return SafetyResult(
+            is_safe=False,
+            violation_categories=categories,
+            explanation=f"Violated categories: {', '.join(categories)}" if categories else "",
+        )
+
+    async def check_input(self, user_message: str) -> SafetyResult:
+        """Check a user message for unsafe content."""
+        prompt = INPUT_CHECK_TEMPLATE.format(
+            categories=LLAMA_GUARD_CATEGORIES,
+            user_message=user_message,
+        )
+        try:
+            response = await self._llm.ainvoke(prompt)
+            return self._parse_response(response.content)
+        except Exception:
+            logger.warning("Safety input check failed, treating as safe (fail-open)", exc_info=True)
+            return SafetyResult(is_safe=True, explanation="Check failed, fail-open")
+
+    async def check_output(self, user_message: str, assistant_response: str) -> SafetyResult:
+        """Check an assistant response for unsafe content."""
+        prompt = OUTPUT_CHECK_TEMPLATE.format(
+            categories=LLAMA_GUARD_CATEGORIES,
+            user_message=user_message,
+            assistant_response=assistant_response,
+        )
+        try:
+            response = await self._llm.ainvoke(prompt)
+            return self._parse_response(response.content)
+        except Exception:
+            logger.warning(
+                "Safety output check failed, treating as safe (fail-open)", exc_info=True
+            )
+            return SafetyResult(is_safe=True, explanation="Check failed, fail-open")
+
+
+_checker_instance: SafetyChecker | None = None
+
+
+def get_safety_checker() -> SafetyChecker | None:
+    """Return a cached SafetyChecker if SAFETY_MODEL is configured, else None."""
+    global _checker_instance  # noqa: PLW0603
+
+    from ..core.config import settings
+
+    if not settings.SAFETY_MODEL:
+        return None
+
+    if _checker_instance is None:
+        _checker_instance = SafetyChecker(
+            model=settings.SAFETY_MODEL,
+            endpoint=settings.SAFETY_ENDPOINT or settings.LLM_BASE_URL,
+            api_key=settings.SAFETY_API_KEY or settings.LLM_API_KEY,
+        )
+
+    return _checker_instance
+
+
+def log_safety_status() -> None:
+    """Log whether safety shields are active or degraded. Call at startup."""
+    from ..core.config import settings
+
+    if settings.SAFETY_MODEL:
+        endpoint = settings.SAFETY_ENDPOINT or settings.LLM_BASE_URL
+        logger.warning(
+            "Safety shields: ACTIVE (model=%s, endpoint=%s)",
+            settings.SAFETY_MODEL,
+            endpoint,
+        )
+    else:
+        logger.warning("Safety shields: DEGRADED (SAFETY_MODEL not set, shields disabled)")

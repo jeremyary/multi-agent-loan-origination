@@ -1,0 +1,29 @@
+# This project was developed with assistance from AI tools.
+#
+# LlamaStack distribution config for production safety shields.
+# Used by the llamastack container in compose.yml (ai/full profiles).
+# Local dev calls Llama Guard directly via OpenAI-compatible API instead.
+
+version: 2
+
+inference:
+  - provider_id: remote-openai
+    provider_type: remote::openai
+    config:
+      api_key: "${LLM_API_KEY:-not-needed}"
+      base_url: "${LLM_BASE_URL:-http://host.docker.internal:1234/v1}"
+
+safety:
+  - provider_id: llama-guard
+    provider_type: inline::llama-guard
+    config:
+      inference_provider_id: remote-openai
+
+shields:
+  - shield_id: content_safety
+    provider_id: llama-guard
+    config:
+      model: meta-llama/Llama-Guard-3-8B
+
+server:
+  port: 8321
