@@ -22,8 +22,10 @@ models:
     model_name: "${LLM_MODEL_FAST:-gpt-4o-mini}"
     description: "Fast model for simple factual queries"
     endpoint: "${LLM_BASE_URL:-https://api.openai.com/v1}"
+    api_key: "${LLM_API_KEY:-not-needed}"
   capable_large:
     provider: openai_compatible
     model_name: "${LLM_MODEL_CAPABLE:-gpt-4o-mini}"
     description: "Capable model for complex reasoning and tool use"
     endpoint: "${LLM_BASE_URL:-https://api.openai.com/v1}"
+    api_key: "${LLM_API_KEY:-not-needed}"

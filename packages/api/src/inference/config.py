@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
+
+# Load .env into os.environ so YAML ${VAR} placeholders resolve correctly.
+# pydantic-settings reads .env into its Settings object but doesn't set
+# os.environ; the YAML config loader needs actual env vars.
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
