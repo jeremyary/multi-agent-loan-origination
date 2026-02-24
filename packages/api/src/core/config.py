@@ -82,5 +82,19 @@ class Settings(BaseSettings):
         description="Model name for the capable_large tier (complex reasoning + tools).",
     )
 
+    # -- Observability (LangFuse) --
+    LANGFUSE_PUBLIC_KEY: str | None = Field(
+        default=None,
+        description="LangFuse public key. When set (with secret key), tracing is active.",
+    )
+    LANGFUSE_SECRET_KEY: str | None = Field(
+        default=None,
+        description="LangFuse secret key.",
+    )
+    LANGFUSE_HOST: str | None = Field(
+        default=None,
+        description="LangFuse server URL (e.g. http://localhost:3001).",
+    )
+
 
 settings = Settings()

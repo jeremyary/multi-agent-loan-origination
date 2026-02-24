@@ -11,11 +11,13 @@ Protocol:
 
 import json
 import logging
+import uuid
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
 from ..agents.registry import get_agent
+from ..observability import build_langfuse_config, flush_langfuse
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +41,8 @@ async def chat_websocket(ws: WebSocket):
 
     # Conversation history for this WebSocket session
     messages: list = []
+    session_id = str(uuid.uuid4())
+    langfuse_config = build_langfuse_config(session_id=session_id)
 
     try:
         while True:
@@ -60,7 +64,9 @@ async def chat_websocket(ws: WebSocket):
 
             try:
                 full_response = ""
-                async for event in graph.astream_events({"messages": messages}, version="v2"):
+                async for event in graph.astream_events(
+                    {"messages": messages}, config=langfuse_config, version="v2"
+                ):
                     kind = event.get("event")
                     node = event.get("metadata", {}).get("langgraph_node")
 
@@ -105,3 +111,5 @@ async def chat_websocket(ws: WebSocket):
 
     except WebSocketDisconnect:
         logger.debug("Client disconnected from chat")
+    finally:
+        flush_langfuse()
