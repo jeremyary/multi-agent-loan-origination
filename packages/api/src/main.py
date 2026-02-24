@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .admin import setup_admin
 from .core.config import settings
 from .inference.safety import log_safety_status
+from .observability import log_observability_status
 from .routes import applications, chat, health, public
 
 
@@ -17,6 +18,7 @@ from .routes import applications, chat, health, public
 async def lifespan(_app: FastAPI):
     """Application startup/shutdown lifecycle."""
     log_safety_status()
+    log_observability_status()
     yield
 
 
