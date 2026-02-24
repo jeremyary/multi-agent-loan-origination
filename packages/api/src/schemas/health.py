@@ -1,14 +1,12 @@
-"""
-Health check schemas
-"""
-
+# This project was developed with assistance from AI tools.
+"""Health check schemas."""
 
 from pydantic import BaseModel
 
 
 class HealthResponse(BaseModel):
     """Health check response schema"""
-    
+
     name: str
     status: str
     message: str

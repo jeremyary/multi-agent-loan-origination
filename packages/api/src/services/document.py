@@ -9,30 +9,18 @@ provides Layer 4.
 
 import logging
 
-from db import Application, Borrower, Document
+from db import Document
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..schemas.auth import DataScope, UserContext
+from ..schemas.auth import UserContext
+from ..services.scope import apply_data_scope
 
 logger = logging.getLogger(__name__)
 
 
 class DocumentAccessDenied(Exception):
     """Raised when a role is not allowed to access document content."""
-
-
-def _apply_scope(stmt, scope: DataScope, user: UserContext):
-    """Apply data scope filtering to a document query via its application."""
-    if scope.own_data_only and scope.user_id:
-        stmt = (
-            stmt.join(Document.application)
-            .join(Application.borrower)
-            .where(Borrower.keycloak_user_id == scope.user_id)
-        )
-    elif scope.assigned_to:
-        stmt = stmt.join(Document.application).where(Application.assigned_to == scope.assigned_to)
-    return stmt
 
 
 async def list_documents(
@@ -45,7 +33,12 @@ async def list_documents(
 ) -> tuple[list[Document], int]:
     """Return documents for an application visible to the current user."""
     count_stmt = select(func.count(Document.id)).where(Document.application_id == application_id)
-    count_stmt = _apply_scope(count_stmt, user.data_scope, user)
+    count_stmt = apply_data_scope(
+        count_stmt,
+        user.data_scope,
+        user,
+        join_to_application=Document.application,
+    )
     total = (await session.execute(count_stmt)).scalar() or 0
 
     stmt = (
@@ -55,7 +48,12 @@ async def list_documents(
         .offset(offset)
         .limit(limit)
     )
-    stmt = _apply_scope(stmt, user.data_scope, user)
+    stmt = apply_data_scope(
+        stmt,
+        user.data_scope,
+        user,
+        join_to_application=Document.application,
+    )
     result = await session.execute(stmt)
     documents = result.unique().scalars().all()
 
@@ -69,7 +67,12 @@ async def get_document(
 ) -> Document | None:
     """Return a single document if visible to the current user."""
     stmt = select(Document).where(Document.id == document_id)
-    stmt = _apply_scope(stmt, user.data_scope, user)
+    stmt = apply_data_scope(
+        stmt,
+        user.data_scope,
+        user,
+        join_to_application=Document.application,
+    )
     result = await session.execute(stmt)
     return result.unique().scalar_one_or_none()
 

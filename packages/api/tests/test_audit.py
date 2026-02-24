@@ -176,11 +176,11 @@ def test_audit_endpoint_requires_session_id():
     assert response.status_code == 422
 
 
-def test_audit_endpoint_requires_admin_role():
+def test_audit_endpoint_requires_admin_role(monkeypatch):
     """Non-admin roles are blocked from audit endpoint."""
     from src.core.config import settings
 
-    settings.AUTH_DISABLED = False
+    monkeypatch.setattr(settings, "AUTH_DISABLED", False)
 
     borrower = _make_borrower()
     app = _make_app(borrower, audit_events=[])
@@ -189,35 +189,25 @@ def test_audit_endpoint_requires_admin_role():
     response = client.get("/api/admin/audit?session_id=sess-123")
     assert response.status_code == 403
 
-    settings.AUTH_DISABLED = True
-
 
 def test_session_id_matches_langfuse_and_audit():
-    """The same session_id format used in LangFuse config works for audit queries.
+    """Verify build_langfuse_config stores session_id in metadata.
 
-    This is the core correlation test: build_langfuse_config and write_audit_event
-    both accept the same session_id string, enabling cross-lookup.
+    The same session_id format used in LangFuse config works for audit queries,
+    enabling cross-lookup between observability traces and audit events.
     """
     from src.observability import build_langfuse_config
 
     session_id = "test-correlation-session-id"
 
-    # LangFuse side: session_id goes into metadata
-    # (returns empty dict when LangFuse not configured, but the key structure is correct)
     with patch("src.observability._is_configured", return_value=True):
-        with patch("src.observability.CallbackHandler", create=True):
-            # Even if handler creation fails, the metadata structure is what matters
-            try:
-                config = build_langfuse_config(session_id=session_id)
-                if config:
-                    assert config["metadata"]["langfuse_session_id"] == session_id
-            except Exception:
-                pass  # LangFuse not installed -- structure test is sufficient
+        with patch("src.observability.CallbackHandler", create=True) as mock_handler:
+            mock_handler.return_value = MagicMock()
+            config = build_langfuse_config(session_id=session_id)
 
-    # Audit side: same session_id goes into AuditEvent.session_id
-    # (verified by test_write_audit_event_creates_row above)
-    # This test documents the correlation contract:
-    # LangFuse metadata key = "langfuse_session_id"
-    # AuditEvent column = "session_id"
-    # Both use the same UUID string generated in chat.py
-    assert True  # Contract documented and enforced by other tests
+    if config:
+        assert config["metadata"]["langfuse_session_id"] == session_id
+    else:
+        # LangFuse not configured in test env -- verify the function is callable
+        # and the session_id contract is documented by test_write_audit_event_creates_row
+        pass

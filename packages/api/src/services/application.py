@@ -7,30 +7,18 @@ and CEO/underwriter/admin see all.
 """
 
 import logging
+from decimal import Decimal
 
 from db import Application, Borrower
+from db.enums import LoanType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
-from ..schemas.auth import DataScope, UserContext
+from ..schemas.auth import UserContext
+from ..services.scope import apply_data_scope
 
 logger = logging.getLogger(__name__)
-
-
-def _apply_scope(stmt, scope: DataScope, user: UserContext):
-    """Apply data scope filtering to an application query."""
-    if scope.own_data_only and scope.user_id:
-        # Borrower: only their own applications (via borrower.keycloak_user_id)
-        stmt = (
-            stmt.join(Application.borrower)
-            .where(Borrower.keycloak_user_id == scope.user_id)
-        )
-    elif scope.assigned_to:
-        # Loan officer: only applications assigned to them
-        stmt = stmt.where(Application.assigned_to == scope.assigned_to)
-    # underwriter, admin, ceo: no filter (full_pipeline=True or default)
-    return stmt
 
 
 async def list_applications(
@@ -43,7 +31,7 @@ async def list_applications(
     """Return applications visible to the current user."""
     # Count query
     count_stmt = select(func.count(Application.id))
-    count_stmt = _apply_scope(count_stmt, user.data_scope, user)
+    count_stmt = apply_data_scope(count_stmt, user.data_scope, user)
     total = (await session.execute(count_stmt)).scalar() or 0
 
     # Data query
@@ -54,7 +42,7 @@ async def list_applications(
         .offset(offset)
         .limit(limit)
     )
-    stmt = _apply_scope(stmt, user.data_scope, user)
+    stmt = apply_data_scope(stmt, user.data_scope, user)
     result = await session.execute(stmt)
     applications = result.unique().scalars().all()
 
@@ -76,7 +64,7 @@ async def get_application(
         .options(joinedload(Application.borrower))
         .where(Application.id == application_id)
     )
-    stmt = _apply_scope(stmt, user.data_scope, user)
+    stmt = apply_data_scope(stmt, user.data_scope, user)
     result = await session.execute(stmt)
     return result.unique().scalar_one_or_none()
 
@@ -84,10 +72,10 @@ async def get_application(
 async def create_application(
     session: AsyncSession,
     user: UserContext,
-    loan_type=None,
+    loan_type: LoanType | None = None,
     property_address: str | None = None,
-    loan_amount=None,
-    property_value=None,
+    loan_amount: Decimal | None = None,
+    property_value: Decimal | None = None,
 ) -> Application:
     """Create a new application for the current borrower."""
     # Find or create borrower record for the authenticated user
@@ -118,6 +106,16 @@ async def create_application(
     return await get_application(session, user, application.id)
 
 
+_UPDATABLE_FIELDS = {
+    "stage",
+    "loan_type",
+    "property_address",
+    "loan_amount",
+    "property_value",
+    "assigned_to",
+}
+
+
 async def update_application(
     session: AsyncSession,
     user: UserContext,
@@ -130,8 +128,9 @@ async def update_application(
         return None
 
     for field, value in updates.items():
-        if value is not None:
-            setattr(app, field, value)
+        if field not in _UPDATABLE_FIELDS:
+            continue
+        setattr(app, field, value)
 
     await session.commit()
     # Re-query with joinedload to avoid lazy-load in async context

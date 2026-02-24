@@ -1,11 +1,11 @@
-"""
-Health check endpoints
-"""
+# This project was developed with assistance from AI tools.
+"""Health check endpoints."""
 
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 
+from .. import __version__
 from ..schemas.health import HealthResponse
 
 try:
@@ -23,22 +23,22 @@ router = APIRouter()
 
 @router.get("/", response_model=list[HealthResponse])
 async def health_check(
-    db_service: DatabaseService | None = Depends(get_db_service) if get_db_service else None
+    db_service: DatabaseService | None = Depends(get_db_service) if get_db_service else None,
 ) -> list[HealthResponse]:
     """Health check endpoint with dependency injection"""
     api_response = HealthResponse(
         name="API",
         status="healthy",
         message="API is running",
-        version="0.1.0",
-        start_time=API_START_TIME.isoformat()
+        version=__version__,
+        start_time=API_START_TIME.isoformat(),
     )
-    
+
     # Get database health using dependency injection
     responses = [api_response]
     if db_service:
         db_health = await db_service.health_check()
         db_response = HealthResponse(**db_health)
         responses.append(db_response)
-    
+
     return responses

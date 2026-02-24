@@ -7,6 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import require_roles
+from ..schemas.admin import (
+    AuditEventItem,
+    AuditEventsResponse,
+    SeedResponse,
+    SeedStatusResponse,
+)
 from ..services.audit import get_events_by_session
 from ..services.seed.seeder import get_seed_status, seed_demo_data
 
@@ -15,6 +21,7 @@ router = APIRouter()
 
 @router.post(
     "/seed",
+    response_model=SeedResponse,
     status_code=status.HTTP_200_OK,
     dependencies=[Depends(require_roles(UserRole.ADMIN))],
 )
@@ -22,13 +29,14 @@ async def seed_data(
     force: bool = False,
     session: AsyncSession = Depends(get_db),
     compliance_session: AsyncSession = Depends(get_compliance_db),
-) -> dict:
+) -> SeedResponse:
     """Seed demo data. Pass force=true to re-seed.
 
     Simulated for demonstration purposes -- not real financial data.
     """
     try:
-        return await seed_demo_data(session, compliance_session, force=force)
+        result = await seed_demo_data(session, compliance_session, force=force)
+        return SeedResponse(**result)
     except RuntimeError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -38,38 +46,41 @@ async def seed_data(
 
 @router.get(
     "/seed/status",
+    response_model=SeedStatusResponse,
     dependencies=[Depends(require_roles(UserRole.ADMIN))],
 )
 async def seed_status(
     session: AsyncSession = Depends(get_db),
-) -> dict:
+) -> SeedStatusResponse:
     """Check if demo data has been seeded."""
-    return await get_seed_status(session)
+    result = await get_seed_status(session)
+    return SeedStatusResponse(**result)
 
 
 @router.get(
     "/audit",
+    response_model=AuditEventsResponse,
     dependencies=[Depends(require_roles(UserRole.ADMIN))],
 )
 async def get_audit_events(
     session_id: str = Query(..., description="LangFuse/WebSocket session ID"),
     session: AsyncSession = Depends(get_db),
-) -> dict:
+) -> AuditEventsResponse:
     """Query audit events by session_id for trace-audit correlation."""
     events = await get_events_by_session(session, session_id)
-    return {
-        "session_id": session_id,
-        "count": len(events),
-        "events": [
-            {
-                "id": e.id,
-                "timestamp": str(e.timestamp),
-                "event_type": e.event_type,
-                "user_id": e.user_id,
-                "user_role": e.user_role,
-                "application_id": e.application_id,
-                "event_data": e.event_data,
-            }
+    return AuditEventsResponse(
+        session_id=session_id,
+        count=len(events),
+        events=[
+            AuditEventItem(
+                id=e.id,
+                timestamp=str(e.timestamp),
+                event_type=e.event_type,
+                user_id=e.user_id,
+                user_role=e.user_role,
+                application_id=e.application_id,
+                event_data=e.event_data,
+            )
             for e in events
         ],
-    }
+    )
