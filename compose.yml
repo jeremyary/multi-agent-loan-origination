@@ -1,6 +1,51 @@
+# This project was developed with assistance from AI tools.
+#
+# Summit Cap Financial -- local development stack
+#
+# Profiles:
+#   (none)          postgres + api + ui
+#   auth            + keycloak
+#   ai              + llamastack
+#   observability   + redis, clickhouse, minio, langfuse-web, langfuse-worker
+#   full            everything
+#
+# Usage:
+#   podman-compose up -d                          # minimal stack
+#   podman-compose --profile full up -d           # full stack
+#   make run                                      # alias for full
+
+x-langfuse-environment: &langfuse-env
+  DATABASE_URL: postgresql://user:password@summit-cap-db:5432/langfuse
+  NEXTAUTH_URL: http://localhost:3001
+  NEXTAUTH_SECRET: mysecret
+  SALT: mysalt
+  ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+  LANGFUSE_INIT_ORG_ID: summit-cap
+  LANGFUSE_INIT_ORG_NAME: Summit Cap Financial
+  LANGFUSE_INIT_PROJECT_ID: summit-cap-dev
+  LANGFUSE_INIT_PROJECT_NAME: Summit Cap Dev
+  LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-dev-public
+  LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-dev-secret
+  LANGFUSE_INIT_USER_EMAIL: admin@summitcap.dev
+  LANGFUSE_INIT_USER_NAME: Admin
+  LANGFUSE_INIT_USER_PASSWORD: password
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@clickhouse:8123/default
+  CLICKHOUSE_URL: http://clickhouse:8123
+  CLICKHOUSE_USER: clickhouse
+  CLICKHOUSE_PASSWORD: clickhouse
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_AUTH: myredissecret
+  LANGFUSE_S3_ENDPOINT: http://minio:9000
+  LANGFUSE_S3_ACCESS_KEY_ID: minio
+  LANGFUSE_S3_SECRET_ACCESS_KEY: miniosecret
+  LANGFUSE_S3_BUCKET_NAME: langfuse
+  LANGFUSE_S3_REGION: us-east-1
+
 services:
+  # ------------------------------------------------------------------ always --
   summit-cap-db:
-    image: docker.io/postgres:16
+    image: docker.io/pgvector/pgvector:pg16
     labels:
       com.quickstart.package: db
     environment:
@@ -11,12 +56,64 @@ services:
       - "5433:5432"
     volumes:
       - summit_cap_postgres_data:/var/lib/postgresql/data
+      - ./config/postgres/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U user -d summit-cap"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  summit-cap-api:
+    build:
+      context: .
+      dockerfile: packages/api/Containerfile
+    labels:
+      com.quickstart.package: api
+    ports:
+      - "8000:8000"
+    depends_on:
+      summit-cap-db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://user:password@summit-cap-db:5432/summit-cap
+      AUTH_DISABLED: "true"
+      KEYCLOAK_URL: http://keycloak:8080
+      LLM_BASE_URL: "${LLM_BASE_URL:-http://host.docker.internal:1234/v1}"
+      LLM_API_KEY: "${LLM_API_KEY:-not-needed}"
+      LLM_MODEL_FAST: "${LLM_MODEL_FAST:-}"
+      LLM_MODEL_CAPABLE: "${LLM_MODEL_CAPABLE:-}"
+      SAFETY_MODEL: "${SAFETY_MODEL:-}"
+      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-sk-lf-dev-secret}"
+      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-pk-lf-dev-public}"
+      LANGFUSE_HOST: "${LANGFUSE_HOST:-http://langfuse-web:3000}"
+    volumes:
+      - ./config:/app/config:ro
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  summit-cap-ui:
+    build:
+      context: .
+      dockerfile: packages/ui/Containerfile
+    labels:
+      com.quickstart.package: ui
+    ports:
+      - "3000:8080"
+    depends_on:
+      summit-cap-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # -------------------------------------------------------------------- auth --
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     profiles: ["auth", "full"]
@@ -38,6 +135,7 @@ services:
       retries: 12
       start_period: 30s
 
+  # ---------------------------------------------------------------------- ai --
   llamastack:
     image: docker.io/llamastack/llamastack:latest
     profiles: ["ai", "full"]
@@ -58,5 +156,108 @@ services:
       retries: 5
       start_period: 15s
 
+  # ----------------------------------------------------------- observability --
+  redis:
+    image: docker.io/redis:7-alpine
+    profiles: ["observability", "full"]
+    labels:
+      com.quickstart.package: observability
+    command: --requirepass myredissecret --maxmemory-policy noeviction
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "myredissecret", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:24
+    profiles: ["observability", "full"]
+    labels:
+      com.quickstart.package: observability
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: docker.io/minio/minio:latest
+    profiles: ["observability", "full"]
+    labels:
+      com.quickstart.package: observability
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && exec minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    ports:
+      - "9090:9000"
+      - "9091:9001"
+    volumes:
+      - langfuse_minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  langfuse-web:
+    image: docker.io/langfuse/langfuse:3
+    profiles: ["observability", "full"]
+    labels:
+      com.quickstart.package: observability
+    ports:
+      - "3001:3000"
+    depends_on:
+      summit-cap-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      <<: *langfuse-env
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000/api/public/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  langfuse-worker:
+    image: docker.io/langfuse/langfuse-worker:3
+    profiles: ["observability", "full"]
+    labels:
+      com.quickstart.package: observability
+    depends_on:
+      summit-cap-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      <<: *langfuse-env
+
 volumes:
   summit_cap_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_clickhouse_logs:
+  langfuse_minio_data:

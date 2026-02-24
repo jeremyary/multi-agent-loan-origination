@@ -6,29 +6,45 @@
 help:
 	@echo "Available targets:"
 	@echo ""
-	@echo "  setup              Install dependencies for all packages"
-	@echo "  dev                Run dev command in each package to start necessary dev servers/containers"
-	@echo "  build              Build all packages"
-	@echo "  test               Run tests for all packages"
-	@echo "  lint               Run linters for all packages"
-	@echo "  db-start            Start the database container"
-	@echo "  db-stop             Stop the database container"
-	@echo "  db-logs             View database container logs"
-	@echo "  db-upgrade          Run database migrations"
-	@echo "  containers-build   Build all container images"
-	@echo "  containers-up      Start all containers"
-	@echo "  containers-down    Stop all containers"
-	@echo "  containers-logs     View logs for all containers"
-	@echo "  build-images        Build API and UI container images"
-	@echo "  push-images         Push images to OpenShift registry"
-	@echo "  deploy             Deploy application using Helm"
-	@echo "  deploy-dev          Deploy in development mode"
-	@echo "  undeploy            Remove application deployment"
-	@echo "  status              Show deployment status"
-	@echo "  debug               Show detailed diagnostics for failed deployments"
-	@echo "  helm-lint           Lint Helm chart"
-	@echo "  helm-template       Render Helm templates"
-	@echo "  clean              Remove build artifacts and dependencies"
+	@echo "  Local stack:"
+	@echo "    run                Start full stack (all profiles)"
+	@echo "    run-minimal        Start minimal stack (postgres + api + ui)"
+	@echo "    run-auth           Start with auth profile (+ keycloak)"
+	@echo "    run-ai             Start with ai profile (+ llamastack)"
+	@echo "    run-obs            Start with observability profile (+ langfuse)"
+	@echo "    stop               Stop all containers"
+	@echo ""
+	@echo "  Development:"
+	@echo "    setup              Install dependencies for all packages"
+	@echo "    dev                Run dev command in each package to start necessary dev servers/containers"
+	@echo "    build              Build all packages"
+	@echo "    test               Run tests for all packages"
+	@echo "    lint               Run linters for all packages"
+	@echo ""
+	@echo "  Database:"
+	@echo "    db-start           Start the database container"
+	@echo "    db-stop            Stop the database container"
+	@echo "    db-logs            View database container logs"
+	@echo "    db-upgrade         Run database migrations"
+	@echo ""
+	@echo "  Containers:"
+	@echo "    containers-build   Build all container images"
+	@echo "    containers-up      Start all containers"
+	@echo "    containers-down    Stop all containers"
+	@echo "    containers-logs    View logs for all containers"
+	@echo "    build-images       Build API and UI container images"
+	@echo "    push-images        Push images to OpenShift registry"
+	@echo ""
+	@echo "  Deployment:"
+	@echo "    deploy             Deploy application using Helm"
+	@echo "    deploy-dev         Deploy in development mode"
+	@echo "    undeploy           Remove application deployment"
+	@echo "    status             Show deployment status"
+	@echo "    debug              Show detailed diagnostics for failed deployments"
+	@echo "    helm-lint          Lint Helm chart"
+	@echo "    helm-template      Render Helm templates"
+	@echo ""
+	@echo "    clean              Remove build artifacts and dependencies"
 	@echo ""
 	@echo "Run 'make <target>' to execute a target"
 
@@ -47,6 +63,31 @@ test:
 
 lint:
 	pnpm lint
+
+run:
+	podman-compose --profile full up -d
+	@echo ""
+	@echo "Services starting..."
+	@echo "  UI:        http://localhost:3000"
+	@echo "  API:       http://localhost:8000"
+	@echo "  API Docs:  http://localhost:8000/docs"
+	@echo "  LangFuse:  http://localhost:3001"
+	@echo "  Keycloak:  http://localhost:8080"
+
+run-minimal:
+	podman-compose up -d
+
+run-auth:
+	podman-compose --profile auth up -d
+
+run-ai:
+	podman-compose --profile ai up -d
+
+run-obs:
+	podman-compose --profile observability up -d
+
+stop:
+	podman-compose --profile full down
 
 db-start:
 	podman-compose up -d summit-cap-db
@@ -260,4 +301,4 @@ helm-template: helm-dep-update
 		--set global.imageTag=$(IMAGE_TAG) \
 		$(HELM_SECRET_PARAMS)
 
-.PHONY: help setup dev build test lint db-start db-stop db-logs db-upgrade containers-build containers-up containers-down containers-logs build-images push-images create-project helm-dep-update deploy deploy-dev undeploy status debug helm-lint helm-template clean
+.PHONY: help run run-minimal run-auth run-ai run-obs stop setup dev build test lint db-start db-stop db-logs db-upgrade containers-build containers-up containers-down containers-logs build-images push-images create-project helm-dep-update deploy deploy-dev undeploy status debug helm-lint helm-template clean
