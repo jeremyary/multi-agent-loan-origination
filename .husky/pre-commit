@@ -1,1 +1,7 @@
 pnpm lint-staged
+
+# Run HMDA isolation check when API Python files are staged
+if git diff --cached --name-only | grep -q '^packages/api/.*\.py$'; then
+  echo "Running HMDA isolation check..."
+  bash scripts/lint-hmda-isolation.sh
+fi
