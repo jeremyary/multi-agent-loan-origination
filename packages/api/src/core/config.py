@@ -6,15 +6,21 @@ All settings read from environment variables with sensible local dev defaults.
 Group related settings together; each group becomes a section future PRs extend.
 """
 
+from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Resolve project root .env regardless of CWD (matches inference/config.py approach)
+_PROJECT_ROOT = Path(__file__).resolve().parents[4]
+_ENV_FILE = _PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Application settings -- single source of truth for env-driven config."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(_ENV_FILE),
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -42,6 +48,20 @@ class Settings(BaseSettings):
     JWKS_CACHE_TTL: int = Field(
         default=300,
         description="JWKS cache lifetime in seconds (default 5 minutes).",
+    )
+
+    # -- Safety / Shields --
+    SAFETY_MODEL: str | None = Field(
+        default=None,
+        description="Llama Guard model name. When set, safety shields are active.",
+    )
+    SAFETY_ENDPOINT: str | None = Field(
+        default=None,
+        description="Safety model endpoint. Defaults to LLM_BASE_URL if not set.",
+    )
+    SAFETY_API_KEY: str | None = Field(
+        default=None,
+        description="Safety model API key. Defaults to LLM_API_KEY if not set.",
     )
 
     # -- LLM --

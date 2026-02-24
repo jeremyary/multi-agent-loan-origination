@@ -4,6 +4,7 @@
 Protocol:
   Client sends:  {"type": "message", "content": "user text"}
   Server sends:  {"type": "token", "content": "..."} (streamed)
+                 {"type": "safety_override", "content": "..."} (output shield replaced response)
                  {"type": "done"} (end of response)
                  {"type": "error", "content": "..."} (on failure)
 """
@@ -12,7 +13,7 @@ import json
 import logging
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from langchain_core.messages import AIMessageChunk, HumanMessage
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
 from ..agents.registry import get_agent
 
@@ -61,20 +62,33 @@ async def chat_websocket(ws: WebSocket):
                 full_response = ""
                 async for event in graph.astream_events({"messages": messages}, version="v2"):
                     kind = event.get("event")
-                    if kind == "on_chat_model_stream":
-                        # Only stream tokens from the agent node, not the classifier
-                        node = event.get("metadata", {}).get("langgraph_node")
-                        if node != "agent":
-                            continue
+                    node = event.get("metadata", {}).get("langgraph_node")
+
+                    if kind == "on_chat_model_stream" and node == "agent":
                         chunk = event.get("data", {}).get("chunk")
                         if isinstance(chunk, AIMessageChunk) and chunk.content:
                             await ws.send_json({"type": "token", "content": chunk.content})
                             full_response += chunk.content
 
+                    elif kind == "on_chain_end" and node == "input_shield":
+                        output = event.get("data", {}).get("output")
+                        if isinstance(output, dict) and output.get("safety_blocked"):
+                            for msg in output.get("messages", []):
+                                if hasattr(msg, "content") and msg.content:
+                                    await ws.send_json({"type": "token", "content": msg.content})
+                                    full_response = msg.content
+
+                    elif kind == "on_chain_end" and node == "output_shield":
+                        output = event.get("data", {}).get("output")
+                        if isinstance(output, dict):
+                            shield_msgs = output.get("messages", [])
+                            if shield_msgs:
+                                override = shield_msgs[-1].content
+                                await ws.send_json({"type": "safety_override", "content": override})
+                                full_response = override
+
                 # Add assistant response to history
                 if full_response:
-                    from langchain_core.messages import AIMessage
-
                     messages.append(AIMessage(content=full_response))
 
                 await ws.send_json({"type": "done"})

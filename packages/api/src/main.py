@@ -2,17 +2,29 @@
 FastAPI application entry point
 """
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .admin import setup_admin
 from .core.config import settings
+from .inference.safety import log_safety_status
 from .routes import applications, chat, health, public
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Application startup/shutdown lifecycle."""
+    log_safety_status()
+    yield
+
 
 app = FastAPI(
     title="Summit Cap Financial API",
     description="Multi-agent loan origination system for Summit Cap Financial",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 # Configure CORS

@@ -38,5 +38,25 @@ services:
       retries: 12
       start_period: 30s
 
+  llamastack:
+    image: docker.io/llamastack/llamastack:latest
+    profiles: ["ai", "full"]
+    labels:
+      com.quickstart.package: ai
+    ports:
+      - "8321:8321"
+    volumes:
+      - ./config/llamastack/run.yaml:/app/run.yaml:ro
+    command: ["llama", "stack", "run", "/app/run.yaml"]
+    environment:
+      LLM_BASE_URL: "${LLM_BASE_URL:-http://host.docker.internal:1234/v1}"
+      LLM_API_KEY: "${LLM_API_KEY:-not-needed}"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8321/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
 volumes:
   summit_cap_postgres_data:
