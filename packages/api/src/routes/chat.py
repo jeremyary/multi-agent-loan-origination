@@ -62,6 +62,10 @@ async def chat_websocket(ws: WebSocket):
                 async for event in graph.astream_events({"messages": messages}, version="v2"):
                     kind = event.get("event")
                     if kind == "on_chat_model_stream":
+                        # Only stream tokens from the agent node, not the classifier
+                        node = event.get("metadata", {}).get("langgraph_node")
+                        if node != "agent":
+                            continue
                         chunk = event.get("data", {}).get("chunk")
                         if isinstance(chunk, AIMessageChunk) and chunk.content:
                             await ws.send_json({"type": "token", "content": chunk.content})

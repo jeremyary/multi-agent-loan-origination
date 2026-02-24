@@ -125,6 +125,11 @@ def get_model_config(tier: str, path: Path | None = None) -> dict[str, Any]:
     return models[tier]
 
 
+def get_model_tiers(path: Path | None = None) -> list[str]:
+    """Return the names of all configured model tiers."""
+    return list(get_config(path)["models"].keys())
+
+
 def get_routing_config(path: Path | None = None) -> dict[str, Any]:
     """Return the routing section of config."""
     return get_config(path)["routing"]

@@ -90,3 +90,25 @@ def test_existing_public_endpoint_still_works(client):
     assert response.status_code == 200
     data = response.json()
     assert data["max_loan_amount"] > 0
+
+
+# -- LLM-based model routing --
+
+
+def test_classify_prompt_includes_tool_descriptions():
+    """The classifier prompt template should have a placeholder for tool descriptions."""
+    from src.agents.base import CLASSIFY_PROMPT_TEMPLATE
+
+    assert "{tool_descriptions}" in CLASSIFY_PROMPT_TEMPLATE
+    assert "SIMPLE" in CLASSIFY_PROMPT_TEMPLATE
+    assert "COMPLEX" in CLASSIFY_PROMPT_TEMPLATE
+
+
+def test_rule_based_fallback_still_works():
+    """Rule-based router remains available as fallback for classifier failures."""
+    from src.inference.router import classify_query
+
+    assert classify_query("what is your rate?") == "fast_small"
+    assert classify_query("I earn $95k and want to buy a $400k home with 10% down") == (
+        "capable_large"
+    )

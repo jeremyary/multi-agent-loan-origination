@@ -32,8 +32,7 @@ tools:
     allowed_roles: [prospect, borrower, loan_officer, underwriter, ceo, admin]
 
 model_routing:
-  default_tier: fast_small
-  override_to_complex: ["compare", "explain", "difference", "recommend", "which"]
+  strategy: per_query
 
 data_access:
   scope: public_only
