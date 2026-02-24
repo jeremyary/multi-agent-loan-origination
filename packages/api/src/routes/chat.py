@@ -23,6 +23,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from ..agents.registry import get_agent
 from ..observability import build_langfuse_config, flush_langfuse
 from ..services.audit import write_audit_event
+from ..services.conversation import get_conversation_service
 
 logger = logging.getLogger(__name__)
 
@@ -34,8 +35,13 @@ async def chat_websocket(ws: WebSocket):
     """WebSocket endpoint for public assistant chat."""
     await ws.accept()
 
+    # Resolve checkpointer for conversation persistence
+    conversation_service = get_conversation_service()
+    use_checkpointer = conversation_service.is_initialized
+    checkpointer = conversation_service.checkpointer if use_checkpointer else None
+
     try:
-        graph = get_agent("public-assistant")
+        graph = get_agent("public-assistant", checkpointer=checkpointer)
     except Exception:
         logger.exception("Failed to load public-assistant agent")
         await ws.send_json(
@@ -44,12 +50,16 @@ async def chat_websocket(ws: WebSocket):
         await ws.close()
         return
 
-    # Conversation history for this WebSocket session
-    messages: list = []
     session_id = str(uuid.uuid4())
-    langfuse_config = build_langfuse_config(session_id=session_id)
     user_role = "prospect"
     user_id = session_id
+
+    # Prospects get ephemeral thread_id (never resumed); authenticated users (F3)
+    # will use ConversationService.get_thread_id() for deterministic persistence.
+    thread_id = str(uuid.uuid4())
+
+    # Fallback: local message list when checkpointer is unavailable
+    messages: list = [] if not use_checkpointer else None  # type: ignore[assignment]
 
     async def _audit(event_type: str, event_data: dict | None = None) -> None:
         """Write an audit event with the shared session_id.
@@ -87,17 +97,29 @@ async def chat_websocket(ws: WebSocket):
                 continue
 
             user_text = data["content"]
-            messages.append(HumanMessage(content=user_text))
+
+            # With a checkpointer, send only the new message (prior state is
+            # restored from the checkpoint).  Without one, accumulate locally.
+            if use_checkpointer:
+                input_messages = [HumanMessage(content=user_text)]
+            else:
+                messages.append(HumanMessage(content=user_text))
+                input_messages = messages
+
+            config = {
+                **build_langfuse_config(session_id=session_id),
+                "configurable": {"thread_id": thread_id},
+            }
 
             try:
                 full_response = ""
                 async for event in graph.astream_events(
                     {
-                        "messages": messages,
+                        "messages": input_messages,
                         "user_role": user_role,
                         "user_id": user_id,
                     },
-                    config=langfuse_config,
+                    config=config,
                     version="v2",
                 ):
                     kind = event.get("event")
@@ -160,8 +182,8 @@ async def chat_websocket(ws: WebSocket):
                                     },
                                 )
 
-                # Add assistant response to history
-                if full_response:
+                # Without checkpointer, manually track history for this session
+                if not use_checkpointer and full_response:
                     messages.append(AIMessage(content=full_response))
 
                 await ws.send_json({"type": "done"})
