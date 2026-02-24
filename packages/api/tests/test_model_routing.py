@@ -126,3 +126,114 @@ def test_classify_tools_required_routes_complex(tmp_path):
     """Queries requiring tools always route to capable_large regardless of content."""
     _write_standard_config(tmp_path)
     assert classify_query("Show me", requires_tools=True) == "capable_large"
+
+
+# -- Hot-reload --
+
+
+def test_hot_reload_picks_up_mtime_change(tmp_path):
+    """Config is reloaded when file mtime changes."""
+    from src.inference.config import get_config
+
+    _write_standard_config(tmp_path)
+    cfg1 = get_config()
+    assert cfg1["models"]["fast_small"]["model_name"] == "test-small"
+
+    # Rewrite with a different model name
+    import time
+
+    time.sleep(0.05)  # ensure mtime differs
+    cfg_path = config_mod._CONFIG_PATH
+    cfg_path.write_text(
+        textwrap.dedent("""\
+        routing:
+          default_tier: capable_large
+        models:
+          fast_small:
+            provider: openai_compatible
+            model_name: updated-small
+            endpoint: http://localhost:8000/v1
+          capable_large:
+            provider: openai_compatible
+            model_name: test-large
+            endpoint: http://localhost:8000/v1
+        """)
+    )
+
+    cfg2 = get_config()
+    assert cfg2["models"]["fast_small"]["model_name"] == "updated-small"
+
+
+def test_hot_reload_keeps_cached_on_bad_yaml(tmp_path):
+    """Broken YAML during hot-reload falls back to last valid config."""
+    from src.inference.config import get_config
+
+    _write_standard_config(tmp_path)
+    cfg1 = get_config()
+    assert cfg1["models"]["fast_small"]["model_name"] == "test-small"
+
+    # Overwrite with invalid YAML
+    import time
+
+    time.sleep(0.05)
+    config_mod._CONFIG_PATH.write_text("models: {bad yaml: [unterminated")
+
+    cfg2 = get_config()
+    # Should still return the old valid config
+    assert cfg2["models"]["fast_small"]["model_name"] == "test-small"
+
+
+def test_hot_reload_recovers_after_fix(tmp_path):
+    """Corrected config is picked up after a bad reload."""
+    from src.inference.config import get_config
+
+    _write_standard_config(tmp_path)
+    get_config()
+
+    # Break it
+    import time
+
+    time.sleep(0.05)
+    config_mod._CONFIG_PATH.write_text("not: valid: yaml: [")
+    get_config()  # falls back to cached
+
+    # Fix it
+    time.sleep(0.05)
+    config_mod._CONFIG_PATH.write_text(
+        textwrap.dedent("""\
+        routing:
+          default_tier: capable_large
+        models:
+          fast_small:
+            provider: openai_compatible
+            model_name: recovered-small
+            endpoint: http://localhost:8000/v1
+          capable_large:
+            provider: openai_compatible
+            model_name: test-large
+            endpoint: http://localhost:8000/v1
+        """)
+    )
+
+    cfg = get_config()
+    assert cfg["models"]["fast_small"]["model_name"] == "recovered-small"
+
+
+def test_startup_fails_on_missing_config():
+    """Missing config at startup raises FileNotFoundError."""
+    from src.inference.config import get_config
+
+    config_mod._CONFIG_PATH = Path("/nonexistent/models.yaml")
+    with pytest.raises(FileNotFoundError):
+        get_config()
+
+
+def test_startup_fails_on_invalid_config(tmp_path):
+    """Invalid config at startup raises ValueError."""
+    from src.inference.config import get_config
+
+    cfg = tmp_path / "models.yaml"
+    cfg.write_text("models: not_a_dict")
+    config_mod._CONFIG_PATH = cfg
+    with pytest.raises(ValueError, match="must contain a 'models' section"):
+        get_config()

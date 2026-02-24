@@ -105,13 +105,20 @@ def get_config(path: Path | None = None) -> dict[str, Any]:
 
     if _cached_config is None or current_mtime > _cached_mtime:
         logger.info("Loading model config from %s", config_path)
-        _cached_config = load_config(config_path)
-        _cached_mtime = current_mtime
+        try:
+            _cached_config = load_config(config_path)
+            _cached_mtime = current_mtime
 
-        # Invalidate cached HTTP clients so they pick up new endpoints/keys
-        from .client import clear_client_cache
+            # Invalidate cached HTTP clients so they pick up new endpoints/keys
+            from .client import clear_client_cache
 
-        clear_client_cache()
+            clear_client_cache()
+        except (yaml.YAMLError, ValueError) as exc:
+            if _cached_config is not None:
+                logger.warning("Failed to reload config (%s), keeping last valid config", exc)
+                _cached_mtime = current_mtime  # avoid retrying every call
+            else:
+                raise
 
     return _cached_config
 
