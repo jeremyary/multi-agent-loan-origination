@@ -13,6 +13,12 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
+
+# Load .env into os.environ so YAML ${VAR} placeholders resolve correctly.
+# pydantic-settings reads .env into its Settings object but doesn't set
+# os.environ; the YAML config loader needs actual env vars.
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +123,11 @@ def get_model_config(tier: str, path: Path | None = None) -> dict[str, Any]:
     if tier not in models:
         raise KeyError(f"Unknown model tier '{tier}'. Available: {list(models.keys())}")
     return models[tier]
+
+
+def get_model_tiers(path: Path | None = None) -> list[str]:
+    """Return the names of all configured model tiers."""
+    return list(get_config(path)["models"].keys())
 
 
 def get_routing_config(path: Path | None = None) -> dict[str, Any]:
