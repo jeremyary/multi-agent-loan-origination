@@ -32,10 +32,7 @@ _jwks_fetched_at: float = 0
 
 def _fetch_jwks() -> dict:
     """Fetch JSON Web Key Set from Keycloak. Raises on failure."""
-    url = (
-        f"{settings.KEYCLOAK_URL}/realms/{settings.KEYCLOAK_REALM}"
-        "/protocol/openid-connect/certs"
-    )
+    url = f"{settings.KEYCLOAK_URL}/realms/{settings.KEYCLOAK_REALM}/protocol/openid-connect/certs"
     response = httpx.get(url, timeout=5)
     response.raise_for_status()
     return response.json()
@@ -85,6 +82,7 @@ def _get_signing_key(token: str) -> jwt.PyJWK:
 # ---------------------------------------------------------------------------
 # Token validation
 # ---------------------------------------------------------------------------
+
 
 def _extract_token(request: Request) -> str | None:
     """Extract Bearer token from Authorization header."""
@@ -141,7 +139,7 @@ def _build_data_scope(role: UserRole, user_id: str) -> DataScope:
     if role == UserRole.LOAN_OFFICER:
         return DataScope(assigned_to=user_id)
     if role == UserRole.CEO:
-        return DataScope(pii_mask=True, full_pipeline=True)
+        return DataScope(pii_mask=True, document_metadata_only=True, full_pipeline=True)
     if role == UserRole.UNDERWRITER:
         return DataScope(full_pipeline=True)
     if role == UserRole.ADMIN:

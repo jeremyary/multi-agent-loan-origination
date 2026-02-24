@@ -10,6 +10,7 @@ class DataScope(BaseModel):
 
     assigned_to: str | None = None
     pii_mask: bool = False
+    document_metadata_only: bool = False
     own_data_only: bool = False
     user_id: str | None = None
     full_pipeline: bool = False
