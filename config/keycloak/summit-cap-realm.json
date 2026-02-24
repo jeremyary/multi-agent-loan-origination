@@ -39,6 +39,7 @@
   ],
   "users": [
     {
+      "id": "d1a2b3c4-e5f6-7890-abcd-ef1234567801",
       "username": "sarah.mitchell",
       "enabled": true,
       "email": "sarah.mitchell@example.com",
@@ -50,6 +51,7 @@
       "realmRoles": ["borrower"]
     },
     {
+      "id": "d1a2b3c4-e5f6-7890-abcd-ef1234567802",
       "username": "james.torres",
       "enabled": true,
       "email": "james.torres@summit-cap.com",
@@ -61,6 +63,7 @@
       "realmRoles": ["loan_officer"]
     },
     {
+      "id": "d1a2b3c4-e5f6-7890-abcd-ef1234567803",
       "username": "maria.chen",
       "enabled": true,
       "email": "maria.chen@summit-cap.com",
@@ -72,6 +75,7 @@
       "realmRoles": ["underwriter"]
     },
     {
+      "id": "d1a2b3c4-e5f6-7890-abcd-ef1234567804",
       "username": "david.park",
       "enabled": true,
       "email": "david.park@summit-cap.com",
@@ -83,6 +87,7 @@
       "realmRoles": ["ceo"]
     },
     {
+      "id": "d1a2b3c4-e5f6-7890-abcd-ef1234567805",
       "username": "admin",
       "enabled": true,
       "email": "admin@summit-cap.com",

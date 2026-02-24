@@ -44,9 +44,9 @@ class Borrower(Base):
     last_name = Column(String(100), nullable=False)
     email = Column(String(255), nullable=False, index=True)
     ssn_encrypted = Column(String(255), nullable=True)
-    dob = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    dob = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     applications = relationship("Application", back_populates="borrower")
 
@@ -74,8 +74,8 @@ class Application(Base):
     loan_amount = Column(Numeric(12, 2), nullable=True)
     property_value = Column(Numeric(12, 2), nullable=True)
     assigned_to = Column(String(255), nullable=True, index=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     borrower = relationship("Borrower", back_populates="applications")
     financials = relationship("ApplicationFinancials", back_populates="application", uselist=False)
@@ -102,8 +102,8 @@ class ApplicationFinancials(Base):
     total_assets = Column(Numeric(14, 2), nullable=True)
     credit_score = Column(Integer, nullable=True)
     dti_ratio = Column(Float, nullable=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     application = relationship("Application", back_populates="financials")
 
@@ -119,10 +119,10 @@ class RateLock(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     application_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)
     locked_rate = Column(Float, nullable=False)
-    lock_date = Column(DateTime, nullable=False)
-    expiration_date = Column(DateTime, nullable=False)
+    lock_date = Column(DateTime(timezone=True), nullable=False)
+    expiration_date = Column(DateTime(timezone=True), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     application = relationship("Application", back_populates="rate_locks")
 
@@ -149,8 +149,8 @@ class Condition(Base):
     )
     issued_by = Column(String(255), nullable=True)
     cleared_by = Column(String(255), nullable=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     application = relationship("Application", back_populates="conditions")
 
@@ -172,7 +172,7 @@ class Decision(Base):
     rationale = Column(Text, nullable=True)
     ai_recommendation = Column(Text, nullable=True)
     decided_by = Column(String(255), nullable=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     application = relationship("Application", back_populates="decisions")
 
@@ -199,8 +199,8 @@ class Document(Base):
     )
     quality_flags = Column(Text, nullable=True)
     uploaded_by = Column(String(255), nullable=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     application = relationship("Application", back_populates="documents")
     extractions = relationship("DocumentExtraction", back_populates="document")
@@ -220,7 +220,7 @@ class DocumentExtraction(Base):
     field_value = Column(Text, nullable=True)
     confidence = Column(Float, nullable=True)
     source_page = Column(Integer, nullable=True)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     document = relationship("Document", back_populates="extractions")
 
@@ -234,7 +234,7 @@ class AuditEvent(Base):
     __tablename__ = "audit_events"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    timestamp = Column(DateTime, server_default=func.now(), nullable=False)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     prev_hash = Column(String(64), nullable=True)
     user_id = Column(String(255), nullable=True)
     user_role = Column(String(50), nullable=True)
@@ -254,7 +254,7 @@ class DemoDataManifest(Base):
     __tablename__ = "demo_data_manifest"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    seeded_at = Column(DateTime, server_default=func.now(), nullable=False)
+    seeded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     config_hash = Column(String(64), nullable=False)
     summary = Column(Text, nullable=True)
 
@@ -274,8 +274,8 @@ class HmdaDemographic(Base):
     ethnicity = Column(String(100), nullable=True)
     sex = Column(String(50), nullable=True)
     collection_method = Column(String(50), nullable=False, default="self_reported")
-    collected_at = Column(DateTime, server_default=func.now(), nullable=False)
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    collected_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     def __repr__(self):
         return f"<HmdaDemographic(id={self.id}, app_id={self.application_id})>"

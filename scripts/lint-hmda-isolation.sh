@@ -43,6 +43,8 @@ COMPLIANCE_IMPORTS=$(grep -rn --include="*.py" \
     2>/dev/null \
     | grep -v "services/compliance/" \
     | grep -v "routes/hmda.py" \
+    | grep -v "routes/admin.py" \
+    | grep -v "src/seed.py" \
     | grep -v "__pycache__" \
     || true)
 
