@@ -18,7 +18,12 @@ async def lifespan(_app: FastAPI):
     """Application startup/shutdown lifecycle."""
     log_safety_status()
     log_observability_status()
+    from .services.conversation import get_conversation_service
+
+    conversation_service = get_conversation_service()
+    await conversation_service.initialize(settings.DATABASE_URL)
     yield
+    await conversation_service.shutdown()
 
 
 app = FastAPI(

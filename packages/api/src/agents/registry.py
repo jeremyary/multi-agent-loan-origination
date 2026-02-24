@@ -31,16 +31,16 @@ def load_agent_config(agent_name: str) -> dict[str, Any]:
     return yaml.safe_load(config_path.read_text())
 
 
-def _build_graph(agent_name: str, config: dict[str, Any]):
+def _build_graph(agent_name: str, config: dict[str, Any], checkpointer=None):
     """Build a LangGraph graph for the named agent."""
     if agent_name == "public-assistant":
         from .public_assistant import build_graph
 
-        return build_graph(config)
+        return build_graph(config, checkpointer=checkpointer)
     raise ValueError(f"Unknown agent: {agent_name}")
 
 
-def get_agent(agent_name: str):
+def get_agent(agent_name: str, checkpointer=None):
     """Return a compiled LangGraph graph for the named agent.
 
     Graphs are cached and rebuilt when the config file's mtime changes.
@@ -64,7 +64,7 @@ def get_agent(agent_name: str):
     # Build or rebuild
     try:
         config = load_agent_config(agent_name)
-        graph = _build_graph(agent_name, config)
+        graph = _build_graph(agent_name, config, checkpointer=checkpointer)
         _graphs[agent_name] = (graph, current_mtime)
         logger.info("Loaded agent config for %s", agent_name)
         return graph

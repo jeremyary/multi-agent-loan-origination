@@ -16,7 +16,7 @@ from .tools import affordability_calc, product_info
 logger = logging.getLogger(__name__)
 
 
-def build_graph(config: dict[str, Any]):
+def build_graph(config: dict[str, Any], checkpointer=None):
     """Build a routed LangGraph graph for the public assistant."""
     system_prompt = config.get("system_prompt", "You are a helpful mortgage assistant.")
     tools = [product_info, affordability_calc]
@@ -46,4 +46,5 @@ def build_graph(config: dict[str, Any]):
         llms=llms,
         tool_descriptions=tool_descriptions,
         tool_allowed_roles=tool_allowed_roles,
+        checkpointer=checkpointer,
     )

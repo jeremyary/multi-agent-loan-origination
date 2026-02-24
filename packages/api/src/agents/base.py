@@ -68,6 +68,7 @@ def build_routed_graph(
     llms: dict[str, ChatOpenAI],
     tool_descriptions: str,
     tool_allowed_roles: dict[str, list[str]] | None = None,
+    checkpointer: Any | None = None,
 ) -> Any:
     """Build a compiled LangGraph graph with safety shields and LLM-based model routing.
 
@@ -258,4 +259,4 @@ def build_routed_graph(
     graph.add_edge("tools", "agent")
     graph.add_edge("output_shield", END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
