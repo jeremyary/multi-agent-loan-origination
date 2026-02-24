@@ -23,6 +23,14 @@ def build_graph(config: dict[str, Any]):
 
     tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
 
+    # Extract tool -> allowed_roles mapping from YAML config
+    tool_allowed_roles: dict[str, list[str]] = {}
+    for tool_cfg in config.get("tools", []):
+        name = tool_cfg.get("name")
+        allowed = tool_cfg.get("allowed_roles")
+        if name and allowed:
+            tool_allowed_roles[name] = allowed
+
     llms: dict[str, ChatOpenAI] = {}
     for tier in get_model_tiers():
         model_cfg = get_model_config(tier)
@@ -37,4 +45,5 @@ def build_graph(config: dict[str, Any]):
         tools=tools,
         llms=llms,
         tool_descriptions=tool_descriptions,
+        tool_allowed_roles=tool_allowed_roles,
     )
