@@ -260,3 +260,22 @@ class DemoDataManifest(Base):
 
     def __repr__(self):
         return f"<DemoDataManifest(id={self.id}, seeded_at='{self.seeded_at}')>"
+
+
+class HmdaDemographic(Base):
+    """HMDA demographic data -- isolated in hmda schema."""
+
+    __tablename__ = "demographics"
+    __table_args__ = {"schema": "hmda"}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    application_id = Column(Integer, nullable=False, index=True)
+    race = Column(String(100), nullable=True)
+    ethnicity = Column(String(100), nullable=True)
+    sex = Column(String(50), nullable=True)
+    collection_method = Column(String(50), nullable=False, default="self_reported")
+    collected_at = Column(DateTime, server_default=func.now(), nullable=False)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+
+    def __repr__(self):
+        return f"<HmdaDemographic(id={self.id}, app_id={self.application_id})>"

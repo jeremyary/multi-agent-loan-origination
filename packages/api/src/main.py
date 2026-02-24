@@ -11,7 +11,7 @@ from .admin import setup_admin
 from .core.config import settings
 from .inference.safety import log_safety_status
 from .observability import log_observability_status
-from .routes import applications, chat, health, public
+from .routes import applications, chat, health, hmda, public
 
 
 @asynccontextmanager
@@ -43,6 +43,7 @@ app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(public.router, prefix="/api/public", tags=["public"])
 app.include_router(applications.router, prefix="/api/applications", tags=["applications"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(hmda.router, prefix="/api/hmda", tags=["hmda"])
 
 # Setup SQLAdmin dashboard at /admin
 setup_admin(app)

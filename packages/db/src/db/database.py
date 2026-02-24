@@ -18,8 +18,18 @@ DATABASE_URL = os.environ.get(
     "postgresql+asyncpg://user:password@localhost:5433/summit-cap",
 )
 
+COMPLIANCE_DATABASE_URL = os.environ.get(
+    "COMPLIANCE_DATABASE_URL",
+    "postgresql+asyncpg://compliance_app:compliance_pass@localhost:5433/summit-cap",
+)
+
 engine = create_async_engine(DATABASE_URL, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
+
+compliance_engine = create_async_engine(COMPLIANCE_DATABASE_URL, echo=True)
+ComplianceSessionLocal = sessionmaker(
+    autocommit=False, autoflush=False, bind=compliance_engine, class_=AsyncSession,
+)
 
 Base = declarative_base()
 
@@ -82,6 +92,15 @@ db_service = DatabaseService()
 async def get_db():
     """Dependency to get database session"""
     async with SessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
+async def get_compliance_db():
+    """Dependency to get compliance database session (HMDA schema access)."""
+    async with ComplianceSessionLocal() as session:
         try:
             yield session
         finally:

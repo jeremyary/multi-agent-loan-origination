@@ -37,6 +37,10 @@ class Settings(BaseSettings):
         default="postgresql+asyncpg://user:password@localhost:5433/summit-cap",
         description="Async SQLAlchemy connection string (asyncpg driver).",
     )
+    COMPLIANCE_DATABASE_URL: str = Field(
+        default="postgresql+asyncpg://compliance_app:compliance_pass@localhost:5433/summit-cap",
+        description="Async connection string for compliance_app role (HMDA schema access).",
+    )
 
     # -- Auth --
     AUTH_DISABLED: bool = Field(
