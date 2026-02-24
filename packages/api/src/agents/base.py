@@ -52,10 +52,13 @@ SAFETY_REFUSAL_MESSAGE = (
 
 
 class AgentState(MessagesState):
-    """Graph state extended with model routing and safety fields."""
+    """Graph state extended with model routing, safety, and auth fields."""
 
     model_tier: str
     safety_blocked: bool
+    user_role: str
+    user_id: str
+    tool_allowed_roles: dict[str, list[str]]
 
 
 def build_routed_graph(
@@ -64,6 +67,7 @@ def build_routed_graph(
     tools: list,
     llms: dict[str, ChatOpenAI],
     tool_descriptions: str,
+    tool_allowed_roles: dict[str, list[str]] | None = None,
 ) -> Any:
     """Build a compiled LangGraph graph with safety shields and LLM-based model routing.
 
@@ -72,10 +76,13 @@ def build_routed_graph(
         tools: LangChain tools available to the agent.
         llms: Mapping of tier name to ChatOpenAI instance.
         tool_descriptions: Human-readable tool descriptions for the classifier prompt.
+        tool_allowed_roles: Mapping of tool name to list of allowed role strings.
+            When provided, a pre-tool authorization node checks the user's role
+            before each tool invocation (RBAC Layer 3).
 
     Returns:
         A compiled StateGraph with input_shield -> classify -> agent <-> tools
-        -> output_shield structure.
+        -> output_shield structure (with tool_auth node when tool_allowed_roles set).
     """
     classifier_llm = llms["fast_small"]
     classify_system = CLASSIFY_PROMPT_TEMPLATE.format(tool_descriptions=tool_descriptions)
@@ -133,11 +140,63 @@ def build_routed_graph(
         return {"messages": [response]}
 
     def should_continue(state: AgentState) -> str:
-        """Route to tools node if the LLM made tool calls, else to output shield."""
+        """Route to tool_auth (or tools) if the LLM made tool calls, else output shield."""
         last = state["messages"][-1]
         if isinstance(last, AIMessage) and last.tool_calls:
-            return "tools"
+            return "tool_auth" if tool_allowed_roles else "tools"
         return "output_shield"
+
+    async def tool_auth(state: AgentState) -> dict:
+        """Pre-tool authorization node (RBAC Layer 3).
+
+        Checks each pending tool call against allowed_roles for the user's role.
+        Authorized calls proceed; unauthorized calls are replaced with an error
+        message back to the agent.
+        """
+        last = state["messages"][-1]
+        if not isinstance(last, AIMessage) or not last.tool_calls:
+            return {}
+
+        user_role = state.get("user_role", "")
+        user_id = state.get("user_id", "anonymous")
+        # Merge graph-level defaults with any per-invocation overrides
+        roles_map = {**(tool_allowed_roles or {}), **state.get("tool_allowed_roles", {})}
+
+        blocked: list[str] = []
+        for tc in last.tool_calls:
+            allowed = roles_map.get(tc["name"])
+            if allowed is not None and user_role not in allowed:
+                blocked.append(tc["name"])
+                logger.warning(
+                    "Tool auth DENIED: user=%s role=%s tool=%s allowed=%s",
+                    user_id,
+                    user_role,
+                    tc["name"],
+                    allowed,
+                )
+
+        if not blocked:
+            return {}
+
+        # Return an error message so the agent can inform the user
+        denied_list = ", ".join(blocked)
+        return {
+            "messages": [
+                AIMessage(
+                    content=f"Tool authorization denied: your role '{user_role}' "
+                    f"is not permitted to use: {denied_list}. "
+                    "Please let the user know you cannot perform that action."
+                )
+            ]
+        }
+
+    def after_tool_auth(state: AgentState) -> str:
+        """Route to tools if auth passed, back to agent if blocked."""
+        last = state["messages"][-1]
+        # If tool_auth injected an AIMessage (denial), go to output_shield
+        if isinstance(last, AIMessage) and not last.tool_calls:
+            return "output_shield"
+        return "tools"
 
     async def output_shield(state: AgentState) -> dict:
         """Check agent output against Llama Guard safety categories."""
@@ -176,9 +235,26 @@ def build_routed_graph(
         "input_shield", after_input_shield, {END: END, "classify": "classify"}
     )
     graph.add_edge("classify", "agent")
-    graph.add_conditional_edges(
-        "agent", should_continue, {"tools": "tools", "output_shield": "output_shield"}
-    )
+
+    if tool_allowed_roles:
+        graph.add_node("tool_auth", tool_auth)
+        graph.add_conditional_edges(
+            "agent",
+            should_continue,
+            {"tool_auth": "tool_auth", "output_shield": "output_shield"},
+        )
+        graph.add_conditional_edges(
+            "tool_auth",
+            after_tool_auth,
+            {"tools": "tools", "output_shield": "output_shield"},
+        )
+    else:
+        graph.add_conditional_edges(
+            "agent",
+            should_continue,
+            {"tools": "tools", "output_shield": "output_shield"},
+        )
+
     graph.add_edge("tools", "agent")
     graph.add_edge("output_shield", END)
 

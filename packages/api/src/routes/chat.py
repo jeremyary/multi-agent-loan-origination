@@ -65,7 +65,13 @@ async def chat_websocket(ws: WebSocket):
             try:
                 full_response = ""
                 async for event in graph.astream_events(
-                    {"messages": messages}, config=langfuse_config, version="v2"
+                    {
+                        "messages": messages,
+                        "user_role": "prospect",
+                        "user_id": session_id,
+                    },
+                    config=langfuse_config,
+                    version="v2",
                 ):
                     kind = event.get("event")
                     node = event.get("metadata", {}).get("langgraph_node")
@@ -83,6 +89,15 @@ async def chat_websocket(ws: WebSocket):
                                 if hasattr(msg, "content") and msg.content:
                                     await ws.send_json({"type": "token", "content": msg.content})
                                     full_response = msg.content
+
+                    elif kind == "on_chain_end" and node == "tool_auth":
+                        output = event.get("data", {}).get("output")
+                        if isinstance(output, dict):
+                            auth_msgs = output.get("messages", [])
+                            if auth_msgs:
+                                # tool_auth denied -- the agent will rephrase,
+                                # but stream the denial for transparency
+                                logger.info("Tool auth denied for session %s", session_id)
 
                     elif kind == "on_chain_end" and node == "output_shield":
                         output = event.get("data", {}).get("output")
