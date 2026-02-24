@@ -6,12 +6,11 @@ Database configuration and utilities
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL",
@@ -23,15 +22,21 @@ COMPLIANCE_DATABASE_URL = os.environ.get(
     "postgresql+asyncpg://compliance_app:compliance_pass@localhost:5433/summit-cap",
 )
 
-engine = create_async_engine(DATABASE_URL, echo=True)
+_SQL_ECHO = os.environ.get("SQL_ECHO", "false").lower() == "true"
+
+engine = create_async_engine(DATABASE_URL, echo=_SQL_ECHO)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
 
-compliance_engine = create_async_engine(COMPLIANCE_DATABASE_URL, echo=True)
+compliance_engine = create_async_engine(COMPLIANCE_DATABASE_URL, echo=_SQL_ECHO)
 ComplianceSessionLocal = sessionmaker(
     autocommit=False, autoflush=False, bind=compliance_engine, class_=AsyncSession,
 )
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    """SQLAlchemy 2.0 declarative base."""
+
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +51,7 @@ class DatabaseService:
         self.engine = engine or globals()['engine']
         self.start_time = SERVICE_START_TIME
     
-    async def health_check(self) -> Dict[str, Any]:
+    async def health_check(self) -> dict[str, Any]:
         """
         Perform database health check
         
@@ -71,7 +76,7 @@ class DatabaseService:
                 "start_time": self.start_time.isoformat()
             }
         except Exception as e:
-            logger.error(f"Database health check failed: {e}")
+            logger.error("Database health check failed: %s", e)
             return {
                 "name": "Database", 
                 "status": "down",

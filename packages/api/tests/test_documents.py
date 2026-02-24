@@ -107,11 +107,11 @@ def test_ceo_get_document_excludes_file_path():
     assert data["status"] == DocumentStatus.UPLOADED.value
 
 
-def test_ceo_content_endpoint_returns_403():
+def test_ceo_content_endpoint_returns_403(monkeypatch):
     """CEO is blocked from /documents/{id}/content at route level."""
     from src.core.config import settings
 
-    settings.AUTH_DISABLED = False
+    monkeypatch.setattr(settings, "AUTH_DISABLED", False)
 
     ceo = _make_user(UserRole.CEO)
     doc = _make_document()
@@ -120,8 +120,6 @@ def test_ceo_content_endpoint_returns_403():
 
     response = client.get("/api/documents/1/content")
     assert response.status_code == 403
-
-    settings.AUTH_DISABLED = True
 
 
 def test_ceo_service_layer_blocks_content():

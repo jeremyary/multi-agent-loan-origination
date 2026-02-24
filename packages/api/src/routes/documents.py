@@ -44,7 +44,7 @@ async def list_documents(
     session: AsyncSession = Depends(get_db),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
-):
+) -> DocumentListResponse:
     """List documents for an application. All roles see metadata only."""
     documents, total = await doc_service.list_documents(
         session,
@@ -66,7 +66,7 @@ async def get_document(
     document_id: int,
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
-):
+) -> DocumentResponse | DocumentDetailResponse:
     """Get document metadata. CEO sees metadata only; others see file_path too."""
     doc = await doc_service.get_document(session, user, document_id)
     if doc is None:
@@ -87,7 +87,7 @@ async def get_document_content(
     document_id: int,
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
-):
+) -> dict:
     """Get document content (file path). CEO is blocked at route level (Layer 1)."""
     doc = await doc_service.get_document(session, user, document_id)
     if doc is None:

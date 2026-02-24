@@ -52,7 +52,11 @@ async def chat_websocket(ws: WebSocket):
     user_id = session_id
 
     async def _audit(event_type: str, event_data: dict | None = None) -> None:
-        """Write an audit event with the shared session_id."""
+        """Write an audit event with the shared session_id.
+
+        Manually iterates get_db() because WebSocket handlers cannot use
+        FastAPI's Depends() injection for DB sessions.
+        """
         try:
             async for db_session in get_db():
                 await write_audit_event(
@@ -65,7 +69,7 @@ async def chat_websocket(ws: WebSocket):
                 )
                 await db_session.commit()
         except Exception:
-            logger.debug("Failed to write audit event %s", event_type, exc_info=True)
+            logger.warning("Failed to write audit event %s", event_type, exc_info=True)
 
     try:
         while True:

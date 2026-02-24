@@ -7,9 +7,9 @@ as tool invocations during a conversation.
 
 from langchain_core.tools import tool
 
-from ..routes.public import PRODUCTS
 from ..schemas.calculator import AffordabilityRequest
 from ..services.calculator import calculate_affordability
+from ..services.products import PRODUCTS
 
 
 @tool

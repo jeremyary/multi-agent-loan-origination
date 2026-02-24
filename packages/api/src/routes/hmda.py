@@ -24,7 +24,7 @@ async def collect_hmda(
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
     compliance_session: AsyncSession = Depends(get_compliance_db),
-):
+) -> HmdaCollectionResponse:
     """Collect HMDA demographic data for an application.
 
     Simulated for demonstration purposes -- not legally compliant HMDA collection.

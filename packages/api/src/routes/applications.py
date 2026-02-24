@@ -22,24 +22,32 @@ router = APIRouter()
 @router.get(
     "/",
     response_model=ApplicationListResponse,
-    dependencies=[Depends(require_roles(
-        UserRole.ADMIN, UserRole.BORROWER, UserRole.LOAN_OFFICER,
-        UserRole.UNDERWRITER, UserRole.CEO,
-    ))],
+    dependencies=[
+        Depends(
+            require_roles(
+                UserRole.ADMIN,
+                UserRole.BORROWER,
+                UserRole.LOAN_OFFICER,
+                UserRole.UNDERWRITER,
+                UserRole.CEO,
+            )
+        )
+    ],
 )
 async def list_applications(
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
-):
+) -> ApplicationListResponse:
     """List applications visible to the current user's role and data scope."""
     applications, total = await app_service.list_applications(
-        session, user, offset=offset, limit=limit,
+        session,
+        user,
+        offset=offset,
+        limit=limit,
     )
-    items = [
-        ApplicationResponse.model_validate(app) for app in applications
-    ]
+    items = [ApplicationResponse.model_validate(app) for app in applications]
     if user.data_scope.pii_mask:
         items = [
             ApplicationResponse.model_validate(mask_application_pii(item.model_dump()))
@@ -51,16 +59,23 @@ async def list_applications(
 @router.get(
     "/{application_id}",
     response_model=ApplicationResponse,
-    dependencies=[Depends(require_roles(
-        UserRole.ADMIN, UserRole.BORROWER, UserRole.LOAN_OFFICER,
-        UserRole.UNDERWRITER, UserRole.CEO,
-    ))],
+    dependencies=[
+        Depends(
+            require_roles(
+                UserRole.ADMIN,
+                UserRole.BORROWER,
+                UserRole.LOAN_OFFICER,
+                UserRole.UNDERWRITER,
+                UserRole.CEO,
+            )
+        )
+    ],
 )
 async def get_application(
     application_id: int,
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
-):
+) -> ApplicationResponse:
     """Get a single application. Returns 404 for out-of-scope resources."""
     app = await app_service.get_application(session, user, application_id)
     if app is None:
@@ -70,9 +85,7 @@ async def get_application(
         )
     item = ApplicationResponse.model_validate(app)
     if user.data_scope.pii_mask:
-        item = ApplicationResponse.model_validate(
-            mask_application_pii(item.model_dump())
-        )
+        item = ApplicationResponse.model_validate(mask_application_pii(item.model_dump()))
     return item
 
 
@@ -86,7 +99,7 @@ async def create_application(
     body: ApplicationCreate,
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
-):
+) -> ApplicationResponse:
     """Create a new application. Borrowers and admins only."""
     app = await app_service.create_application(
         session,
@@ -102,16 +115,22 @@ async def create_application(
 @router.patch(
     "/{application_id}",
     response_model=ApplicationResponse,
-    dependencies=[Depends(require_roles(
-        UserRole.ADMIN, UserRole.LOAN_OFFICER, UserRole.UNDERWRITER,
-    ))],
+    dependencies=[
+        Depends(
+            require_roles(
+                UserRole.ADMIN,
+                UserRole.LOAN_OFFICER,
+                UserRole.UNDERWRITER,
+            )
+        )
+    ],
 )
 async def update_application(
     application_id: int,
     body: ApplicationUpdate,
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
-):
+) -> ApplicationResponse:
     """Update an application. LOs, underwriters, and admins only."""
     updates = body.model_dump(exclude_unset=True)
     if not updates:
@@ -120,7 +139,10 @@ async def update_application(
             detail="No fields to update",
         )
     app = await app_service.update_application(
-        session, user, application_id, **updates,
+        session,
+        user,
+        application_id,
+        **updates,
     )
     if app is None:
         raise HTTPException(

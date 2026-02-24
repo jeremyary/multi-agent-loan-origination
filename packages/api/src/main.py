@@ -1,6 +1,5 @@
-"""
-FastAPI application entry point
-"""
+# This project was developed with assistance from AI tools.
+"""FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
 

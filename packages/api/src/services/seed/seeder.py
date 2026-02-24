@@ -288,9 +288,20 @@ async def seed_demo_data(
     )
     session.add(audit)
 
-    # 6. Commit both sessions
+    # 6. Commit both sessions.
+    # NOTE: These are separate DB connections so this is NOT atomic. If the
+    # compliance commit fails after the lending commit succeeds, the manifest
+    # will record "seeded" but HMDA data will be missing. In that case,
+    # re-run with --force to clear and re-seed.
     await session.commit()
-    await compliance_session.commit()
+    try:
+        await compliance_session.commit()
+    except Exception:
+        logger.error(
+            "Compliance session commit failed after lending commit succeeded. "
+            "HMDA demographics may be missing. Re-run with --force to fix."
+        )
+        raise
 
     logger.info("Demo data seeded: %s", summary)
 

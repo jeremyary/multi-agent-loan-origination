@@ -48,7 +48,9 @@ class Borrower(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    applications = relationship("Application", back_populates="borrower")
+    applications = relationship(
+        "Application", back_populates="borrower", cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<Borrower(id={self.id}, name='{self.first_name} {self.last_name}')>"
@@ -60,7 +62,9 @@ class Application(Base):
     __tablename__ = "applications"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    borrower_id = Column(Integer, ForeignKey("borrowers.id"), nullable=False, index=True)
+    borrower_id = Column(
+        Integer, ForeignKey("borrowers.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
     stage = Column(
         Enum(ApplicationStage, name="application_stage", native_enum=False),
         nullable=False,
@@ -78,11 +82,22 @@ class Application(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     borrower = relationship("Borrower", back_populates="applications")
-    financials = relationship("ApplicationFinancials", back_populates="application", uselist=False)
-    rate_locks = relationship("RateLock", back_populates="application")
-    conditions = relationship("Condition", back_populates="application")
-    decisions = relationship("Decision", back_populates="application")
-    documents = relationship("Document", back_populates="application")
+    financials = relationship(
+        "ApplicationFinancials", back_populates="application",
+        uselist=False, cascade="all, delete-orphan",
+    )
+    rate_locks = relationship(
+        "RateLock", back_populates="application", cascade="all, delete-orphan",
+    )
+    conditions = relationship(
+        "Condition", back_populates="application", cascade="all, delete-orphan",
+    )
+    decisions = relationship(
+        "Decision", back_populates="application", cascade="all, delete-orphan",
+    )
+    documents = relationship(
+        "Document", back_populates="application", cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<Application(id={self.id}, stage='{self.stage}')>"
@@ -95,7 +110,8 @@ class ApplicationFinancials(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     application_id = Column(
-        Integer, ForeignKey("applications.id"), nullable=False, unique=True, index=True
+        Integer, ForeignKey("applications.id", ondelete="CASCADE"),
+        nullable=False, unique=True, index=True,
     )
     gross_monthly_income = Column(Numeric(12, 2), nullable=True)
     monthly_debts = Column(Numeric(12, 2), nullable=True)
@@ -117,7 +133,9 @@ class RateLock(Base):
     __tablename__ = "rate_locks"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    application_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)
+    application_id = Column(
+        Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
     locked_rate = Column(Float, nullable=False)
     lock_date = Column(DateTime(timezone=True), nullable=False)
     expiration_date = Column(DateTime(timezone=True), nullable=False)
@@ -136,7 +154,9 @@ class Condition(Base):
     __tablename__ = "conditions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    application_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)
+    application_id = Column(
+        Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
     description = Column(Text, nullable=False)
     severity = Column(
         Enum(ConditionSeverity, name="condition_severity", native_enum=False),
@@ -164,7 +184,9 @@ class Decision(Base):
     __tablename__ = "decisions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    application_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)
+    application_id = Column(
+        Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
     decision_type = Column(
         Enum(DecisionType, name="decision_type", native_enum=False),
         nullable=False,
@@ -186,7 +208,9 @@ class Document(Base):
     __tablename__ = "documents"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    application_id = Column(Integer, ForeignKey("applications.id"), nullable=False, index=True)
+    application_id = Column(
+        Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
     doc_type = Column(
         Enum(DocumentType, name="document_type", native_enum=False),
         nullable=False,
@@ -203,7 +227,9 @@ class Document(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     application = relationship("Application", back_populates="documents")
-    extractions = relationship("DocumentExtraction", back_populates="document")
+    extractions = relationship(
+        "DocumentExtraction", back_populates="document", cascade="all, delete-orphan",
+    )
 
     def __repr__(self):
         return f"<Document(id={self.id}, type='{self.doc_type}')>"
@@ -215,7 +241,9 @@ class DocumentExtraction(Base):
     __tablename__ = "document_extractions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    document_id = Column(Integer, ForeignKey("documents.id"), nullable=False, index=True)
+    document_id = Column(
+        Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
     field_name = Column(String(255), nullable=False)
     field_value = Column(Text, nullable=True)
     confidence = Column(Float, nullable=True)
