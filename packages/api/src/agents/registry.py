@@ -37,6 +37,10 @@ def _build_graph(agent_name: str, config: dict[str, Any], checkpointer=None):
         from .public_assistant import build_graph
 
         return build_graph(config, checkpointer=checkpointer)
+    if agent_name == "borrower-assistant":
+        from .borrower_assistant import build_graph
+
+        return build_graph(config, checkpointer=checkpointer)
     raise ValueError(f"Unknown agent: {agent_name}")
 
 
