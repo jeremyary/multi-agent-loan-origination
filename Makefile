@@ -73,6 +73,7 @@ help:
 	@echo "    containers-logs  View logs for all containers"
 	@echo "    build-images     Build API and UI container images"
 	@echo "    push-images      Push images to registry (default: quay.io)"
+	@echo "    smoke            Smoke test: start stack, check endpoints, tear down"
 	@echo ""
 	@echo "  Deployment (OpenShift):"
 	@echo "    deploy           Deploy application using Helm"
@@ -179,6 +180,9 @@ build-images:
 push-images:
 	@scripts/push-images.sh
 
+smoke:
+	@COMPOSE="$(COMPOSE)" scripts/smoke-test.sh
+
 # -- Deployment (OpenShift) --------------------------------------------------
 
 create-project:
@@ -267,6 +271,6 @@ helm-template: helm-dep-update
         setup dev build test lint lint-hmda clean \
         db-start db-stop db-logs db-upgrade \
         containers-build containers-up containers-down containers-logs \
-        build-images push-images \
+        build-images push-images smoke \
         create-project helm-dep-update deploy deploy-dev undeploy status debug \
         helm-lint helm-template
