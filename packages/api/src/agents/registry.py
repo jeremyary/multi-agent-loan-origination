@@ -3,6 +3,10 @@
 
 Each agent is defined by a YAML file in config/agents/ and backed by
 a Python module in this package that builds the LangGraph graph.
+
+Graphs are rebuilt when their YAML config file changes (mtime-based).
+If a reload fails (bad YAML), the last valid graph is kept and a
+warning is logged.
 """
 
 import logging
@@ -15,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 _AGENTS_CONFIG_DIR = Path(__file__).resolve().parents[4] / "config" / "agents"
 
-# Lazy-loaded agent graph cache
-_graphs: dict[str, Any] = {}
+# Lazy-loaded agent graph cache: name -> (graph, mtime)
+_graphs: dict[str, tuple[Any, float]] = {}
 
 
 def load_agent_config(agent_name: str) -> dict[str, Any]:
@@ -27,26 +31,59 @@ def load_agent_config(agent_name: str) -> dict[str, Any]:
     return yaml.safe_load(config_path.read_text())
 
 
-def get_agent(agent_name: str):
-    """Return a compiled LangGraph graph for the named agent.
-
-    Graphs are cached after first build. Currently only 'public-assistant'
-    is implemented; future agents will be added here.
-    """
-    if agent_name in _graphs:
-        return _graphs[agent_name]
-
-    config = load_agent_config(agent_name)
-
+def _build_graph(agent_name: str, config: dict[str, Any]):
+    """Build a LangGraph graph for the named agent."""
     if agent_name == "public-assistant":
         from .public_assistant import build_graph
 
-        graph = build_graph(config)
-    else:
-        raise ValueError(f"Unknown agent: {agent_name}")
+        return build_graph(config)
+    raise ValueError(f"Unknown agent: {agent_name}")
 
-    _graphs[agent_name] = graph
-    return graph
+
+def get_agent(agent_name: str):
+    """Return a compiled LangGraph graph for the named agent.
+
+    Graphs are cached and rebuilt when the config file's mtime changes.
+    If a reload fails, the last valid graph is returned with a warning.
+    """
+    config_path = _AGENTS_CONFIG_DIR / f"{agent_name}.yaml"
+
+    try:
+        current_mtime = config_path.stat().st_mtime
+    except FileNotFoundError:
+        if agent_name in _graphs:
+            logger.warning("Agent config disappeared for %s, using cached graph", agent_name)
+            return _graphs[agent_name][0]
+        raise
+
+    if agent_name in _graphs:
+        cached_graph, cached_mtime = _graphs[agent_name]
+        if current_mtime <= cached_mtime:
+            return cached_graph
+
+    # Build or rebuild
+    try:
+        config = load_agent_config(agent_name)
+        graph = _build_graph(agent_name, config)
+        _graphs[agent_name] = (graph, current_mtime)
+        logger.info("Loaded agent config for %s", agent_name)
+        return graph
+    except (yaml.YAMLError, ValueError, KeyError) as exc:
+        if agent_name in _graphs:
+            logger.warning(
+                "Failed to reload agent config for %s (%s), keeping last valid graph",
+                agent_name,
+                exc,
+            )
+            # Update mtime to avoid retrying every call
+            _graphs[agent_name] = (_graphs[agent_name][0], current_mtime)
+            return _graphs[agent_name][0]
+        raise
+
+
+def clear_agent_cache() -> None:
+    """Clear all cached agent graphs (useful for testing)."""
+    _graphs.clear()
 
 
 def list_agents() -> list[str]:
