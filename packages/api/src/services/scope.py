@@ -7,7 +7,7 @@ different join paths needed for Application queries vs. child-entity
 queries (Documents, Conditions, etc.).
 """
 
-from db import Application, Borrower
+from db import Application, ApplicationBorrower, Borrower
 
 from ..schemas.auth import DataScope, UserContext
 
@@ -29,8 +29,18 @@ def apply_data_scope(stmt, scope: DataScope, user: UserContext, *, join_to_appli
     if scope.own_data_only and scope.user_id:
         if join_to_application is not None:
             stmt = stmt.join(join_to_application)
-        stmt = stmt.join(Application.borrower).where(
-            Borrower.keycloak_user_id == scope.user_id,
+        stmt = (
+            stmt.join(
+                ApplicationBorrower,
+                ApplicationBorrower.application_id == Application.id,
+            )
+            .join(
+                Borrower,
+                Borrower.id == ApplicationBorrower.borrower_id,
+            )
+            .where(
+                Borrower.keycloak_user_id == scope.user_id,
+            )
         )
     elif scope.assigned_to:
         if join_to_application is not None:

@@ -44,6 +44,7 @@ def _make_app(user: UserContext = _BORROWER):
 
 def _mock_sessions(
     application_exists: bool = True,
+    primary_borrower_id: int | None = 10,
 ):
     """Create mocked lending and compliance sessions.
 
@@ -51,21 +52,40 @@ def _mock_sessions(
     """
     app = _make_app()
 
-    # Mock lending session -- used to verify application exists
+    # Mock lending session -- used to verify application exists + resolve primary borrower
     lending_session = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = 1 if application_exists else None
-    lending_session.execute = AsyncMock(return_value=mock_result)
+
+    call_count = [0]
+
+    async def mock_execute(stmt):
+        call_count[0] += 1
+        mock_result = MagicMock()
+        if call_count[0] == 1:
+            # First call: application existence check
+            mock_result.scalar_one_or_none.return_value = 1 if application_exists else None
+        else:
+            # Second call: primary borrower lookup
+            mock_result.scalar_one_or_none.return_value = primary_borrower_id
+        return mock_result
+
+    lending_session.execute = AsyncMock(side_effect=mock_execute)
 
     # Mock compliance session -- used to write demographic + audit
     compliance_session = AsyncMock()
     # session.add() is synchronous in SQLAlchemy, use MagicMock to avoid warnings
     compliance_session.add = MagicMock()
 
+    # _upsert_demographics does a SELECT -- return None (no existing row)
+    upsert_result = MagicMock()
+    upsert_result.scalar_one_or_none.return_value = None
+    compliance_session.execute = AsyncMock(return_value=upsert_result)
+
     # After commit + refresh, the demographic gets an id and collected_at
     async def fake_refresh(obj):
         obj.id = 42
         obj.collected_at = datetime(2026, 2, 24, 12, 0, 0)
+        if not hasattr(obj, "borrower_id") or obj.borrower_id is None:
+            obj.borrower_id = primary_borrower_id
 
     compliance_session.refresh = fake_refresh
 
@@ -204,10 +224,263 @@ def test_collect_hmda_with_age():
     assert response.status_code == 201
 
     # Check the HmdaDemographic was created with age
+    # First add call is from _upsert_demographics (the new record)
     hmda_call = compliance_session.add.call_args_list[0]
     hmda_obj = hmda_call[0][0]
     assert hmda_obj.age == "25-34"
     assert hmda_obj.race == "Asian"
+
+
+def test_collect_hmda_with_borrower_id():
+    """POST /api/hmda/collect persists borrower_id when provided."""
+    _, client, _, compliance_session = _mock_sessions(application_exists=True)
+
+    response = client.post(
+        "/api/hmda/collect",
+        json={
+            "application_id": 1,
+            "borrower_id": 99,
+            "race": "White",
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["borrower_id"] == 99
+
+
+def test_collect_hmda_resolves_primary_borrower():
+    """When borrower_id omitted, collect resolves primary borrower from junction table."""
+    _, client, lending_session, _ = _mock_sessions(application_exists=True, primary_borrower_id=42)
+
+    response = client.post(
+        "/api/hmda/collect",
+        json={
+            "application_id": 1,
+            "race": "Asian",
+        },
+    )
+
+    assert response.status_code == 201
+    # lending_session.execute should have been called twice (app check + primary borrower)
+    assert lending_session.execute.await_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Upsert logic tests (unit)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_upsert_no_conflict():
+    """Same values twice produces 1 row and no conflicts."""
+    from src.services.compliance.hmda import _upsert_demographics
+
+    compliance_session = AsyncMock()
+    compliance_session.add = MagicMock()
+
+    # First call: no existing row
+    empty_result = MagicMock()
+    empty_result.scalar_one_or_none.return_value = None
+    compliance_session.execute = AsyncMock(return_value=empty_result)
+
+    record1, conflicts1 = await _upsert_demographics(
+        compliance_session, 1, 10, {"race": "White", "sex": "Female"}, "self_reported"
+    )
+    assert conflicts1 == []
+    assert record1.race == "White"
+
+    # Second call: existing row returned
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = record1
+    compliance_session.execute = AsyncMock(return_value=existing_result)
+
+    record2, conflicts2 = await _upsert_demographics(
+        compliance_session, 1, 10, {"race": "White", "sex": "Female"}, "self_reported"
+    )
+    assert conflicts2 == []
+    assert record2 is record1  # same object updated in place
+
+
+@pytest.mark.asyncio
+async def test_upsert_with_conflict():
+    """Different values produce conflicts in response."""
+    from db import HmdaDemographic
+
+    from src.services.compliance.hmda import _upsert_demographics
+
+    compliance_session = AsyncMock()
+    compliance_session.add = MagicMock()
+
+    existing = HmdaDemographic(
+        application_id=1,
+        borrower_id=10,
+        race="White",
+        sex="Female",
+        collection_method="self_reported",
+    )
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = existing
+    compliance_session.execute = AsyncMock(return_value=existing_result)
+
+    _, conflicts = await _upsert_demographics(
+        compliance_session, 1, 10, {"race": "Asian", "sex": "Male"}, "self_reported"
+    )
+    assert len(conflicts) == 2
+    assert conflicts[0]["field"] == "race"
+    assert conflicts[0]["resolution"] == "overwritten"
+    assert existing.race == "Asian"
+
+
+@pytest.mark.asyncio
+async def test_self_reported_overwrites_extraction():
+    """self_reported has higher precedence than document_extraction."""
+    from db import HmdaDemographic
+
+    from src.services.compliance.hmda import _upsert_demographics
+
+    compliance_session = AsyncMock()
+    compliance_session.add = MagicMock()
+
+    existing = HmdaDemographic(
+        application_id=1,
+        borrower_id=10,
+        race="Asian",
+        collection_method="document_extraction",
+    )
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = existing
+    compliance_session.execute = AsyncMock(return_value=existing_result)
+
+    _, conflicts = await _upsert_demographics(
+        compliance_session, 1, 10, {"race": "White"}, "self_reported"
+    )
+    assert len(conflicts) == 1
+    assert conflicts[0]["resolution"] == "overwritten"
+    assert existing.race == "White"
+    assert existing.collection_method == "self_reported"
+
+
+@pytest.mark.asyncio
+async def test_extraction_does_not_overwrite_self_reported():
+    """document_extraction cannot overwrite self_reported values."""
+    from db import HmdaDemographic
+
+    from src.services.compliance.hmda import _upsert_demographics
+
+    compliance_session = AsyncMock()
+    compliance_session.add = MagicMock()
+
+    existing = HmdaDemographic(
+        application_id=1,
+        borrower_id=10,
+        race="White",
+        collection_method="self_reported",
+    )
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = existing
+    compliance_session.execute = AsyncMock(return_value=existing_result)
+
+    _, conflicts = await _upsert_demographics(
+        compliance_session, 1, 10, {"race": "Asian"}, "document_extraction"
+    )
+    assert len(conflicts) == 1
+    assert conflicts[0]["resolution"] == "kept_existing"
+    assert existing.race == "White"  # unchanged
+    assert existing.collection_method == "self_reported"  # unchanged
+
+
+@pytest.mark.asyncio
+async def test_null_fields_filled_without_conflict():
+    """Filling in None fields is not a conflict."""
+    from db import HmdaDemographic
+
+    from src.services.compliance.hmda import _upsert_demographics
+
+    compliance_session = AsyncMock()
+    compliance_session.add = MagicMock()
+
+    existing = HmdaDemographic(
+        application_id=1,
+        borrower_id=10,
+        race="White",
+        ethnicity=None,
+        sex=None,
+        age=None,
+        collection_method="document_extraction",
+    )
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = existing
+    compliance_session.execute = AsyncMock(return_value=existing_result)
+
+    _, conflicts = await _upsert_demographics(
+        compliance_session, 1, 10, {"ethnicity": "Not Hispanic", "sex": "Male"}, "self_reported"
+    )
+    assert conflicts == []
+    assert existing.ethnicity == "Not Hispanic"
+    assert existing.sex == "Male"
+
+
+@pytest.mark.asyncio
+async def test_conflicts_in_audit_trail():
+    """Audit event_data includes conflicts when they occur."""
+    from src.schemas.hmda import HmdaCollectionRequest
+    from src.services.compliance.hmda import collect_demographics
+
+    lending_session = AsyncMock()
+    compliance_session = AsyncMock()
+    compliance_session.add = MagicMock()
+
+    # Application exists
+    app_result = MagicMock()
+    app_result.scalar_one_or_none.return_value = 1
+    # Primary borrower
+    primary_result = MagicMock()
+    primary_result.scalar_one_or_none.return_value = 10
+
+    call_count = [0]
+
+    async def mock_lending_execute(stmt):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return app_result
+        return primary_result
+
+    lending_session.execute = AsyncMock(side_effect=mock_lending_execute)
+
+    # No existing demographics row
+    empty_result = MagicMock()
+    empty_result.scalar_one_or_none.return_value = None
+    compliance_session.execute = AsyncMock(return_value=empty_result)
+
+    async def fake_refresh(obj):
+        obj.id = 1
+        obj.collected_at = datetime(2026, 2, 25, 12, 0, 0)
+
+    compliance_session.refresh = fake_refresh
+
+    user = UserContext(
+        user_id="borrower-1",
+        role=UserRole.BORROWER,
+        email="b@test.com",
+        name="Test",
+        data_scope=DataScope(own_data_only=True, user_id="borrower-1"),
+    )
+    request = HmdaCollectionRequest(application_id=1, race="White")
+
+    demographic, conflicts = await collect_demographics(
+        lending_session, compliance_session, user, request
+    )
+
+    assert demographic.id == 1
+    assert conflicts == []
+
+    # Audit event should include conflicts key
+    audit_call = compliance_session.add.call_args_list[1]
+    audit_obj = audit_call[0][0]
+    event_data = json.loads(audit_obj.event_data)
+    assert "conflicts" in event_data
+    assert "borrower_id" in event_data
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +663,93 @@ async def test_snapshot_loan_data_upserts():
     audit_obj = audit_call[0][0]
     event_data = json.loads(audit_obj.event_data)
     assert event_data["is_update"] is True
+
+
+@pytest.mark.asyncio
+async def test_snapshot_loan_data_app_not_found():
+    """snapshot_loan_data returns early when application doesn't exist."""
+    from src.services.compliance.hmda import snapshot_loan_data
+
+    mock_lending_session = AsyncMock()
+    app_result = MagicMock()
+    app_result.scalar_one_or_none.return_value = None  # app not found
+    mock_lending_session.execute = AsyncMock(return_value=app_result)
+
+    mock_compliance_session = AsyncMock()
+    mock_compliance_session.add = MagicMock()
+
+    with (
+        patch("src.services.compliance.hmda.SessionLocal") as mock_lending_cls,
+        patch("src.services.compliance.hmda.ComplianceSessionLocal") as mock_compliance_cls,
+    ):
+        mock_lending_cls.return_value.__aenter__ = AsyncMock(return_value=mock_lending_session)
+        mock_lending_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_compliance_cls.return_value.__aenter__ = AsyncMock(
+            return_value=mock_compliance_session
+        )
+        mock_compliance_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await snapshot_loan_data(9999)
+
+    # Should NOT have committed anything to compliance schema
+    mock_compliance_session.commit.assert_not_called()
+    mock_compliance_session.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_loan_data_no_financials():
+    """snapshot_loan_data handles missing financials gracefully (null financial fields)."""
+    from src.services.compliance.hmda import snapshot_loan_data
+
+    mock_app = _mock_application()
+
+    mock_lending_session = AsyncMock()
+    app_result = MagicMock()
+    app_result.scalar_one_or_none.return_value = mock_app
+    fin_result = MagicMock()
+    fin_result.scalar_one_or_none.return_value = None  # no financials
+    mock_lending_session.execute = AsyncMock(side_effect=[app_result, fin_result])
+
+    mock_compliance_session = AsyncMock()
+    mock_compliance_session.add = MagicMock()
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = None
+    mock_compliance_session.execute = AsyncMock(return_value=existing_result)
+
+    with (
+        patch("src.services.compliance.hmda.SessionLocal") as mock_lending_cls,
+        patch("src.services.compliance.hmda.ComplianceSessionLocal") as mock_compliance_cls,
+    ):
+        mock_lending_cls.return_value.__aenter__ = AsyncMock(return_value=mock_lending_session)
+        mock_lending_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+        mock_compliance_cls.return_value.__aenter__ = AsyncMock(
+            return_value=mock_compliance_session
+        )
+        mock_compliance_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await snapshot_loan_data(1)
+
+    # Should still commit -- loan data with null financial fields
+    mock_compliance_session.commit.assert_called_once()
+    assert mock_compliance_session.add.call_count == 2  # HmdaLoanData + AuditEvent
+
+    # HmdaLoanData should have nulls for financial fields
+    loan_data_call = mock_compliance_session.add.call_args_list[0]
+    loan_data_obj = loan_data_call[0][0]
+    assert loan_data_obj.application_id == 1
+    assert loan_data_obj.loan_type == "conventional_30"  # from Application
+    assert (
+        not hasattr(loan_data_obj, "gross_monthly_income")
+        or getattr(loan_data_obj, "gross_monthly_income", None) is None
+    )
+
+    # Audit event should list financial fields as null
+    audit_call = mock_compliance_session.add.call_args_list[1]
+    audit_obj = audit_call[0][0]
+    event_data = json.loads(audit_obj.event_data)
+    assert "gross_monthly_income" in event_data["null_fields"]
+    assert "dti_ratio" in event_data["null_fields"]
+    assert "credit_score" in event_data["null_fields"]
 
 
 # ---------------------------------------------------------------------------

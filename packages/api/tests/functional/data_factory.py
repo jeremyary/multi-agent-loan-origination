@@ -55,6 +55,15 @@ def make_borrower_michael() -> MagicMock:
     return b
 
 
+def _make_app_borrower(borrower, *, is_primary=True) -> MagicMock:
+    """Build a mock ApplicationBorrower junction object."""
+    ab = MagicMock()
+    ab.borrower = borrower
+    ab.borrower_id = borrower.id
+    ab.is_primary = is_primary
+    return ab
+
+
 # ---------------------------------------------------------------------------
 # Applications
 # ---------------------------------------------------------------------------
@@ -64,7 +73,6 @@ def make_app_sarah_1() -> MagicMock:
     """App 101: Sarah, APPLICATION stage, assigned to LO."""
     app = MagicMock()
     app.id = 101
-    app.borrower_id = 1
     app.stage = ApplicationStage.APPLICATION
     app.loan_type = LoanType.CONVENTIONAL_30
     app.property_address = "123 Oak Street"
@@ -73,7 +81,7 @@ def make_app_sarah_1() -> MagicMock:
     app.assigned_to = LO_USER_ID
     app.created_at = datetime(2026, 1, 10, tzinfo=UTC)
     app.updated_at = datetime(2026, 1, 15, tzinfo=UTC)
-    app.borrower = make_borrower_sarah()
+    app.application_borrowers = [_make_app_borrower(make_borrower_sarah())]
     return app
 
 
@@ -81,7 +89,6 @@ def make_app_sarah_2() -> MagicMock:
     """App 102: Sarah, INQUIRY stage, unassigned."""
     app = MagicMock()
     app.id = 102
-    app.borrower_id = 1
     app.stage = ApplicationStage.INQUIRY
     app.loan_type = None
     app.property_address = None
@@ -90,7 +97,7 @@ def make_app_sarah_2() -> MagicMock:
     app.assigned_to = None
     app.created_at = datetime(2026, 2, 1, tzinfo=UTC)
     app.updated_at = datetime(2026, 2, 1, tzinfo=UTC)
-    app.borrower = make_borrower_sarah()
+    app.application_borrowers = [_make_app_borrower(make_borrower_sarah())]
     return app
 
 
@@ -98,7 +105,6 @@ def make_app_michael() -> MagicMock:
     """App 103: Michael, UNDERWRITING stage, assigned to LO."""
     app = MagicMock()
     app.id = 103
-    app.borrower_id = 2
     app.stage = ApplicationStage.UNDERWRITING
     app.loan_type = LoanType.FHA
     app.property_address = "456 Maple Avenue"
@@ -107,7 +113,7 @@ def make_app_michael() -> MagicMock:
     app.assigned_to = LO_USER_ID
     app.created_at = datetime(2026, 1, 20, tzinfo=UTC)
     app.updated_at = datetime(2026, 2, 10, tzinfo=UTC)
-    app.borrower = make_borrower_michael()
+    app.application_borrowers = [_make_app_borrower(make_borrower_michael())]
     return app
 
 
@@ -146,6 +152,7 @@ def make_document(**overrides) -> MagicMock:
     doc = MagicMock()
     doc.id = overrides.get("id", 1)
     doc.application_id = overrides.get("application_id", 101)
+    doc.borrower_id = overrides.get("borrower_id", 1)
     doc.doc_type = overrides.get("doc_type", DocumentType.W2)
     doc.status = overrides.get("status", DocumentStatus.UPLOADED)
     doc.quality_flags = overrides.get("quality_flags", None)

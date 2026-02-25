@@ -9,7 +9,7 @@ def test_application_relationships():
     from db import Application
 
     rel_names = {r.key for r in Application.__mapper__.relationships}
-    assert "borrower" in rel_names
+    assert "application_borrowers" in rel_names
     assert "financials" in rel_names
     assert "rate_locks" in rel_names
     assert "conditions" in rel_names

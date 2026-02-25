@@ -36,7 +36,6 @@ def _make_mock_application(app_id: int = 100):
     """Build a mock Application ORM object."""
     app = MagicMock()
     app.id = app_id
-    app.borrower_id = 1
     return app
 
 
@@ -67,9 +66,13 @@ def _make_upload_app(user: UserContext, *, app_found: bool = True):
 
     if app_found:
         mock_app = _make_mock_application()
-        mock_result = MagicMock()
-        mock_result.unique.return_value.scalar_one_or_none.return_value = mock_app
-        mock_session.execute = AsyncMock(return_value=mock_result)
+        # First execute: app lookup (uses .unique().scalar_one_or_none())
+        app_result = MagicMock()
+        app_result.unique.return_value.scalar_one_or_none.return_value = mock_app
+        # Second execute: primary borrower lookup (uses .scalar_one_or_none())
+        borrower_result = MagicMock()
+        borrower_result.scalar_one_or_none.return_value = 1  # primary borrower_id
+        mock_session.execute = AsyncMock(side_effect=[app_result, borrower_result])
     else:
         mock_result = MagicMock()
         mock_result.unique.return_value.scalar_one_or_none.return_value = None

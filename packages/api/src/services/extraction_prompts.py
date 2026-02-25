@@ -122,8 +122,8 @@ def build_image_extraction_prompt(doc_type: str) -> dict:
             f"Expected document type: {doc_type}\n"
             f"Expected fields: {fields_csv}\n"
             "IMPORTANT: If the document contains any demographic or government "
-            "monitoring information (race, ethnicity, sex, gender, marital status, "
-            "national origin), extract those fields as well.\n"
+            "monitoring information (race, ethnicity, sex, gender, age), "
+            "extract those fields as well.\n"
             "If a field is not found, omit it. Do not guess values."
         ),
     }

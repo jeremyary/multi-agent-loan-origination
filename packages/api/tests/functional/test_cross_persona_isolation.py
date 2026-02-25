@@ -80,37 +80,37 @@ class TestPiiByRole:
         app = make_app_sarah_1()
         client = make_client(borrower_sarah(), make_mock_session(single=app))
         data = client.get("/api/applications/101").json()
-        assert data["borrower"]["ssn_encrypted"] == "123-45-6789"
+        assert data["borrowers"][0]["ssn_encrypted"] == "123-45-6789"
 
     def test_loan_officer_sees_full_ssn(self, make_client):
         app = make_app_sarah_1()
         client = make_client(loan_officer(), make_mock_session(single=app))
         data = client.get("/api/applications/101").json()
-        assert data["borrower"]["ssn_encrypted"] == "123-45-6789"
+        assert data["borrowers"][0]["ssn_encrypted"] == "123-45-6789"
 
     def test_underwriter_sees_full_ssn(self, make_client):
         app = make_app_sarah_1()
         client = make_client(underwriter(), make_mock_session(single=app))
         data = client.get("/api/applications/101").json()
-        assert data["borrower"]["ssn_encrypted"] == "123-45-6789"
+        assert data["borrowers"][0]["ssn_encrypted"] == "123-45-6789"
 
     def test_admin_sees_full_ssn(self, make_client):
         app = make_app_sarah_1()
         client = make_client(admin(), make_mock_session(single=app))
         data = client.get("/api/applications/101").json()
-        assert data["borrower"]["ssn_encrypted"] == "123-45-6789"
+        assert data["borrowers"][0]["ssn_encrypted"] == "123-45-6789"
 
     def test_ceo_sees_masked_ssn(self, make_client):
         app = make_app_sarah_1()
         client = make_client(ceo(), make_mock_session(single=app))
         data = client.get("/api/applications/101").json()
-        assert data["borrower"]["ssn_encrypted"] == "***-**-6789"
+        assert data["borrowers"][0]["ssn_encrypted"] == "***-**-6789"
 
     def test_ceo_sees_masked_dob(self, make_client):
         app = make_app_sarah_1()
         client = make_client(ceo(), make_mock_session(single=app))
         data = client.get("/api/applications/101").json()
-        assert data["borrower"]["dob"].startswith("1990-**")
+        assert data["borrowers"][0]["dob"].startswith("1990-**")
 
 
 # ---------------------------------------------------------------------------

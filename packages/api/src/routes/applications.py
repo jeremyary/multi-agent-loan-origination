@@ -1,7 +1,7 @@
 # This project was developed with assistance from AI tools.
 """Application CRUD routes with RBAC enforcement."""
 
-from db import get_db
+from db import Application, get_db
 from db.enums import UserRole
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,10 +13,31 @@ from ..schemas.application import (
     ApplicationListResponse,
     ApplicationResponse,
     ApplicationUpdate,
+    BorrowerSummary,
 )
 from ..services import application as app_service
 
 router = APIRouter()
+
+
+def _build_app_response(app: Application) -> ApplicationResponse:
+    """Build ApplicationResponse from ORM object, populating borrowers list."""
+    borrowers = []
+    for ab in getattr(app, "application_borrowers", []) or []:
+        if ab.borrower:
+            borrowers.append(
+                BorrowerSummary(
+                    id=ab.borrower.id,
+                    first_name=ab.borrower.first_name,
+                    last_name=ab.borrower.last_name,
+                    email=ab.borrower.email,
+                    ssn_encrypted=ab.borrower.ssn_encrypted,
+                    dob=ab.borrower.dob,
+                    is_primary=ab.is_primary,
+                )
+            )
+    resp = ApplicationResponse.model_validate(app)
+    return resp.model_copy(update={"borrowers": borrowers})
 
 
 @router.get(
@@ -47,7 +68,7 @@ async def list_applications(
         offset=offset,
         limit=limit,
     )
-    items = [ApplicationResponse.model_validate(app) for app in applications]
+    items = [_build_app_response(app) for app in applications]
     if user.data_scope.pii_mask:
         items = [
             ApplicationResponse.model_construct(
@@ -85,7 +106,7 @@ async def get_application(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         )
-    item = ApplicationResponse.model_validate(app)
+    item = _build_app_response(app)
     if user.data_scope.pii_mask:
         item = ApplicationResponse.model_construct(
             **mask_application_pii(item.model_dump(mode="json"))
@@ -113,7 +134,7 @@ async def create_application(
         loan_amount=body.loan_amount,
         property_value=body.property_value,
     )
-    return ApplicationResponse.model_validate(app)
+    return _build_app_response(app)
 
 
 @router.patch(
@@ -153,4 +174,4 @@ async def update_application(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         )
-    return ApplicationResponse.model_validate(app)
+    return _build_app_response(app)

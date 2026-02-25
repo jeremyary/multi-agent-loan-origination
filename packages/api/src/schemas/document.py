@@ -14,6 +14,7 @@ class DocumentResponse(BaseModel):
 
     id: int
     application_id: int
+    borrower_id: int | None = None
     doc_type: DocumentType
     status: DocumentStatus
     quality_flags: str | None = None
@@ -35,6 +36,7 @@ class DocumentUploadResponse(BaseModel):
 
     id: int
     application_id: int
+    borrower_id: int | None = None
     doc_type: DocumentType
     status: DocumentStatus
     file_path: str | None = None

@@ -21,6 +21,7 @@ from .enums import (
 )
 from .models import (
     Application,
+    ApplicationBorrower,
     ApplicationFinancials,
     AuditEvent,
     Borrower,
@@ -53,6 +54,7 @@ __all__ = [
     "DecisionType",
     # Models
     "Application",
+    "ApplicationBorrower",
     "ApplicationFinancials",
     "AuditEvent",
     "Borrower",

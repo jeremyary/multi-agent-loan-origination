@@ -54,6 +54,6 @@ def mask_borrower_pii(borrower_dict: dict) -> dict:
 def mask_application_pii(app_dict: dict) -> dict:
     """Apply PII masking to an application dict for CEO-role responses."""
     masked = app_dict.copy()
-    if "borrower" in masked and masked["borrower"] is not None:
-        masked["borrower"] = mask_borrower_pii(masked["borrower"])
+    if "borrowers" in masked:
+        masked["borrowers"] = [mask_borrower_pii(b) for b in masked["borrowers"]]
     return masked

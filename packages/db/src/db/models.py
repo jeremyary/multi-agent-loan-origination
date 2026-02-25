@@ -17,6 +17,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import relationship
@@ -48,8 +49,8 @@ class Borrower(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    applications = relationship(
-        "Application", back_populates="borrower", cascade="all, delete-orphan",
+    application_borrowers = relationship(
+        "ApplicationBorrower", back_populates="borrower", cascade="all, delete-orphan",
     )
 
     def __repr__(self):
@@ -62,9 +63,6 @@ class Application(Base):
     __tablename__ = "applications"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    borrower_id = Column(
-        Integer, ForeignKey("borrowers.id", ondelete="CASCADE"), nullable=False, index=True,
-    )
     stage = Column(
         Enum(ApplicationStage, name="application_stage", native_enum=False),
         nullable=False,
@@ -81,7 +79,9 @@ class Application(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    borrower = relationship("Borrower", back_populates="applications")
+    application_borrowers = relationship(
+        "ApplicationBorrower", back_populates="application", cascade="all, delete-orphan",
+    )
     financials = relationship(
         "ApplicationFinancials", back_populates="application",
         uselist=False, cascade="all, delete-orphan",
@@ -101,6 +101,34 @@ class Application(Base):
 
     def __repr__(self):
         return f"<Application(id={self.id}, stage='{self.stage}')>"
+
+
+class ApplicationBorrower(Base):
+    """Junction table linking applications to borrowers (supports co-borrowers)."""
+
+    __tablename__ = "application_borrowers"
+    __table_args__ = (
+        UniqueConstraint("application_id", "borrower_id", name="uq_app_borrower"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    application_id = Column(
+        Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    borrower_id = Column(
+        Integer, ForeignKey("borrowers.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    is_primary = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    application = relationship("Application", back_populates="application_borrowers")
+    borrower = relationship("Borrower", back_populates="application_borrowers")
+
+    def __repr__(self):
+        return (
+            f"<ApplicationBorrower(app_id={self.application_id}, "
+            f"borrower_id={self.borrower_id}, primary={self.is_primary})>"
+        )
 
 
 class ApplicationFinancials(Base):
@@ -211,6 +239,9 @@ class Document(Base):
     application_id = Column(
         Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True,
     )
+    borrower_id = Column(
+        Integer, ForeignKey("borrowers.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
     doc_type = Column(
         Enum(DocumentType, name="document_type", native_enum=False),
         nullable=False,
@@ -294,10 +325,14 @@ class HmdaDemographic(Base):
     """HMDA demographic data -- isolated in hmda schema."""
 
     __tablename__ = "demographics"
-    __table_args__ = {"schema": "hmda"}
+    __table_args__ = (
+        UniqueConstraint("application_id", "borrower_id", name="uq_demographics_app_borrower"),
+        {"schema": "hmda"},
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     application_id = Column(Integer, nullable=False, index=True)
+    borrower_id = Column(Integer, nullable=True, index=True)
     race = Column(String(100), nullable=True)
     ethnicity = Column(String(100), nullable=True)
     sex = Column(String(50), nullable=True)
@@ -305,6 +340,9 @@ class HmdaDemographic(Base):
     collection_method = Column(String(50), nullable=False, default="self_reported")
     collected_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
 
     def __repr__(self):
         return f"<HmdaDemographic(id={self.id}, app_id={self.application_id})>"
@@ -326,7 +364,7 @@ class HmdaLoanData(Base):
     property_location = Column(Text, nullable=True)
     interest_rate = Column(Float, nullable=True)
     total_fees = Column(Numeric(10, 2), nullable=True)
-    snapshot_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    snapshot_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     def __repr__(self):

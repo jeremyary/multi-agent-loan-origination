@@ -36,6 +36,7 @@ def _make_mock_doc(
     doc_type_value="w2",
     application_id=101,
     status="processing",
+    borrower_id=10,
 ):
     """Build a mock Document ORM object for extraction tests."""
     doc = MagicMock()
@@ -45,6 +46,7 @@ def _make_mock_doc(
     doc.application_id = application_id
     doc.status = status
     doc.quality_flags = None
+    doc.borrower_id = borrower_id
     return doc
 
 
@@ -509,6 +511,10 @@ class TestHmdaRouting:
 
         mock_compliance_session = AsyncMock()
         mock_compliance_session.add = MagicMock()
+        # _upsert_demographics does a SELECT -- no existing row
+        upsert_result = MagicMock()
+        upsert_result.scalar_one_or_none.return_value = None
+        mock_compliance_session.execute = AsyncMock(return_value=upsert_result)
 
         with patch("src.services.compliance.hmda.ComplianceSessionLocal") as mock_cls:
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_compliance_session)
@@ -516,7 +522,7 @@ class TestHmdaRouting:
 
             await route_extraction_demographics(1, 101, demographic_extractions)
 
-        # Should have added HmdaDemographic + AuditEvent
+        # Should have added HmdaDemographic (from upsert) + AuditEvent
         assert mock_compliance_session.add.call_count == 2
         mock_compliance_session.commit.assert_called_once()
 
@@ -539,6 +545,10 @@ class TestHmdaRouting:
 
         mock_compliance_session = AsyncMock()
         mock_compliance_session.add = MagicMock()
+        # _upsert_demographics does a SELECT -- no existing row
+        upsert_result = MagicMock()
+        upsert_result.scalar_one_or_none.return_value = None
+        mock_compliance_session.execute = AsyncMock(return_value=upsert_result)
 
         with patch("src.services.compliance.hmda.ComplianceSessionLocal") as mock_cls:
             mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_compliance_session)
@@ -556,6 +566,72 @@ class TestHmdaRouting:
         assert event_data["excluded_fields"][0]["field_name"] == "race"
         assert event_data["detection_method"] == "keyword_match"
         assert event_data["routed_to"] == "hmda.demographics"
+        assert "borrower_id" in event_data
+        assert "conflicts" in event_data
+
+    @pytest.mark.asyncio
+    async def test_extraction_passes_null_borrower_id(self):
+        """borrower_id=None from Document flows as None to route_extraction_demographics."""
+        from src.services.compliance.hmda import route_extraction_demographics
+
+        demographic_extractions = [
+            {"field_name": "race", "field_value": "Asian"},
+        ]
+
+        mock_compliance_session = AsyncMock()
+        mock_compliance_session.add = MagicMock()
+        upsert_result = MagicMock()
+        upsert_result.scalar_one_or_none.return_value = None
+        mock_compliance_session.execute = AsyncMock(return_value=upsert_result)
+
+        with patch("src.services.compliance.hmda.ComplianceSessionLocal") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_compliance_session)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await route_extraction_demographics(1, 101, demographic_extractions, borrower_id=None)
+
+        # HmdaDemographic should have borrower_id=None
+        hmda_call = mock_compliance_session.add.call_args_list[0]
+        hmda_obj = hmda_call[0][0]
+        assert hmda_obj.borrower_id is None
+
+        # Audit event also records borrower_id=None
+        audit_call = mock_compliance_session.add.call_args_list[1]
+        audit_obj = audit_call[0][0]
+        event_data = json.loads(audit_obj.event_data)
+        assert event_data["borrower_id"] is None
+
+    @pytest.mark.asyncio
+    async def test_extraction_passes_borrower_id(self):
+        """borrower_id from Document flows to route_extraction_demographics."""
+        from src.services.compliance.hmda import route_extraction_demographics
+
+        demographic_extractions = [
+            {"field_name": "race", "field_value": "Asian"},
+        ]
+
+        mock_compliance_session = AsyncMock()
+        mock_compliance_session.add = MagicMock()
+        upsert_result = MagicMock()
+        upsert_result.scalar_one_or_none.return_value = None
+        mock_compliance_session.execute = AsyncMock(return_value=upsert_result)
+
+        with patch("src.services.compliance.hmda.ComplianceSessionLocal") as mock_cls:
+            mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_compliance_session)
+            mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await route_extraction_demographics(1, 101, demographic_extractions, borrower_id=42)
+
+        # Check HmdaDemographic has borrower_id
+        hmda_call = mock_compliance_session.add.call_args_list[0]
+        hmda_obj = hmda_call[0][0]
+        assert hmda_obj.borrower_id == 42
+
+        # Audit event also includes borrower_id
+        audit_call = mock_compliance_session.add.call_args_list[1]
+        audit_obj = audit_call[0][0]
+        event_data = json.loads(audit_obj.event_data)
+        assert event_data["borrower_id"] == 42
 
 
 # ---------------------------------------------------------------------------

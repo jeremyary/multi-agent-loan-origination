@@ -11,6 +11,7 @@ import logging
 
 from db import (
     Application,
+    ApplicationBorrower,
     ApplicationFinancials,
     AuditEvent,
     ComplianceSessionLocal,
@@ -18,7 +19,7 @@ from db import (
     HmdaLoanData,
 )
 from db.database import SessionLocal
-from sqlalchemy import select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...schemas.auth import UserContext
@@ -26,11 +27,109 @@ from ...schemas.hmda import HmdaCollectionRequest
 
 logger = logging.getLogger(__name__)
 
+# Higher value = higher precedence. self_reported always wins over document_extraction.
+_METHOD_PRECEDENCE = {"self_reported": 2, "document_extraction": 1}
+
+_DEMOGRAPHIC_FIELDS = ("race", "ethnicity", "sex", "age")
+
+
+async def _upsert_demographics(
+    compliance_session: AsyncSession,
+    application_id: int,
+    borrower_id: int | None,
+    fields: dict,
+    collection_method: str,
+) -> tuple[HmdaDemographic, list[dict]]:
+    """Upsert a demographics row for (application_id, borrower_id).
+
+    If no existing row, inserts a new one. If existing row found, compares
+    each field and applies precedence rules:
+    - Incoming is None -> skip (don't overwrite with nothing)
+    - Existing is None -> fill in (no conflict)
+    - Values match -> skip
+    - Values differ -> conflict: higher-precedence method wins
+
+    Returns:
+        (demographic_record, conflicts_list)
+    """
+    # Query existing row by (application_id, borrower_id)
+    stmt = select(HmdaDemographic).where(
+        and_(
+            HmdaDemographic.application_id == application_id,
+            HmdaDemographic.borrower_id == borrower_id
+            if borrower_id is not None
+            else HmdaDemographic.borrower_id.is_(None),
+        )
+    )
+    result = await compliance_session.execute(stmt)
+    existing = result.scalar_one_or_none()
+
+    if existing is None:
+        # No existing row -- simple INSERT
+        record = HmdaDemographic(
+            application_id=application_id,
+            borrower_id=borrower_id,
+            collection_method=collection_method,
+            **{k: v for k, v in fields.items() if k in _DEMOGRAPHIC_FIELDS},
+        )
+        compliance_session.add(record)
+        return record, []
+
+    # Existing row -- compare fields and apply precedence
+    conflicts = []
+    incoming_prec = _METHOD_PRECEDENCE.get(collection_method, 0)
+    existing_prec = _METHOD_PRECEDENCE.get(existing.collection_method, 0)
+
+    for field_name in _DEMOGRAPHIC_FIELDS:
+        incoming_val = fields.get(field_name)
+        if incoming_val is None:
+            continue
+
+        existing_val = getattr(existing, field_name, None)
+        if existing_val is None:
+            # Fill gap -- no conflict
+            setattr(existing, field_name, incoming_val)
+            continue
+
+        if existing_val == incoming_val:
+            continue
+
+        # Values differ -- conflict
+        if incoming_prec >= existing_prec:
+            setattr(existing, field_name, incoming_val)
+            conflicts.append(
+                {
+                    "field": field_name,
+                    "old_value": existing_val,
+                    "new_value": incoming_val,
+                    "resolution": "overwritten",
+                    "reason": f"{collection_method} >= {existing.collection_method}",
+                }
+            )
+        else:
+            conflicts.append(
+                {
+                    "field": field_name,
+                    "old_value": existing_val,
+                    "new_value": incoming_val,
+                    "resolution": "kept_existing",
+                    "reason": f"{existing.collection_method} > {collection_method}",
+                }
+            )
+
+    # Update collection_method if incoming has higher precedence
+    if incoming_prec > existing_prec:
+        existing.collection_method = collection_method
+
+    return existing, conflicts
+
 
 async def route_extraction_demographics(
     document_id: int,
     application_id: int,
     demographic_extractions: list[dict],
+    *,
+    borrower_id: int | None = None,
 ) -> None:
     """Route demographic data captured during document extraction to the HMDA schema.
 
@@ -41,6 +140,7 @@ async def route_extraction_demographics(
         document_id: Source document ID.
         application_id: Associated application ID.
         demographic_extractions: List of dicts with field_name/field_value keys.
+        borrower_id: Optional borrower ID from the document.
     """
     async with ComplianceSessionLocal() as compliance_session:
         try:
@@ -58,24 +158,28 @@ async def route_extraction_demographics(
                 elif fname in ("age", "age_group"):
                     field_map["age"] = fvalue
 
+            conflicts = []
             if field_map:
-                hmda_record = HmdaDemographic(
-                    application_id=application_id,
-                    collection_method="document_extraction",
-                    **field_map,
+                _, conflicts = await _upsert_demographics(
+                    compliance_session,
+                    application_id,
+                    borrower_id,
+                    field_map,
+                    "document_extraction",
                 )
-                compliance_session.add(hmda_record)
 
             # Log audit event for the exclusion
             event_data = json.dumps(
                 {
                     "document_id": document_id,
+                    "borrower_id": borrower_id,
                     "excluded_fields": [
                         {"field_name": e.get("field_name"), "field_value": e.get("field_value")}
                         for e in demographic_extractions
                     ],
                     "detection_method": "keyword_match",
                     "routed_to": "hmda.demographics",
+                    "conflicts": conflicts,
                 }
             )
             audit = AuditEvent(
@@ -96,7 +200,7 @@ async def collect_demographics(
     compliance_session: AsyncSession,
     user: UserContext,
     request: HmdaCollectionRequest,
-) -> HmdaDemographic:
+) -> tuple[HmdaDemographic, list[dict]]:
     """Collect HMDA demographic data for an application.
 
     Args:
@@ -106,7 +210,7 @@ async def collect_demographics(
         request: HMDA collection request data.
 
     Returns:
-        The created HmdaDemographic record.
+        Tuple of (HmdaDemographic record, conflicts list).
 
     Raises:
         ValueError: If the application_id does not exist.
@@ -118,16 +222,30 @@ async def collect_demographics(
     if result.scalar_one_or_none() is None:
         raise ValueError(f"Application {request.application_id} not found")
 
-    # Create demographic record via compliance session (hmda schema)
-    demographic = HmdaDemographic(
-        application_id=request.application_id,
-        race=request.race,
-        ethnicity=request.ethnicity,
-        sex=request.sex,
-        age=request.age,
-        collection_method=request.race_collected_method,
+    # Resolve borrower_id: from request or primary borrower via junction table
+    borrower_id = request.borrower_id
+    if borrower_id is None:
+        primary_stmt = select(ApplicationBorrower.borrower_id).where(
+            ApplicationBorrower.application_id == request.application_id,
+            ApplicationBorrower.is_primary.is_(True),
+        )
+        primary_result = await lending_session.execute(primary_stmt)
+        borrower_id = primary_result.scalar_one_or_none()
+
+    # Upsert demographic record via compliance session (hmda schema)
+    fields = {
+        "race": request.race,
+        "ethnicity": request.ethnicity,
+        "sex": request.sex,
+        "age": request.age,
+    }
+    demographic, conflicts = await _upsert_demographics(
+        compliance_session,
+        request.application_id,
+        borrower_id,
+        fields,
+        request.race_collected_method,
     )
-    compliance_session.add(demographic)
 
     # Write audit event via compliance session (audit_events is accessible)
     audit = AuditEvent(
@@ -137,9 +255,11 @@ async def collect_demographics(
         application_id=request.application_id,
         event_data=json.dumps(
             {
+                "borrower_id": borrower_id,
                 "race_method": request.race_collected_method,
                 "ethnicity_method": request.ethnicity_collected_method,
                 "sex_method": request.sex_collected_method,
+                "conflicts": conflicts,
             }
         ),
     )
@@ -148,7 +268,7 @@ async def collect_demographics(
     await compliance_session.commit()
     await compliance_session.refresh(demographic)
 
-    return demographic
+    return demographic, conflicts
 
 
 async def snapshot_loan_data(application_id: int) -> None:

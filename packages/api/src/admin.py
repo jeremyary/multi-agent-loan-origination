@@ -28,8 +28,13 @@ engine = create_engine(_sync_url, echo=False)
 
 
 class BorrowerAdmin(ModelView, model=Borrower):
-    column_list = [Borrower.id, Borrower.first_name, Borrower.last_name, Borrower.email,
-                   Borrower.created_at]
+    column_list = [
+        Borrower.id,
+        Borrower.first_name,
+        Borrower.last_name,
+        Borrower.email,
+        Borrower.created_at,
+    ]
     column_searchable_list = [Borrower.first_name, Borrower.last_name, Borrower.email]
     column_sortable_list = [Borrower.id, Borrower.last_name, Borrower.created_at]
     column_default_sort = [(Borrower.created_at, True)]
@@ -39,9 +44,14 @@ class BorrowerAdmin(ModelView, model=Borrower):
 
 
 class ApplicationAdmin(ModelView, model=Application):
-    column_list = [Application.id, Application.borrower_id, Application.stage,
-                   Application.loan_type, Application.loan_amount, Application.assigned_to,
-                   Application.created_at]
+    column_list = [
+        Application.id,
+        Application.stage,
+        Application.loan_type,
+        Application.loan_amount,
+        Application.assigned_to,
+        Application.created_at,
+    ]
     column_searchable_list = [Application.property_address, Application.assigned_to]
     column_sortable_list = [Application.id, Application.stage, Application.created_at]
     column_default_sort = [(Application.created_at, True)]
@@ -51,17 +61,27 @@ class ApplicationAdmin(ModelView, model=Application):
 
 
 class ApplicationFinancialsAdmin(ModelView, model=ApplicationFinancials):
-    column_list = [ApplicationFinancials.id, ApplicationFinancials.application_id,
-                   ApplicationFinancials.credit_score, ApplicationFinancials.dti_ratio,
-                   ApplicationFinancials.gross_monthly_income]
+    column_list = [
+        ApplicationFinancials.id,
+        ApplicationFinancials.application_id,
+        ApplicationFinancials.credit_score,
+        ApplicationFinancials.dti_ratio,
+        ApplicationFinancials.gross_monthly_income,
+    ]
     name = "Financials"
     name_plural = "Financials"
     icon = "fa-solid fa-dollar-sign"
 
 
 class RateLockAdmin(ModelView, model=RateLock):
-    column_list = [RateLock.id, RateLock.application_id, RateLock.locked_rate,
-                   RateLock.lock_date, RateLock.expiration_date, RateLock.is_active]
+    column_list = [
+        RateLock.id,
+        RateLock.application_id,
+        RateLock.locked_rate,
+        RateLock.lock_date,
+        RateLock.expiration_date,
+        RateLock.is_active,
+    ]
     column_default_sort = [(RateLock.created_at, True)]
     name = "Rate Lock"
     name_plural = "Rate Locks"
@@ -69,8 +89,14 @@ class RateLockAdmin(ModelView, model=RateLock):
 
 
 class ConditionAdmin(ModelView, model=Condition):
-    column_list = [Condition.id, Condition.application_id, Condition.severity,
-                   Condition.status, Condition.issued_by, Condition.created_at]
+    column_list = [
+        Condition.id,
+        Condition.application_id,
+        Condition.severity,
+        Condition.status,
+        Condition.issued_by,
+        Condition.created_at,
+    ]
     column_sortable_list = [Condition.id, Condition.severity, Condition.status]
     column_default_sort = [(Condition.created_at, True)]
     name = "Condition"
@@ -79,8 +105,13 @@ class ConditionAdmin(ModelView, model=Condition):
 
 
 class DecisionAdmin(ModelView, model=Decision):
-    column_list = [Decision.id, Decision.application_id, Decision.decision_type,
-                   Decision.decided_by, Decision.created_at]
+    column_list = [
+        Decision.id,
+        Decision.application_id,
+        Decision.decision_type,
+        Decision.decided_by,
+        Decision.created_at,
+    ]
     column_default_sort = [(Decision.created_at, True)]
     name = "Decision"
     name_plural = "Decisions"
@@ -88,8 +119,14 @@ class DecisionAdmin(ModelView, model=Decision):
 
 
 class DocumentAdmin(ModelView, model=Document):
-    column_list = [Document.id, Document.application_id, Document.doc_type,
-                   Document.status, Document.uploaded_by, Document.created_at]
+    column_list = [
+        Document.id,
+        Document.application_id,
+        Document.doc_type,
+        Document.status,
+        Document.uploaded_by,
+        Document.created_at,
+    ]
     column_searchable_list = [Document.uploaded_by]
     column_sortable_list = [Document.id, Document.doc_type, Document.status]
     column_default_sort = [(Document.created_at, True)]
@@ -99,16 +136,26 @@ class DocumentAdmin(ModelView, model=Document):
 
 
 class DocumentExtractionAdmin(ModelView, model=DocumentExtraction):
-    column_list = [DocumentExtraction.id, DocumentExtraction.document_id,
-                   DocumentExtraction.field_name, DocumentExtraction.confidence]
+    column_list = [
+        DocumentExtraction.id,
+        DocumentExtraction.document_id,
+        DocumentExtraction.field_name,
+        DocumentExtraction.confidence,
+    ]
     name = "Extraction"
     name_plural = "Extractions"
     icon = "fa-solid fa-search"
 
 
 class AuditEventAdmin(ModelView, model=AuditEvent):
-    column_list = [AuditEvent.id, AuditEvent.timestamp, AuditEvent.event_type,
-                   AuditEvent.user_id, AuditEvent.user_role, AuditEvent.application_id]
+    column_list = [
+        AuditEvent.id,
+        AuditEvent.timestamp,
+        AuditEvent.event_type,
+        AuditEvent.user_id,
+        AuditEvent.user_role,
+        AuditEvent.application_id,
+    ]
     column_sortable_list = [AuditEvent.id, AuditEvent.timestamp, AuditEvent.event_type]
     column_default_sort = [(AuditEvent.timestamp, True)]
     can_create = False
@@ -120,8 +167,7 @@ class AuditEventAdmin(ModelView, model=AuditEvent):
 
 
 class DemoDataManifestAdmin(ModelView, model=DemoDataManifest):
-    column_list = [DemoDataManifest.id, DemoDataManifest.seeded_at,
-                   DemoDataManifest.config_hash]
+    column_list = [DemoDataManifest.id, DemoDataManifest.seeded_at, DemoDataManifest.config_hash]
     can_create = False
     can_edit = False
     can_delete = False
