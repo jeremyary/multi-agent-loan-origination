@@ -16,6 +16,7 @@ from .enums import (
     DecisionType,
     DocumentStatus,
     DocumentType,
+    EmploymentStatus,
     LoanType,
     UserRole,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "LoanType",
     "DocumentType",
     "DocumentStatus",
+    "EmploymentStatus",
     "ConditionSeverity",
     "ConditionStatus",
     "DecisionType",

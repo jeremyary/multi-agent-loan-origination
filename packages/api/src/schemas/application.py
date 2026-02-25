@@ -4,7 +4,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from db.enums import ApplicationStage, LoanType
+from db.enums import ApplicationStage, EmploymentStatus, LoanType
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -39,6 +39,7 @@ class BorrowerSummary(BaseModel):
     email: str
     ssn_encrypted: str | None = None
     dob: datetime | None = None
+    employment_status: EmploymentStatus | None = None
     is_primary: bool = False
 
 

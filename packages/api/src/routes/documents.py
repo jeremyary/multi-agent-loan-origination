@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import CurrentUser, require_roles
+from ..schemas.completeness import CompletenessResponse
 from ..schemas.document import (
     DocumentDetailResponse,
     DocumentListResponse,
@@ -16,6 +17,7 @@ from ..schemas.document import (
     DocumentUploadResponse,
 )
 from ..services import document as doc_service
+from ..services.completeness import check_completeness
 from ..services.document import DocumentAccessDenied, DocumentUploadError
 from ..services.extraction import get_extraction_service
 
@@ -142,6 +144,26 @@ async def get_document(
     if user.data_scope.document_metadata_only:
         return DocumentResponse.model_validate(doc)
     return DocumentDetailResponse.model_validate(doc)
+
+
+@router.get(
+    "/applications/{application_id}/completeness",
+    response_model=CompletenessResponse,
+    dependencies=[Depends(require_roles(*_ALL_AUTHENTICATED))],
+)
+async def get_completeness(
+    application_id: int,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_db),
+) -> CompletenessResponse:
+    """Check document completeness for an application."""
+    result = await check_completeness(session, user, application_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+    return result
 
 
 @router.get(
