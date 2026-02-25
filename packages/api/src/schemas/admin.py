@@ -13,7 +13,7 @@ class AuditEventItem(BaseModel):
     user_id: str | None = None
     user_role: str | None = None
     application_id: int | None = None
-    event_data: str | None = None
+    event_data: dict | str | None = None
 
 
 class AuditEventsResponse(BaseModel):

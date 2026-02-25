@@ -6,7 +6,6 @@ reads and writes MUST go through services/compliance/ -- enforced by the
 lint-hmda-isolation CI check.
 """
 
-import json
 import logging
 
 from db import (
@@ -39,16 +38,20 @@ async def _upsert_demographics(
     application_id: int,
     borrower_id: int | None,
     fields: dict,
-    collection_method: str,
+    methods: dict[str, str],
 ) -> tuple[HmdaDemographic, list[dict]]:
     """Upsert a demographics row for (application_id, borrower_id).
 
     If no existing row, inserts a new one. If existing row found, compares
-    each field and applies precedence rules:
+    each field and applies per-field precedence rules:
     - Incoming is None -> skip (don't overwrite with nothing)
     - Existing is None -> fill in (no conflict)
     - Values match -> skip
-    - Values differ -> conflict: higher-precedence method wins
+    - Values differ -> conflict: higher-precedence method wins (per-field)
+
+    Args:
+        fields: Dict of demographic field values (race, ethnicity, sex, age).
+        methods: Dict of per-field collection methods (race, ethnicity, sex, age).
 
     Returns:
         (demographic_record, conflicts_list)
@@ -66,45 +69,55 @@ async def _upsert_demographics(
     existing = result.scalar_one_or_none()
 
     if existing is None:
-        # No existing row -- simple INSERT
+        # No existing row -- simple INSERT with per-field methods
+        method_kwargs = {
+            f"{k}_method": methods.get(k, "self_reported")
+            for k in _DEMOGRAPHIC_FIELDS
+            if fields.get(k) is not None
+        }
         record = HmdaDemographic(
             application_id=application_id,
             borrower_id=borrower_id,
-            collection_method=collection_method,
             **{k: v for k, v in fields.items() if k in _DEMOGRAPHIC_FIELDS},
+            **method_kwargs,
         )
         compliance_session.add(record)
         return record, []
 
-    # Existing row -- compare fields and apply precedence
+    # Existing row -- compare fields and apply per-field precedence
     conflicts = []
-    incoming_prec = _METHOD_PRECEDENCE.get(collection_method, 0)
-    existing_prec = _METHOD_PRECEDENCE.get(existing.collection_method, 0)
 
     for field_name in _DEMOGRAPHIC_FIELDS:
         incoming_val = fields.get(field_name)
         if incoming_val is None:
             continue
 
+        incoming_method = methods.get(field_name, "self_reported")
+        existing_method = getattr(existing, f"{field_name}_method", None)
+        incoming_prec = _METHOD_PRECEDENCE.get(incoming_method, 0)
+        existing_prec = _METHOD_PRECEDENCE.get(existing_method, 0)
+
         existing_val = getattr(existing, field_name, None)
         if existing_val is None:
             # Fill gap -- no conflict
             setattr(existing, field_name, incoming_val)
+            setattr(existing, f"{field_name}_method", incoming_method)
             continue
 
         if existing_val == incoming_val:
             continue
 
-        # Values differ -- conflict
+        # Values differ -- conflict resolved per-field
         if incoming_prec >= existing_prec:
             setattr(existing, field_name, incoming_val)
+            setattr(existing, f"{field_name}_method", incoming_method)
             conflicts.append(
                 {
                     "field": field_name,
                     "old_value": existing_val,
                     "new_value": incoming_val,
                     "resolution": "overwritten",
-                    "reason": f"{collection_method} >= {existing.collection_method}",
+                    "reason": f"{incoming_method} >= {existing_method}",
                 }
             )
         else:
@@ -114,13 +127,9 @@ async def _upsert_demographics(
                     "old_value": existing_val,
                     "new_value": incoming_val,
                     "resolution": "kept_existing",
-                    "reason": f"{existing.collection_method} > {collection_method}",
+                    "reason": f"{existing_method} > {incoming_method}",
                 }
             )
-
-    # Update collection_method if incoming has higher precedence
-    if incoming_prec > existing_prec:
-        existing.collection_method = collection_method
 
     return existing, conflicts
 
@@ -161,28 +170,28 @@ async def route_extraction_demographics(
 
             conflicts = []
             if field_map:
+                # Build per-field methods dict: all fields from extraction use document_extraction
+                extraction_methods = {k: "document_extraction" for k in field_map}
                 _, conflicts = await _upsert_demographics(
                     compliance_session,
                     application_id,
                     borrower_id,
                     field_map,
-                    "document_extraction",
+                    extraction_methods,
                 )
 
             # Log audit event for the exclusion
-            event_data = json.dumps(
-                {
-                    "document_id": document_id,
-                    "borrower_id": borrower_id,
-                    "excluded_fields": [
-                        {"field_name": e.get("field_name"), "field_value": e.get("field_value")}
-                        for e in demographic_extractions
-                    ],
-                    "detection_method": "keyword_match",
-                    "routed_to": "hmda.demographics",
-                    "conflicts": conflicts,
-                }
-            )
+            event_data = {
+                "document_id": document_id,
+                "borrower_id": borrower_id,
+                "excluded_fields": [
+                    {"field_name": e.get("field_name"), "field_value": e.get("field_value")}
+                    for e in demographic_extractions
+                ],
+                "detection_method": "keyword_match",
+                "routed_to": "hmda.demographics",
+                "conflicts": conflicts,
+            }
             audit = AuditEvent(
                 event_type="hmda_document_extraction",
                 application_id=application_id,
@@ -250,12 +259,18 @@ async def collect_demographics(
         "sex": request.sex,
         "age": request.age,
     }
+    methods = {
+        "race": request.race_collected_method,
+        "ethnicity": request.ethnicity_collected_method,
+        "sex": request.sex_collected_method,
+        "age": request.age_collected_method,
+    }
     demographic, conflicts = await _upsert_demographics(
         compliance_session,
         request.application_id,
         borrower_id,
         fields,
-        request.race_collected_method,
+        methods,
     )
 
     # Write audit event via compliance session (audit_events is accessible)
@@ -264,15 +279,14 @@ async def collect_demographics(
         user_role=user.role.value,
         event_type="hmda_collection",
         application_id=request.application_id,
-        event_data=json.dumps(
-            {
-                "borrower_id": borrower_id,
-                "race_method": request.race_collected_method,
-                "ethnicity_method": request.ethnicity_collected_method,
-                "sex_method": request.sex_collected_method,
-                "conflicts": conflicts,
-            }
-        ),
+        event_data={
+            "borrower_id": borrower_id,
+            "race_method": request.race_collected_method,
+            "ethnicity_method": request.ethnicity_collected_method,
+            "sex_method": request.sex_collected_method,
+            "age_method": request.age_collected_method,
+            "conflicts": conflicts,
+        },
     )
     compliance_session.add(audit)
 
@@ -365,13 +379,11 @@ async def snapshot_loan_data(application_id: int) -> None:
             audit = AuditEvent(
                 event_type="hmda_loan_data_snapshot",
                 application_id=application_id,
-                event_data=json.dumps(
-                    {
-                        "captured_fields": captured_fields,
-                        "null_fields": null_fields,
-                        "is_update": existing is not None,
-                    }
-                ),
+                event_data={
+                    "captured_fields": captured_fields,
+                    "null_fields": null_fields,
+                    "is_update": existing is not None,
+                },
             )
             compliance_session.add(audit)
 

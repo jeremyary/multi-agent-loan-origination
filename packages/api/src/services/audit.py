@@ -7,7 +7,6 @@ is written here, enabling cross-lookup between developer-facing traces
 and compliance-facing audit logs.
 """
 
-import json
 import logging
 
 from db import AuditEvent
@@ -47,7 +46,7 @@ async def write_audit_event(
         user_id=user_id,
         user_role=user_role,
         application_id=application_id,
-        event_data=json.dumps(event_data) if event_data else None,
+        event_data=event_data,
     )
     session.add(audit)
     await session.flush()

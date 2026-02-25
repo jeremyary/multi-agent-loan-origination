@@ -530,7 +530,7 @@ class TestHmdaRouting:
         hmda_call = mock_compliance_session.add.call_args_list[0]
         hmda_obj = hmda_call[0][0]
         assert hmda_obj.application_id == 101
-        assert hmda_obj.collection_method == "document_extraction"
+        assert hmda_obj.race_method == "document_extraction"
         assert hmda_obj.race == "Asian"
         assert hmda_obj.sex == "Male"
         assert hmda_obj.age == "35"
@@ -561,13 +561,13 @@ class TestHmdaRouting:
         audit_obj = audit_call[0][0]
         assert audit_obj.event_type == "hmda_document_extraction"
         assert audit_obj.application_id == 101
-        event_data = json.loads(audit_obj.event_data)
-        assert event_data["document_id"] == 1
-        assert event_data["excluded_fields"][0]["field_name"] == "race"
-        assert event_data["detection_method"] == "keyword_match"
-        assert event_data["routed_to"] == "hmda.demographics"
-        assert "borrower_id" in event_data
-        assert "conflicts" in event_data
+        assert isinstance(audit_obj.event_data, dict)
+        assert audit_obj.event_data["document_id"] == 1
+        assert audit_obj.event_data["excluded_fields"][0]["field_name"] == "race"
+        assert audit_obj.event_data["detection_method"] == "keyword_match"
+        assert audit_obj.event_data["routed_to"] == "hmda.demographics"
+        assert "borrower_id" in audit_obj.event_data
+        assert "conflicts" in audit_obj.event_data
 
     @pytest.mark.asyncio
     async def test_extraction_passes_null_borrower_id(self):
@@ -598,8 +598,8 @@ class TestHmdaRouting:
         # Audit event also records borrower_id=None
         audit_call = mock_compliance_session.add.call_args_list[1]
         audit_obj = audit_call[0][0]
-        event_data = json.loads(audit_obj.event_data)
-        assert event_data["borrower_id"] is None
+        assert isinstance(audit_obj.event_data, dict)
+        assert audit_obj.event_data["borrower_id"] is None
 
     @pytest.mark.asyncio
     async def test_extraction_passes_borrower_id(self):
@@ -630,8 +630,8 @@ class TestHmdaRouting:
         # Audit event also includes borrower_id
         audit_call = mock_compliance_session.add.call_args_list[1]
         audit_obj = audit_call[0][0]
-        event_data = json.loads(audit_obj.event_data)
-        assert event_data["borrower_id"] == 42
+        assert isinstance(audit_obj.event_data, dict)
+        assert audit_obj.event_data["borrower_id"] == 42
 
 
 # ---------------------------------------------------------------------------
