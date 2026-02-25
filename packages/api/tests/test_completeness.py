@@ -129,9 +129,27 @@ def test_get_required_doc_types_unemployed():
     assert DocumentType.TAX_RETURN not in result
 
 
+def test_get_required_doc_types_jumbo_w2():
+    """Jumbo loans require tax returns on top of standard docs for W2 employees."""
+    result = _get_required_doc_types("jumbo", EmploymentStatus.W2_EMPLOYEE.value)
+    assert DocumentType.W2 in result
+    assert DocumentType.TAX_RETURN in result
+    assert DocumentType.BANK_STATEMENT in result
+    assert DocumentType.ID in result
+
+
+def test_get_required_doc_types_usda_w2():
+    """USDA loans require tax returns on top of standard docs for W2 employees."""
+    result = _get_required_doc_types("usda", EmploymentStatus.W2_EMPLOYEE.value)
+    assert DocumentType.W2 in result
+    assert DocumentType.TAX_RETURN in result
+    assert DocumentType.BANK_STATEMENT in result
+    assert DocumentType.ID in result
+
+
 def test_get_required_doc_types_fallback_loan_type():
     """Unknown loan type falls back to _default requirements."""
-    result = _get_required_doc_types("jumbo", EmploymentStatus.W2_EMPLOYEE.value)
+    result = _get_required_doc_types("nonexistent_loan", EmploymentStatus.W2_EMPLOYEE.value)
     assert DocumentType.W2 in result
     assert DocumentType.ID in result
 

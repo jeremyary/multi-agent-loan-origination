@@ -114,6 +114,58 @@ DOCUMENT_REQUIREMENTS: dict[str, dict[str, list[DocumentType]]] = {
             DocumentType.ID,
         ],
     },
+    "jumbo": {
+        "_default": [
+            DocumentType.W2,
+            DocumentType.PAY_STUB,
+            DocumentType.TAX_RETURN,
+            DocumentType.BANK_STATEMENT,
+            DocumentType.ID,
+        ],
+        EmploymentStatus.W2_EMPLOYEE.value: [
+            DocumentType.W2,
+            DocumentType.PAY_STUB,
+            DocumentType.TAX_RETURN,
+            DocumentType.BANK_STATEMENT,
+            DocumentType.ID,
+        ],
+        EmploymentStatus.SELF_EMPLOYED.value: [
+            DocumentType.TAX_RETURN,
+            DocumentType.BANK_STATEMENT,
+            DocumentType.ID,
+        ],
+        EmploymentStatus.RETIRED.value: [
+            DocumentType.TAX_RETURN,
+            DocumentType.BANK_STATEMENT,
+            DocumentType.ID,
+        ],
+    },
+    "usda": {
+        "_default": [
+            DocumentType.W2,
+            DocumentType.PAY_STUB,
+            DocumentType.TAX_RETURN,
+            DocumentType.BANK_STATEMENT,
+            DocumentType.ID,
+        ],
+        EmploymentStatus.W2_EMPLOYEE.value: [
+            DocumentType.W2,
+            DocumentType.PAY_STUB,
+            DocumentType.TAX_RETURN,
+            DocumentType.BANK_STATEMENT,
+            DocumentType.ID,
+        ],
+        EmploymentStatus.SELF_EMPLOYED.value: [
+            DocumentType.TAX_RETURN,
+            DocumentType.BANK_STATEMENT,
+            DocumentType.ID,
+        ],
+        EmploymentStatus.RETIRED.value: [
+            DocumentType.TAX_RETURN,
+            DocumentType.BANK_STATEMENT,
+            DocumentType.ID,
+        ],
+    },
 }
 
 # Statuses that count as "not provided" for completeness purposes
