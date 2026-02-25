@@ -28,6 +28,19 @@ class DocumentDetailResponse(DocumentResponse):
     file_path: str | None = None
 
 
+class DocumentUploadResponse(BaseModel):
+    """Response after uploading a document."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    application_id: int
+    doc_type: DocumentType
+    status: DocumentStatus
+    file_path: str | None = None
+    created_at: datetime
+
+
 class DocumentListResponse(BaseModel):
     """Paginated list of documents."""
 

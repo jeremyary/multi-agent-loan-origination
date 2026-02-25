@@ -19,9 +19,11 @@ async def lifespan(_app: FastAPI):
     log_safety_status()
     log_observability_status()
     from .services.conversation import get_conversation_service
+    from .services.storage import init_storage_service
 
     conversation_service = get_conversation_service()
     await conversation_service.initialize(settings.DATABASE_URL)
+    init_storage_service(settings)
     yield
     await conversation_service.shutdown()
 

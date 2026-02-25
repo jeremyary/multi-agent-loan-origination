@@ -6,7 +6,7 @@ ensures dependency_overrides are cleared after every test so persona
 configuration from one test never leaks into the next.
 """
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -39,3 +39,31 @@ def make_client(app):
         return TestClient(app)
 
     return _make
+
+
+@pytest.fixture
+def make_upload_client(app):
+    """Factory fixture: configure persona + mock DB + mock storage for uploads.
+
+    Returns (TestClient, mock_storage). The storage patch is automatically
+    stopped after each test via _clean_overrides.
+    """
+    patchers = []
+
+    def _make(user: UserContext, session: AsyncMock) -> tuple[TestClient, MagicMock]:
+        configure_app_for_persona(app, user, session)
+
+        mock_storage = MagicMock()
+        mock_storage.build_object_key.return_value = "101/501/test.pdf"
+        mock_storage.upload_file = AsyncMock(return_value="101/501/test.pdf")
+
+        patcher = patch("src.services.document.get_storage_service", return_value=mock_storage)
+        patcher.start()
+        patchers.append(patcher)
+
+        return TestClient(app), mock_storage
+
+    yield _make
+
+    for p in patchers:
+        p.stop()

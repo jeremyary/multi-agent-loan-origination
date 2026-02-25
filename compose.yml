@@ -3,10 +3,10 @@
 # Summit Cap Financial -- local development stack
 #
 # Profiles:
-#   (none)          postgres + api + ui
+#   (none)          postgres + minio + api + ui
 #   auth            + keycloak
 #   ai              + llamastack
-#   observability   + redis, clickhouse, minio, langfuse-web, langfuse-worker
+#   observability   + redis, clickhouse, langfuse-web, langfuse-worker
 #   full            everything
 #
 # Usage:
@@ -83,6 +83,8 @@ services:
     depends_on:
       summit-cap-db:
         condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@summit-cap-db:5432/summit-cap
       COMPLIANCE_DATABASE_URL: postgresql+asyncpg://compliance_app:compliance_pass@summit-cap-db:5432/summit-cap
@@ -93,6 +95,10 @@ services:
       LLM_MODEL_FAST: "${LLM_MODEL_FAST:-}"
       LLM_MODEL_CAPABLE: "${LLM_MODEL_CAPABLE:-}"
       SAFETY_MODEL: "${SAFETY_MODEL:-}"
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minio
+      S3_SECRET_KEY: miniosecret
+      S3_BUCKET: documents
       LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-sk-lf-dev-secret}"
       LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-pk-lf-dev-public}"
       LANGFUSE_HOST: "${LANGFUSE_HOST:-http://langfuse-web:3000}"
@@ -205,11 +211,10 @@ services:
 
   minio:
     image: docker.io/minio/minio:latest
-    profiles: ["observability", "full"]
     labels:
-      com.quickstart.package: observability
+      com.quickstart.package: storage
     entrypoint: sh
-    command: -c 'mkdir -p /data/langfuse && exec minio server --address ":9000" --console-address ":9001" /data'
+    command: -c 'mkdir -p /data/langfuse /data/documents && exec minio server --address ":9000" --console-address ":9001" /data'
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret

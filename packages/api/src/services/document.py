@@ -9,18 +9,31 @@ provides Layer 4.
 
 import logging
 
-from db import Document
+from db import Application, Document
+from db.enums import DocumentStatus, DocumentType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..core.config import settings
 from ..schemas.auth import UserContext
 from ..services.scope import apply_data_scope
+from ..services.storage import get_storage_service
 
 logger = logging.getLogger(__name__)
+
+ALLOWED_CONTENT_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+}
 
 
 class DocumentAccessDenied(Exception):
     """Raised when a role is not allowed to access document content."""
+
+
+class DocumentUploadError(Exception):
+    """Raised when a document upload fails validation."""
 
 
 async def list_documents(
@@ -86,3 +99,67 @@ def get_document_content(user: UserContext, document: Document) -> str | None:
     if user.data_scope.document_metadata_only:
         raise DocumentAccessDenied("Document content access denied (metadata-only scope)")
     return document.file_path
+
+
+async def upload_document(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    doc_type: DocumentType,
+    filename: str,
+    content_type: str,
+    file_data: bytes,
+) -> Document:
+    """Upload a document to S3 and create the DB record.
+
+    1. Verify user has access to the application (via data scope query)
+    2. Validate file size and content type
+    3. Create Document row (status=UPLOADED)
+    4. Upload file to S3 using document.id in the object key
+    5. Update file_path and status=PROCESSING
+    6. Return Document
+    """
+    # Validate content type
+    if content_type not in ALLOWED_CONTENT_TYPES:
+        raise DocumentUploadError(
+            f"Unsupported content type: {content_type}. "
+            f"Allowed: {', '.join(sorted(ALLOWED_CONTENT_TYPES))}"
+        )
+
+    # Validate file size
+    max_bytes = settings.UPLOAD_MAX_SIZE_MB * 1024 * 1024
+    if len(file_data) > max_bytes:
+        raise DocumentUploadError(
+            f"File size {len(file_data)} exceeds maximum of {settings.UPLOAD_MAX_SIZE_MB}MB"
+        )
+
+    # Verify the application exists and is accessible to this user
+    app_stmt = select(Application).where(Application.id == application_id)
+    app_stmt = apply_data_scope(app_stmt, user.data_scope, user)
+    result = await session.execute(app_stmt)
+    application = result.unique().scalar_one_or_none()
+    if application is None:
+        return None
+
+    # Create document row with initial status
+    doc = Document(
+        application_id=application_id,
+        doc_type=doc_type,
+        status=DocumentStatus.UPLOADED,
+        uploaded_by=user.user_id,
+    )
+    session.add(doc)
+    await session.flush()  # Assign doc.id
+
+    # Upload to S3
+    storage = get_storage_service()
+    object_key = storage.build_object_key(application_id, doc.id, filename)
+    await storage.upload_file(file_data, object_key, content_type)
+
+    # Update document with storage path and advance status
+    doc.file_path = object_key
+    doc.status = DocumentStatus.PROCESSING
+    await session.commit()
+    await session.refresh(doc)
+
+    return doc

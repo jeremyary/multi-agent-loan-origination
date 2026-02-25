@@ -53,6 +53,9 @@ class DocumentType(str, enum.Enum):
 
 class DocumentStatus(str, enum.Enum):
     UPLOADED = "uploaded"
+    PROCESSING = "processing"
+    PROCESSING_COMPLETE = "processing_complete"
+    PROCESSING_FAILED = "processing_failed"
     PENDING_REVIEW = "pending_review"
     ACCEPTED = "accepted"
     FLAGGED_FOR_RESUBMISSION = "flagged_for_resubmission"
