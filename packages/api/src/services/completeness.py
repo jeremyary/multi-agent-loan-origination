@@ -193,6 +193,9 @@ async def check_completeness(
         Document.application_id == application_id,
         Document.status.notin_([s.value for s in _EXCLUDED_STATUSES]),
     )
+    doc_stmt = apply_data_scope(
+        doc_stmt, user.data_scope, user, join_to_application=Document.application
+    )
     doc_result = await session.execute(doc_stmt)
     documents = doc_result.scalars().all()
 
