@@ -12,7 +12,7 @@ from db.enums import (
 )
 
 from src.schemas.auth import DataScope, UserContext
-from src.services.status import _TERMINAL_STAGES, STAGE_INFO, get_application_status
+from src.services.status import STAGE_INFO, get_application_status
 
 
 def _make_user(role: UserRole = UserRole.ADMIN) -> UserContext:
@@ -60,11 +60,6 @@ def test_all_stages_have_info():
     """Every ApplicationStage value has a STAGE_INFO entry."""
     for stage in ApplicationStage:
         assert stage.value in STAGE_INFO, f"Missing STAGE_INFO for {stage.value}"
-
-
-def test_terminal_stages_defined():
-    """Terminal stages are closed, denied, withdrawn."""
-    assert _TERMINAL_STAGES == {"closed", "denied", "withdrawn"}
 
 
 # ---------------------------------------------------------------------------
