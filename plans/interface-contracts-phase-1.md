@@ -51,16 +51,18 @@ class UserContext(BaseModel):
     """Injected by RBAC middleware into every authenticated request.
     Frozen -- middleware returns new instances via model_copy()."""
     model_config = ConfigDict(frozen=True)
-    user_id: UUID
+    user_id: str  # Keycloak sub claim
     role: UserRole
     email: str
     name: str
     data_scope: DataScope = Field(default_factory=DataScope)
 
 class HealthResponse(BaseModel):
-    status: str  # "healthy" | "degraded"
+    name: str
+    status: str
+    message: str
     version: str
-    services: dict[str, str]  # service -> "up" | "down"
+    start_time: str | None = None
 
 class ErrorResponse(BaseModel):
     error: str
@@ -91,17 +93,18 @@ class AffordabilityResponse(BaseModel):
 # hmda.py
 
 class HmdaCollectionRequest(BaseModel):
-    application_id: UUID
+    application_id: int
     race: str | None = None
     ethnicity: str | None = None
     sex: str | None = None
     race_collected_method: str = "self_reported"
     ethnicity_collected_method: str = "self_reported"
     sex_collected_method: str = "self_reported"
+    age_collected_method: str = "self_reported"
 
 class HmdaCollectionResponse(BaseModel):
-    id: UUID
-    application_id: UUID
+    id: int
+    application_id: int
     collected_at: datetime
     status: str = "collected"
 ```
@@ -132,9 +135,11 @@ interface AuthUser {
 }
 
 interface HealthResponse {
-    status: "healthy" | "degraded";
+    name: string;
+    status: string;
+    message: string;
     version: string;
-    services: Record<string, "up" | "down">;
+    start_time: string | null;
 }
 
 interface ErrorResponse {
@@ -177,9 +182,10 @@ interface AffordabilityResponse {
 
 | Table | Key Columns | Used By |
 |-------|-------------|---------|
-| `applications` | id, borrower_id, stage (ApplicationStage enum), loan_type, property_address, loan_amount, property_value, assigned_to | Most services |
+| `applications` | id, stage (ApplicationStage enum), loan_type, property_address, loan_amount, property_value, assigned_to | Most services |
 | `borrowers` | id, keycloak_user_id, first_name, last_name, email, ssn_encrypted, dob | Auth, application services |
-| `application_financials` | id, application_id, gross_monthly_income, monthly_debts, total_assets, credit_score, dti_ratio | Underwriting, LO pipeline |
+| `application_borrowers` | id, application_id, borrower_id, is_primary | Junction table linking applications to borrowers (supports co-borrowers) |
+| `application_financials` | id, application_id, borrower_id, gross_monthly_income, monthly_debts, total_assets, credit_score, dti_ratio | Underwriting, LO pipeline |
 | `rate_locks` | id, application_id, locked_rate, lock_date, expiration_date, is_active | LO pipeline |
 | `conditions` | id, application_id, description, severity, status, issued_by, cleared_by | Underwriting |
 | `decisions` | id, application_id, decision_type, rationale, ai_recommendation, decided_by | Underwriting, audit |
@@ -193,7 +199,7 @@ interface AffordabilityResponse {
 
 | Table | Key Columns |
 |-------|-------------|
-| `hmda.demographics` | id, application_id, race, ethnicity, sex, collected_at, collection_method |
+| `hmda.demographics` | id, application_id, borrower_id, race, ethnicity, sex, age, race_method, ethnicity_method, sex_method, age_method, collected_at |
 
 ### Access Rules
 
@@ -275,12 +281,12 @@ routing:
 
 models:
   fast_small:
-    provider: llamastack
+    provider: openai_compatible
     model_name: "meta-llama/Llama-3.2-3B-Instruct"
     description: "Fast model for simple factual queries"
     endpoint: "${LLAMASTACK_URL:-http://llamastack:8321}/v1"
   capable_large:
-    provider: llamastack
+    provider: openai_compatible
     model_name: "meta-llama/Llama-3.1-70B-Instruct"
     description: "Capable model for complex reasoning and tool use"
     endpoint: "${LLAMASTACK_URL:-http://llamastack:8321}/v1"
@@ -324,12 +330,13 @@ Required fields: `agent.name`, `agent.persona`, `system_prompt`. Hot-reloaded sa
 | Service | Image | Port | Health Check | Profile |
 |---------|-------|------|-------------|---------|
 | postgres | pgvector/pgvector:pg16 | 5432 | `pg_isready` | (always) |
-| keycloak | quay.io/keycloak/keycloak:24.0 | 8080 | `/health/live` | auth, full |
+| keycloak | quay.io/keycloak/keycloak:26.0 | 8080 | `/health/live` | auth, full |
 | redis | redis:7-alpine | 6379 | `redis-cli ping` | observability, full |
 | clickhouse | clickhouse/clickhouse-server:24 | 8123 | `SELECT 1` | observability, full |
-| langfuse-web | langfuse/langfuse:2 | 3001 | `/api/public/health` | observability, full |
-| langfuse-worker | langfuse/langfuse-worker:2 | -- | -- | observability, full |
-| llamastack | llamastack/llamastack:latest | 8321 | `/v1/models` | ai, full |
+| minio | minio/minio:latest | 9000/9001 | `/minio/health/live` | (always) |
+| langfuse-web | langfuse/langfuse:3 | 3001 | `/api/public/health` | observability, full |
+| langfuse-worker | langfuse/langfuse-worker:3 | -- | -- | observability, full |
+| llamastack | llamastack/distribution-starter:latest | 8321 | `/v1/models` | ai, full |
 | api | (built from packages/api/Dockerfile) | 8000 | `/health` | (always) |
 | ui | (built from packages/ui/Dockerfile) | 3000 | -- | (always) |
 
@@ -337,7 +344,7 @@ Required fields: `agent.name`, `agent.persona`, `system_prompt`. Hot-reloaded sa
 
 | Profile | What starts |
 |---------|-------------|
-| (none) | postgres, api, ui |
+| (none) | postgres, minio, api, ui |
 | auth | + keycloak |
 | ai | + llamastack |
 | observability | + redis, clickhouse, langfuse-web, langfuse-worker |
