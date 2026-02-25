@@ -267,6 +267,115 @@ def test_collect_hmda_resolves_primary_borrower():
 
 
 # ---------------------------------------------------------------------------
+# Ownership & borrower validation tests (D9, D19)
+# ---------------------------------------------------------------------------
+
+
+def test_hmda_ownership_blocks_other_borrower():
+    """Borrower A cannot submit HMDA data for Borrower B's application."""
+    # Application existence check returns None (scoped query filters it out)
+    _, client, _, _ = _mock_sessions(application_exists=False)
+
+    response = client.post(
+        "/api/hmda/collect",
+        json={
+            "application_id": 1,
+            "race": "White",
+        },
+    )
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+
+
+def test_hmda_admin_bypasses_ownership():
+    """Admin user can submit HMDA data for any application."""
+    admin = UserContext(
+        user_id="admin-1",
+        role=UserRole.ADMIN,
+        email="admin@summit-cap.local",
+        name="Admin",
+        data_scope=DataScope(full_pipeline=True),
+    )
+    app = _make_app(user=admin)
+    _, client, lending_session, compliance_session = _mock_sessions(application_exists=True)
+
+    # Override auth to use admin user
+    async def fake_admin():
+        return admin
+
+    app.dependency_overrides[get_current_user] = fake_admin
+
+    async def fake_lending_db():
+        yield lending_session
+
+    async def fake_compliance_db():
+        yield compliance_session
+
+    app.dependency_overrides[get_db] = fake_lending_db
+    app.dependency_overrides[get_compliance_db] = fake_compliance_db
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/hmda/collect",
+        json={
+            "application_id": 1,
+            "race": "Asian",
+        },
+    )
+
+    assert response.status_code == 201
+
+
+def test_hmda_invalid_borrower_id_rejected():
+    """Providing a borrower_id not linked to the application returns 404."""
+    app = _make_app()
+
+    lending_session = AsyncMock()
+    call_count = [0]
+
+    async def mock_execute(stmt):
+        call_count[0] += 1
+        mock_result = MagicMock()
+        if call_count[0] == 1:
+            # First call: scoped application check -- app exists
+            mock_result.scalar_one_or_none.return_value = 1
+        elif call_count[0] == 2:
+            # Second call: borrower_id junction validation -- not linked
+            mock_result.scalar_one_or_none.return_value = None
+        else:
+            mock_result.scalar_one_or_none.return_value = None
+        return mock_result
+
+    lending_session.execute = AsyncMock(side_effect=mock_execute)
+
+    compliance_session = AsyncMock()
+    compliance_session.add = MagicMock()
+
+    async def fake_lending_db():
+        yield lending_session
+
+    async def fake_compliance_db():
+        yield compliance_session
+
+    app.dependency_overrides[get_db] = fake_lending_db
+    app.dependency_overrides[get_compliance_db] = fake_compliance_db
+
+    client = TestClient(app)
+    response = client.post(
+        "/api/hmda/collect",
+        json={
+            "application_id": 1,
+            "borrower_id": 999,
+            "race": "White",
+        },
+    )
+
+    assert response.status_code == 404
+    assert "not linked" in response.json()["detail"].lower()
+
+
+# ---------------------------------------------------------------------------
 # Upsert logic tests (unit)
 # ---------------------------------------------------------------------------
 

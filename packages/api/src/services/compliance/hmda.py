@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...schemas.auth import UserContext
 from ...schemas.hmda import HmdaCollectionRequest
+from ...services.scope import apply_data_scope
 
 logger = logging.getLogger(__name__)
 
@@ -215,15 +216,25 @@ async def collect_demographics(
     Raises:
         ValueError: If the application_id does not exist.
     """
-    # Validate application exists via lending session (public schema)
-    result = await lending_session.execute(
-        select(Application.id).where(Application.id == request.application_id)
-    )
+    # Validate application exists and caller has access (D9: scoped ownership check)
+    scope_stmt = select(Application.id).where(Application.id == request.application_id)
+    scope_stmt = apply_data_scope(scope_stmt, user.data_scope, user)
+    result = await lending_session.execute(scope_stmt)
     if result.scalar_one_or_none() is None:
         raise ValueError(f"Application {request.application_id} not found")
 
-    # Resolve borrower_id: from request or primary borrower via junction table
+    # Validate borrower_id belongs to application when explicitly provided (D19)
     borrower_id = request.borrower_id
+    if borrower_id is not None:
+        valid_stmt = select(ApplicationBorrower.borrower_id).where(
+            ApplicationBorrower.application_id == request.application_id,
+            ApplicationBorrower.borrower_id == borrower_id,
+        )
+        valid_result = await lending_session.execute(valid_stmt)
+        if valid_result.scalar_one_or_none() is None:
+            raise ValueError(
+                f"Borrower {borrower_id} is not linked to application {request.application_id}"
+            )
     if borrower_id is None:
         primary_stmt = select(ApplicationBorrower.borrower_id).where(
             ApplicationBorrower.application_id == request.application_id,

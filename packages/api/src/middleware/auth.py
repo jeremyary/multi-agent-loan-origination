@@ -102,7 +102,8 @@ def _decode_token(token: str) -> TokenPayload:
         signing_key.key,
         algorithms=["RS256"],
         issuer=issuer,
-        options={"verify_aud": False},
+        audience=settings.KEYCLOAK_CLIENT_ID,
+        options={"verify_aud": True},
     )
     return TokenPayload(**payload)
 

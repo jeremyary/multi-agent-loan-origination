@@ -49,6 +49,7 @@ class Settings(BaseSettings):
     )
     KEYCLOAK_URL: str = "http://localhost:8080"
     KEYCLOAK_REALM: str = "summit-cap"
+    KEYCLOAK_CLIENT_ID: str = "summit-cap-ui"
     JWKS_CACHE_TTL: int = Field(
         default=300,
         description="JWKS cache lifetime in seconds (default 5 minutes).",
