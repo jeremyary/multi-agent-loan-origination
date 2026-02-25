@@ -1,8 +1,8 @@
 # This project was developed with assistance from AI tools.
 """Borrower assistant -- LangGraph agent for authenticated borrowers.
 
-Tools: product_info, affordability_calc (same as public assistant for now).
-PR 2 adds application-specific tools (create, update, review).
+Tools: product_info, affordability_calc, document_completeness,
+application_status, regulatory_deadlines.
 """
 
 import logging
@@ -12,6 +12,7 @@ from langchain_openai import ChatOpenAI
 
 from ..inference.config import get_model_config, get_model_tiers
 from .base import build_routed_graph
+from .borrower_tools import application_status, document_completeness, regulatory_deadlines
 from .tools import affordability_calc, product_info
 
 logger = logging.getLogger(__name__)
@@ -20,7 +21,13 @@ logger = logging.getLogger(__name__)
 def build_graph(config: dict[str, Any], checkpointer=None):
     """Build a routed LangGraph graph for the borrower assistant."""
     system_prompt = config.get("system_prompt", "You are a helpful mortgage assistant.")
-    tools = [product_info, affordability_calc]
+    tools = [
+        product_info,
+        affordability_calc,
+        document_completeness,
+        application_status,
+        regulatory_deadlines,
+    ]
 
     tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
 

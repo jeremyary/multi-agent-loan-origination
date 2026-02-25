@@ -1,0 +1,182 @@
+# This project was developed with assistance from AI tools.
+"""LangGraph tools for the borrower assistant agent.
+
+These wrap the completeness and status services so the agent can
+check document requirements, application status, and regulatory
+deadlines during a conversation.  DB-backed tools use InjectedState
+to receive the caller's identity from the graph state.
+"""
+
+from datetime import date, datetime, timedelta
+from typing import Annotated
+
+from db.database import SessionLocal
+from db.enums import UserRole
+from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
+
+from ..middleware.auth import _build_data_scope
+from ..schemas.auth import UserContext
+from ..services.completeness import check_completeness
+from ..services.status import get_application_status
+
+# REQ-CC-17 disclaimer appended to all regulatory deadline responses
+_REGULATORY_DISCLAIMER = (
+    "\n\n*This content is simulated for demonstration purposes "
+    "and does not constitute legal or regulatory advice.*"
+)
+
+
+def _user_context_from_state(state: dict) -> UserContext:
+    """Build a UserContext from the agent's graph state."""
+    user_id = state.get("user_id", "anonymous")
+    role_str = state.get("user_role", "borrower")
+    role = UserRole(role_str)
+    return UserContext(
+        user_id=user_id,
+        role=role,
+        email=f"{user_id}@summit-cap.local",
+        name=user_id,
+        data_scope=_build_data_scope(role, user_id),
+    )
+
+
+@tool
+async def document_completeness(
+    application_id: int,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Check which documents have been uploaded and which are still needed for a loan application.
+
+    Args:
+        application_id: The loan application ID to check.
+    """
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        result = await check_completeness(session, user, application_id)
+
+    if result is None:
+        return "Application not found or you don't have access to it."
+
+    lines = [
+        f"Document completeness for application {application_id}:",
+        f"Status: {'Complete' if result.is_complete else 'Incomplete'} "
+        f"({result.provided_count}/{result.required_count} documents provided)",
+        "",
+    ]
+    for req in result.requirements:
+        status = "Provided" if req.is_provided else "MISSING"
+        line = f"- {req.label}: {status}"
+        if req.quality_flags:
+            line += f" (issues: {', '.join(req.quality_flags)})"
+        lines.append(line)
+
+    missing = [r for r in result.requirements if not r.is_provided]
+    if missing:
+        lines.append("")
+        lines.append("Next step: Upload " + missing[0].label)
+
+    return "\n".join(lines)
+
+
+@tool
+async def application_status(
+    application_id: int,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Get the current status summary for a loan application including stage, document progress, and pending actions.
+
+    Args:
+        application_id: The loan application ID to check.
+    """
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        result = await get_application_status(session, user, application_id)
+
+    if result is None:
+        return "Application not found or you don't have access to it."
+
+    lines = [
+        f"Application {application_id} Status:",
+        f"Stage: {result.stage_info.label}",
+        f"  {result.stage_info.description}",
+        f"  Next step: {result.stage_info.next_step}",
+        f"  Typical timeline: {result.stage_info.typical_timeline}",
+        "",
+        f"Documents: {result.provided_doc_count}/{result.required_doc_count} "
+        f"({'complete' if result.is_document_complete else 'incomplete'})",
+    ]
+
+    if result.open_condition_count > 0:
+        lines.append(f"Open conditions: {result.open_condition_count}")
+
+    if result.pending_actions:
+        lines.append("")
+        lines.append("Pending actions:")
+        for action in result.pending_actions:
+            lines.append(f"- {action.description}")
+
+    return "\n".join(lines)
+
+
+@tool
+def regulatory_deadlines(
+    application_date: str,
+    current_stage: str,
+) -> str:
+    """Look up regulatory deadlines that may apply to a loan application.
+
+    Args:
+        application_date: The date the application was created (YYYY-MM-DD format).
+        current_stage: The current application stage (e.g. 'application', 'processing').
+    """
+    try:
+        app_date = datetime.strptime(application_date, "%Y-%m-%d").date()
+    except ValueError:
+        return "Invalid date format. Please use YYYY-MM-DD." + _REGULATORY_DISCLAIMER
+
+    today = date.today()
+    lines = [f"Regulatory deadlines for application dated {application_date}:"]
+
+    # Pre-application stages don't trigger regulatory clocks
+    pre_app_stages = {"inquiry", "prequalification"}
+    if current_stage in pre_app_stages:
+        lines.append(
+            "No regulatory deadlines apply yet. Deadlines begin when "
+            "a formal application is submitted."
+        )
+        return "\n".join(lines) + _REGULATORY_DISCLAIMER
+
+    # Reg B (ECOA): Lender must notify applicant of action taken within
+    # 30 calendar days of receiving a completed application.
+    reg_b_deadline = app_date + timedelta(days=30)
+    reg_b_remaining = (reg_b_deadline - today).days
+    if reg_b_remaining > 0:
+        lines.append(
+            f"- Reg B (ECOA) 30-day notice: Decision or notice of action required by "
+            f"{reg_b_deadline.isoformat()} ({reg_b_remaining} days remaining)"
+        )
+    else:
+        lines.append(
+            f"- Reg B (ECOA) 30-day notice: Deadline was {reg_b_deadline.isoformat()} "
+            f"({abs(reg_b_remaining)} days ago)"
+        )
+
+    # TRID: Loan Estimate must be delivered within 3 business days
+    # of receiving a completed application.
+    trid_deadline = app_date + timedelta(days=3)
+    trid_remaining = (trid_deadline - today).days
+    if trid_remaining > 0:
+        lines.append(
+            f"- TRID Loan Estimate: Must be delivered by "
+            f"{trid_deadline.isoformat()} ({trid_remaining} days remaining)"
+        )
+    elif trid_remaining == 0:
+        lines.append(f"- TRID Loan Estimate: Due today ({trid_deadline.isoformat()})")
+    else:
+        lines.append(
+            f"- TRID Loan Estimate: Was due by {trid_deadline.isoformat()} "
+            f"({abs(trid_remaining)} days ago)"
+        )
+
+    return "\n".join(lines) + _REGULATORY_DISCLAIMER
