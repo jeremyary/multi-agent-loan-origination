@@ -36,6 +36,7 @@ def make_borrower_sarah() -> MagicMock:
     b.email = "sarah@example.com"
     b.ssn_encrypted = "123-45-6789"
     b.dob = datetime(1990, 3, 15, tzinfo=UTC)
+    b.employment_status = None
     b.created_at = datetime(2026, 1, 1, tzinfo=UTC)
     b.updated_at = datetime(2026, 1, 1, tzinfo=UTC)
     return b
@@ -50,6 +51,7 @@ def make_borrower_michael() -> MagicMock:
     b.email = "michael@example.com"
     b.ssn_encrypted = "987-65-4321"
     b.dob = datetime(1985, 7, 22, tzinfo=UTC)
+    b.employment_status = None
     b.created_at = datetime(2026, 1, 1, tzinfo=UTC)
     b.updated_at = datetime(2026, 1, 1, tzinfo=UTC)
     return b

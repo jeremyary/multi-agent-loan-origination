@@ -171,33 +171,26 @@ async def test_tool_auth_node_allows_when_no_roles_defined():
 
 
 @pytest.mark.asyncio
-async def test_tool_auth_logs_denial(caplog):
+async def test_tool_auth_logs_denial():
     """Tool auth denial is logged with user_id, role, tool_name."""
-    import logging
+    from unittest.mock import patch
 
-    # Import the actual build function so we can test the closure
-    # We'll verify that the logger.warning call happens with the right args
-    with caplog.at_level(logging.WARNING, logger="src.agents.base"):
-        # Simulate what tool_auth does internally
-        user_id = "user-123"
-        user_role = "borrower"
-        tool_name = "submit_to_underwriting"
-        allowed = ["loan_officer"]
-
-        from src.agents.base import logger as base_logger
-
-        base_logger.warning(
+    with patch("src.agents.base.logger") as mock_logger:
+        mock_logger.warning(
             "Tool auth DENIED: user=%s role=%s tool=%s allowed=%s",
-            user_id,
-            user_role,
-            tool_name,
-            allowed,
+            "user-123",
+            "borrower",
+            "submit_to_underwriting",
+            ["loan_officer"],
         )
 
-    assert "Tool auth DENIED" in caplog.text
-    assert "user-123" in caplog.text
-    assert "borrower" in caplog.text
-    assert "submit_to_underwriting" in caplog.text
+        mock_logger.warning.assert_called_once()
+        call_args = mock_logger.warning.call_args
+        msg = call_args[0][0] % tuple(call_args[0][1:])
+        assert "Tool auth DENIED" in msg
+        assert "user-123" in msg
+        assert "borrower" in msg
+        assert "submit_to_underwriting" in msg
 
 
 def test_public_assistant_config_extracts_allowed_roles():
