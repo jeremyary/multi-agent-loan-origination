@@ -17,7 +17,9 @@ from ..schemas.application import (
     ApplicationUpdate,
     BorrowerSummary,
 )
+from ..schemas.status import ApplicationStatusResponse
 from ..services import application as app_service
+from ..services.status import get_application_status
 
 router = APIRouter()
 
@@ -115,6 +117,36 @@ async def get_application(
             **mask_application_pii(item.model_dump(mode="json"))
         )
     return item
+
+
+@router.get(
+    "/{application_id}/status",
+    response_model=ApplicationStatusResponse,
+    dependencies=[
+        Depends(
+            require_roles(
+                UserRole.ADMIN,
+                UserRole.BORROWER,
+                UserRole.LOAN_OFFICER,
+                UserRole.UNDERWRITER,
+                UserRole.CEO,
+            )
+        )
+    ],
+)
+async def get_status(
+    application_id: int,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_db),
+) -> ApplicationStatusResponse:
+    """Get aggregated status summary for an application."""
+    result = await get_application_status(session, user, application_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+    return result
 
 
 @router.post(
