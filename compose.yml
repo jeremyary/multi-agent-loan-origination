@@ -88,7 +88,7 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://user:password@summit-cap-db:5432/summit-cap
       COMPLIANCE_DATABASE_URL: postgresql+asyncpg://compliance_app:compliance_pass@summit-cap-db:5432/summit-cap
-      AUTH_DISABLED: "true"
+      AUTH_DISABLED: "${AUTH_DISABLED:-true}"
       KEYCLOAK_URL: http://keycloak:8080
       LLM_BASE_URL: "${LLM_BASE_URL:-http://host.docker.internal:1234/v1}"
       LLM_API_KEY: "${LLM_API_KEY:-not-needed}"
