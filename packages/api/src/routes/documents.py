@@ -1,6 +1,8 @@
 # This project was developed with assistance from AI tools.
 """Document routes with CEO content restriction (Layer 1)."""
 
+import asyncio
+
 from db import get_db
 from db.enums import DocumentType, UserRole
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
@@ -15,6 +17,7 @@ from ..schemas.document import (
 )
 from ..services import document as doc_service
 from ..services.document import DocumentAccessDenied, DocumentUploadError
+from ..services.extraction import get_extraction_service
 
 router = APIRouter()
 
@@ -87,6 +90,10 @@ async def upload_document(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         )
+
+    # Fire background extraction pipeline
+    extraction_svc = get_extraction_service()
+    asyncio.create_task(extraction_svc.process_document(doc.id))
 
     return DocumentUploadResponse.model_validate(doc)
 

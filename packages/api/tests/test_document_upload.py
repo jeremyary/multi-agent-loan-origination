@@ -107,13 +107,19 @@ def _upload_file(client, content_type="application/pdf", filename="test.pdf", da
 # ---------------------------------------------------------------------------
 
 
+@patch("src.routes.documents.get_extraction_service")
+@patch("src.routes.documents.asyncio.create_task")
 @patch("src.services.document.get_storage_service")
-def test_upload_document_success(mock_get_storage):
+def test_upload_document_success(mock_get_storage, mock_create_task, mock_get_extraction):
     """Happy path: multipart upload creates DB record and uploads to S3."""
     mock_storage = MagicMock()
     mock_storage.build_object_key.return_value = "100/1/test.pdf"
     mock_storage.upload_file = AsyncMock(return_value="100/1/test.pdf")
     mock_get_storage.return_value = mock_storage
+
+    mock_extraction_svc = MagicMock()
+    mock_extraction_svc.process_document = AsyncMock()
+    mock_get_extraction.return_value = mock_extraction_svc
 
     user = _make_user(UserRole.BORROWER)
     app, mock_session = _make_upload_app(user)
@@ -139,6 +145,9 @@ def test_upload_document_success(mock_get_storage):
 
     # Verify S3 was called
     mock_storage.upload_file.assert_called_once()
+
+    # Verify background extraction was dispatched
+    mock_create_task.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
