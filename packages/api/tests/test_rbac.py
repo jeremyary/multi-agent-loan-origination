@@ -235,3 +235,301 @@ def test_borrower_cannot_patch_application(monkeypatch):
     client = TestClient(app)
     resp = client.patch("/api/applications/1", json={"property_address": "123 Main St"})
     assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Co-borrower management endpoints
+# ---------------------------------------------------------------------------
+
+
+def _make_coborrower_test_app(user, mock_session):
+    """Build a test app with mocked auth + db for co-borrower endpoint tests."""
+    from db import get_db
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from src.middleware.auth import get_current_user
+    from src.routes.applications import router
+
+    app = FastAPI()
+    app.include_router(router, prefix="/api/applications")
+
+    async def fake_user():
+        return user
+
+    async def fake_db():
+        yield mock_session
+
+    app.dependency_overrides[get_current_user] = fake_user
+    app.dependency_overrides[get_db] = fake_db
+
+    return TestClient(app)
+
+
+def test_add_borrower_to_application(monkeypatch):
+    """Loan officer can add a co-borrower to an application."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from db.enums import ApplicationStage, LoanType, UserRole
+
+    from src.core.config import settings
+    from src.schemas.auth import DataScope, UserContext
+
+    monkeypatch.setattr(settings, "AUTH_DISABLED", False)
+
+    loan_officer = UserContext(
+        user_id="lo-1",
+        role=UserRole.LOAN_OFFICER,
+        email="lo@summit-cap.com",
+        name="Loan Officer",
+        data_scope=DataScope(assigned_to="lo-1"),
+    )
+
+    mock_session = AsyncMock()
+    mock_session.add = MagicMock()
+
+    # Build a mock app with one existing borrower
+    mock_borrower = MagicMock()
+    mock_borrower.id = 1
+    mock_borrower.first_name = "Primary"
+    mock_borrower.last_name = "Borrower"
+    mock_borrower.email = "primary@example.com"
+    mock_borrower.ssn_encrypted = None
+    mock_borrower.dob = None
+
+    ab_primary = MagicMock()
+    ab_primary.borrower = mock_borrower
+    ab_primary.is_primary = True
+
+    mock_app = MagicMock()
+    mock_app.id = 1
+    mock_app.stage = ApplicationStage.APPLICATION
+    mock_app.loan_type = LoanType.CONVENTIONAL_30
+    mock_app.property_address = "123 Test St"
+    mock_app.loan_amount = 300000
+    mock_app.property_value = 400000
+    mock_app.assigned_to = "lo-1"
+    mock_app.created_at = "2026-01-01T00:00:00+00:00"
+    mock_app.updated_at = "2026-01-01T00:00:00+00:00"
+    mock_app.application_borrowers = [ab_primary]
+
+    # New borrower to add
+    new_borrower = MagicMock()
+    new_borrower.id = 2
+    new_borrower.first_name = "Co"
+    new_borrower.last_name = "Borrower"
+    new_borrower.email = "co@example.com"
+    new_borrower.ssn_encrypted = None
+    new_borrower.dob = None
+
+    ab_co = MagicMock()
+    ab_co.borrower = new_borrower
+    ab_co.is_primary = False
+
+    mock_app_after = MagicMock()
+    mock_app_after.id = 1
+    mock_app_after.stage = ApplicationStage.APPLICATION
+    mock_app_after.loan_type = LoanType.CONVENTIONAL_30
+    mock_app_after.property_address = "123 Test St"
+    mock_app_after.loan_amount = 300000
+    mock_app_after.property_value = 400000
+    mock_app_after.assigned_to = "lo-1"
+    mock_app_after.created_at = "2026-01-01T00:00:00+00:00"
+    mock_app_after.updated_at = "2026-01-01T00:00:00+00:00"
+    mock_app_after.application_borrowers = [ab_primary, ab_co]
+
+    call_count = [0]
+
+    async def mock_execute(stmt):
+        call_count[0] += 1
+        result = MagicMock()
+        if call_count[0] == 1:
+            # get_application query
+            result.unique.return_value.scalar_one_or_none.return_value = mock_app
+        elif call_count[0] == 2:
+            # borrower existence check
+            result.scalar_one_or_none.return_value = new_borrower
+        elif call_count[0] == 3:
+            # duplicate junction check
+            result.scalar_one_or_none.return_value = None
+        else:
+            # post-commit get_application
+            result.unique.return_value.scalar_one_or_none.return_value = mock_app_after
+        return result
+
+    mock_session.execute = AsyncMock(side_effect=mock_execute)
+
+    client = _make_coborrower_test_app(loan_officer, mock_session)
+    resp = client.post(
+        "/api/applications/1/borrowers",
+        json={"borrower_id": 2, "is_primary": False},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert len(data["borrowers"]) == 2
+
+
+def test_remove_borrower_from_application(monkeypatch):
+    """Loan officer can remove a non-primary co-borrower."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from db.enums import ApplicationStage, LoanType, UserRole
+
+    from src.core.config import settings
+    from src.schemas.auth import DataScope, UserContext
+
+    monkeypatch.setattr(settings, "AUTH_DISABLED", False)
+
+    loan_officer = UserContext(
+        user_id="lo-1",
+        role=UserRole.LOAN_OFFICER,
+        email="lo@summit-cap.com",
+        name="Loan Officer",
+        data_scope=DataScope(assigned_to="lo-1"),
+    )
+
+    mock_session = AsyncMock()
+
+    mock_borrower = MagicMock()
+    mock_borrower.id = 1
+    mock_borrower.first_name = "Primary"
+    mock_borrower.last_name = "Borrower"
+    mock_borrower.email = "primary@example.com"
+    mock_borrower.ssn_encrypted = None
+    mock_borrower.dob = None
+
+    ab_primary = MagicMock()
+    ab_primary.borrower = mock_borrower
+    ab_primary.is_primary = True
+
+    mock_app = MagicMock()
+    mock_app.id = 1
+    mock_app.stage = ApplicationStage.APPLICATION
+    mock_app.loan_type = LoanType.CONVENTIONAL_30
+    mock_app.property_address = "123 Test St"
+    mock_app.loan_amount = 300000
+    mock_app.property_value = 400000
+    mock_app.assigned_to = "lo-1"
+    mock_app.created_at = "2026-01-01T00:00:00+00:00"
+    mock_app.updated_at = "2026-01-01T00:00:00+00:00"
+    mock_app.application_borrowers = [ab_primary]
+
+    # Junction row for co-borrower to remove
+    junction = MagicMock()
+    junction.is_primary = False
+
+    call_count = [0]
+
+    async def mock_execute(stmt):
+        call_count[0] += 1
+        result = MagicMock()
+        if call_count[0] == 1:
+            # get_application
+            result.unique.return_value.scalar_one_or_none.return_value = mock_app
+        elif call_count[0] == 2:
+            # find junction row
+            result.scalar_one_or_none.return_value = junction
+        elif call_count[0] == 3:
+            # count borrowers (2 before removal)
+            result.scalar.return_value = 2
+        else:
+            # post-delete get_application
+            result.unique.return_value.scalar_one_or_none.return_value = mock_app
+        return result
+
+    mock_session.execute = AsyncMock(side_effect=mock_execute)
+
+    client = _make_coborrower_test_app(loan_officer, mock_session)
+    resp = client.delete("/api/applications/1/borrowers/2")
+    assert resp.status_code == 200
+
+
+def test_cannot_remove_last_borrower(monkeypatch):
+    """Attempting to remove the sole remaining borrower returns 400."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from db.enums import ApplicationStage, UserRole
+
+    from src.core.config import settings
+    from src.schemas.auth import DataScope, UserContext
+
+    monkeypatch.setattr(settings, "AUTH_DISABLED", False)
+
+    admin = UserContext(
+        user_id="admin-1",
+        role=UserRole.ADMIN,
+        email="admin@summit-cap.com",
+        name="Admin",
+        data_scope=DataScope(full_pipeline=True),
+    )
+
+    mock_session = AsyncMock()
+
+    mock_app = MagicMock()
+    mock_app.id = 1
+    mock_app.stage = ApplicationStage.INQUIRY
+    mock_app.loan_type = None
+    mock_app.property_address = None
+    mock_app.loan_amount = None
+    mock_app.property_value = None
+    mock_app.assigned_to = None
+    mock_app.created_at = "2026-01-01T00:00:00+00:00"
+    mock_app.updated_at = "2026-01-01T00:00:00+00:00"
+    mock_app.application_borrowers = []
+
+    junction = MagicMock()
+    junction.is_primary = False
+
+    call_count = [0]
+
+    async def mock_execute(stmt):
+        call_count[0] += 1
+        result = MagicMock()
+        if call_count[0] == 1:
+            result.unique.return_value.scalar_one_or_none.return_value = mock_app
+        elif call_count[0] == 2:
+            result.scalar_one_or_none.return_value = junction
+        elif call_count[0] == 3:
+            # Only 1 borrower remaining
+            result.scalar.return_value = 1
+        return result
+
+    mock_session.execute = AsyncMock(side_effect=mock_execute)
+
+    client = _make_coborrower_test_app(admin, mock_session)
+    resp = client.delete("/api/applications/1/borrowers/5")
+    assert resp.status_code == 400
+    assert "last borrower" in resp.json()["detail"].lower()
+
+
+def test_borrower_cannot_manage_coborrowers(monkeypatch):
+    """Borrower role gets 403 on co-borrower management endpoints."""
+    from unittest.mock import AsyncMock
+
+    from db.enums import UserRole
+
+    from src.core.config import settings
+    from src.schemas.auth import DataScope, UserContext
+
+    monkeypatch.setattr(settings, "AUTH_DISABLED", False)
+
+    borrower = UserContext(
+        user_id="borrower-1",
+        role=UserRole.BORROWER,
+        email="borrower@example.com",
+        name="Test Borrower",
+        data_scope=DataScope(own_data_only=True, user_id="borrower-1"),
+    )
+
+    mock_session = AsyncMock()
+
+    client = _make_coborrower_test_app(borrower, mock_session)
+
+    resp = client.post(
+        "/api/applications/1/borrowers",
+        json={"borrower_id": 2},
+    )
+    assert resp.status_code == 403
+
+    resp = client.delete("/api/applications/1/borrowers/2")
+    assert resp.status_code == 403

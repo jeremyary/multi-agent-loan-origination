@@ -64,3 +64,10 @@ class ApplicationListResponse(BaseModel):
 
     data: list[ApplicationResponse]
     count: int
+
+
+class AddBorrowerRequest(BaseModel):
+    """Add a borrower to an application."""
+
+    borrower_id: int
+    is_primary: bool = False
