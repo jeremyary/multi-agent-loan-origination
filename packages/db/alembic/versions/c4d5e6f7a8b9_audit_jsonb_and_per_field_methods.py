@@ -1,7 +1,7 @@
 # This project was developed with assistance from AI tools.
 """audit_events JSONB + per-field collection methods
 
-- D10: audit_events.event_data Text -> JSONB (both public + hmda schemas)
+- D10: audit_events.event_data Text -> JSONB (public schema)
 - D15: hmda.demographics: replace collection_method with per-field method columns
 
 Revision ID: c4d5e6f7a8b9
@@ -22,12 +22,6 @@ def upgrade() -> None:
     # D10: audit_events.event_data Text -> JSONB (public schema)
     op.execute(
         "ALTER TABLE audit_events "
-        "ALTER COLUMN event_data TYPE JSONB USING event_data::jsonb"
-    )
-
-    # D10: audit_events.event_data Text -> JSONB (hmda schema)
-    op.execute(
-        "ALTER TABLE hmda.audit_events "
         "ALTER COLUMN event_data TYPE JSONB USING event_data::jsonb"
     )
 
@@ -85,11 +79,7 @@ def downgrade() -> None:
     op.drop_column("demographics", "ethnicity_method", schema="hmda")
     op.drop_column("demographics", "race_method", schema="hmda")
 
-    # D10: Revert JSONB -> Text
-    op.execute(
-        "ALTER TABLE hmda.audit_events "
-        "ALTER COLUMN event_data TYPE TEXT USING event_data::text"
-    )
+    # D10: Revert JSONB -> Text (public schema)
     op.execute(
         "ALTER TABLE audit_events "
         "ALTER COLUMN event_data TYPE TEXT USING event_data::text"
