@@ -53,8 +53,8 @@ def _make_app(user: UserContext = _ADMIN_USER):
 
 
 def test_fixture_borrower_count():
-    """Fixture defines 6 borrowers (1 real + 5 fictional)."""
-    assert len(BORROWERS) == 6
+    """Fixture defines 7 borrowers (1 real + 1 co-borrower + 5 fictional)."""
+    assert len(BORROWERS) == 7
 
 
 def test_fixture_active_application_count():
@@ -147,7 +147,7 @@ async def test_seed_creates_borrowers():
     from db import Borrower
 
     borrower_adds = [o for o in added_objects if isinstance(o, Borrower)]
-    assert len(borrower_adds) == 6
+    assert len(borrower_adds) == 7
 
     from src.services.seed.fixtures import MICHAEL_JOHNSON_ID, SARAH_MITCHELL_ID
 

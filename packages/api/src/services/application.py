@@ -9,11 +9,11 @@ and CEO/underwriter/admin see all.
 import logging
 from decimal import Decimal
 
-from db import Application, Borrower
+from db import Application, ApplicationBorrower, Borrower
 from db.enums import LoanType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import selectinload
 
 from ..schemas.auth import UserContext
 from ..services.scope import apply_data_scope
@@ -29,15 +29,17 @@ async def list_applications(
     limit: int = 20,
 ) -> tuple[list[Application], int]:
     """Return applications visible to the current user."""
-    # Count query
-    count_stmt = select(func.count(Application.id))
+    # Count query -- use DISTINCT to prevent inflation from junction join
+    count_stmt = select(func.count(func.distinct(Application.id)))
     count_stmt = apply_data_scope(count_stmt, user.data_scope, user)
     total = (await session.execute(count_stmt)).scalar() or 0
 
     # Data query
     stmt = (
         select(Application)
-        .options(joinedload(Application.borrower))
+        .options(
+            selectinload(Application.application_borrowers).joinedload(ApplicationBorrower.borrower)
+        )
         .order_by(Application.updated_at.desc())
         .offset(offset)
         .limit(limit)
@@ -61,7 +63,9 @@ async def get_application(
     """
     stmt = (
         select(Application)
-        .options(joinedload(Application.borrower))
+        .options(
+            selectinload(Application.application_borrowers).joinedload(ApplicationBorrower.borrower)
+        )
         .where(Application.id == application_id)
     )
     stmt = apply_data_scope(stmt, user.data_scope, user)
@@ -94,16 +98,25 @@ async def create_application(
         await session.flush()
 
     application = Application(
-        borrower_id=borrower.id,
         loan_type=loan_type,
         property_address=property_address,
         loan_amount=loan_amount,
         property_value=property_value,
     )
     session.add(application)
+    await session.flush()
+
+    # Create junction row linking borrower as primary
+    junction = ApplicationBorrower(
+        application_id=application.id,
+        borrower_id=borrower.id,
+        is_primary=True,
+    )
+    session.add(junction)
+    app_id = application.id  # capture before commit expires the object
     await session.commit()
-    # Re-query with joinedload to avoid lazy-load in async context
-    return await get_application(session, user, application.id)
+    # Re-query with eager loading to avoid lazy-load in async context
+    return await get_application(session, user, app_id)
 
 
 _UPDATABLE_FIELDS = {
@@ -133,5 +146,5 @@ async def update_application(
         setattr(app, field, value)
 
     await session.commit()
-    # Re-query with joinedload to avoid lazy-load in async context
+    # Re-query with eager loading to avoid lazy-load in async context
     return await get_application(session, user, application_id)

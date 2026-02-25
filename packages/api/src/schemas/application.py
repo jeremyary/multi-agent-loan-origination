@@ -39,6 +39,7 @@ class BorrowerSummary(BaseModel):
     email: str
     ssn_encrypted: str | None = None
     dob: datetime | None = None
+    is_primary: bool = False
 
 
 class ApplicationResponse(BaseModel):
@@ -47,7 +48,6 @@ class ApplicationResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    borrower_id: int
     stage: ApplicationStage
     loan_type: LoanType | None = None
     property_address: str | None = None
@@ -56,7 +56,7 @@ class ApplicationResponse(BaseModel):
     assigned_to: str | None = None
     created_at: datetime
     updated_at: datetime
-    borrower: BorrowerSummary | None = None
+    borrowers: list[BorrowerSummary] = []
 
 
 class ApplicationListResponse(BaseModel):

@@ -27,11 +27,11 @@ class TestCeoPiiMasking:
         assert data["count"] == 3
 
         for item in data["data"]:
-            borrower = item.get("borrower")
-            if borrower and borrower.get("ssn_encrypted"):
-                assert borrower["ssn_encrypted"].startswith("***-**-")
-            if borrower and borrower.get("dob"):
-                assert "**" in borrower["dob"]
+            for borrower in item.get("borrowers", []):
+                if borrower.get("ssn_encrypted"):
+                    assert borrower["ssn_encrypted"].startswith("***-**-")
+                if borrower.get("dob"):
+                    assert "**" in borrower["dob"]
 
     def test_get_application_ssn_masked(self, make_client):
         app = make_app_sarah_1()
@@ -40,7 +40,7 @@ class TestCeoPiiMasking:
         resp = client.get("/api/applications/101")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["borrower"]["ssn_encrypted"] == "***-**-6789"
+        assert data["borrowers"][0]["ssn_encrypted"] == "***-**-6789"
 
     def test_get_application_dob_masked(self, make_client):
         app = make_app_sarah_1()
@@ -48,7 +48,7 @@ class TestCeoPiiMasking:
 
         resp = client.get("/api/applications/101")
         data = resp.json()
-        assert data["borrower"]["dob"].startswith("1990-**")
+        assert data["borrowers"][0]["dob"].startswith("1990-**")
 
 
 class TestCeoDocumentRestriction:

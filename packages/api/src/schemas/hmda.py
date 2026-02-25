@@ -10,6 +10,7 @@ class HmdaCollectionRequest(BaseModel):
     """Request body for HMDA demographic data collection."""
 
     application_id: int
+    borrower_id: int | None = None
     race: str | None = None
     ethnicity: str | None = None
     sex: str | None = None
@@ -26,5 +27,7 @@ class HmdaCollectionResponse(BaseModel):
 
     id: int
     application_id: int
+    borrower_id: int | None = None
     collected_at: datetime
+    conflicts: list[dict] | None = None
     status: str = "collected"

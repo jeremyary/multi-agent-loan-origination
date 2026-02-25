@@ -33,7 +33,7 @@ class TestAdminFullAccess:
         resp = client.get("/api/applications/101")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["borrower"]["ssn_encrypted"] == "123-45-6789"
+        assert data["borrowers"][0]["ssn_encrypted"] == "123-45-6789"
 
     def test_patch_application(self, make_client):
         app = make_app_sarah_1()

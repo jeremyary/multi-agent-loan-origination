@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 from db import (
     Application,
+    ApplicationBorrower,
     ApplicationFinancials,
     AuditEvent,
     Borrower,
@@ -57,11 +58,13 @@ async def _clear_demo_data(session: AsyncSession, compliance_session: AsyncSessi
     borrower_ids = list(result.scalars().all())
 
     if borrower_ids:
-        # Find application IDs linked to these borrowers
+        # Find application IDs via junction table
         app_result = await session.execute(
-            select(Application.id).where(Application.borrower_id.in_(borrower_ids))
+            select(ApplicationBorrower.application_id).where(
+                ApplicationBorrower.borrower_id.in_(borrower_ids)
+            )
         )
-        app_ids = list(app_result.scalars().all())
+        app_ids = list(set(app_result.scalars().all()))
 
         if app_ids:
             # Delete child records first (no FK cascade assumed)
@@ -78,6 +81,10 @@ async def _clear_demo_data(session: AsyncSession, compliance_session: AsyncSessi
             await session.execute(delete(AuditEvent).where(AuditEvent.application_id.in_(app_ids)))
             # Delete HMDA demographics via compliance module (isolation boundary)
             await clear_hmda_demographics(compliance_session, app_ids)
+            # Delete junction rows
+            await session.execute(
+                delete(ApplicationBorrower).where(ApplicationBorrower.application_id.in_(app_ids))
+            )
             # Delete applications
             await session.execute(delete(Application).where(Application.id.in_(app_ids)))
 
@@ -110,7 +117,6 @@ async def _seed_applications(
         borrower_id = borrower_map[app_def["borrower_ref"]]
 
         app = Application(
-            borrower_id=borrower_id,
             stage=app_def["stage"],
             loan_type=app_def["loan_type"],
             property_address=app_def["property_address"],
@@ -120,6 +126,24 @@ async def _seed_applications(
         )
         session.add(app)
         await session.flush()  # Get app.id
+
+        # Create primary borrower junction row
+        primary_junction = ApplicationBorrower(
+            application_id=app.id,
+            borrower_id=borrower_id,
+            is_primary=True,
+        )
+        session.add(primary_junction)
+
+        # Create co-borrower junction rows
+        for co_ref in app_def.get("co_borrower_refs", []):
+            co_borrower_id = borrower_map[co_ref]
+            co_junction = ApplicationBorrower(
+                application_id=app.id,
+                borrower_id=co_borrower_id,
+                is_primary=False,
+            )
+            session.add(co_junction)
 
         # Financials
         fin_data = app_def["financials"]
@@ -133,10 +157,11 @@ async def _seed_applications(
         )
         session.add(financials)
 
-        # Documents
+        # Documents -- link to primary borrower
         for doc_def in app_def.get("documents", []):
             doc = Document(
                 application_id=app.id,
+                borrower_id=borrower_id,
                 doc_type=doc_def["doc_type"],
                 status=doc_def["status"],
                 file_path=f"/demo/docs/{app.id}/{doc_def['doc_type'].value}.pdf",
@@ -252,9 +277,12 @@ async def seed_demo_data(
     hmda_records = []
     for i, demo_data in enumerate(HMDA_DEMOGRAPHICS):
         if i < len(all_apps):
+            app_def = (ACTIVE_APPLICATIONS + HISTORICAL_LOANS)[i]
+            primary_borrower_id = borrower_map.get(app_def["borrower_ref"])
             hmda_records.append(
                 {
                     "application_id": all_apps[i].id,
+                    "borrower_id": primary_borrower_id,
                     "race": demo_data["race"],
                     "ethnicity": demo_data["ethnicity"],
                     "sex": demo_data["sex"],

@@ -9,7 +9,7 @@ provides Layer 4.
 
 import logging
 
-from db import Application, Document
+from db import Application, ApplicationBorrower, Document
 from db.enums import DocumentStatus, DocumentType
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +45,9 @@ async def list_documents(
     limit: int = 20,
 ) -> tuple[list[Document], int]:
     """Return documents for an application visible to the current user."""
-    count_stmt = select(func.count(Document.id)).where(Document.application_id == application_id)
+    count_stmt = select(func.count(func.distinct(Document.id))).where(
+        Document.application_id == application_id,
+    )
     count_stmt = apply_data_scope(
         count_stmt,
         user.data_scope,
@@ -141,9 +143,18 @@ async def upload_document(
     if application is None:
         return None
 
+    # Resolve primary borrower for document linkage
+    primary_stmt = select(ApplicationBorrower.borrower_id).where(
+        ApplicationBorrower.application_id == application_id,
+        ApplicationBorrower.is_primary.is_(True),
+    )
+    primary_result = await session.execute(primary_stmt)
+    primary_borrower_id = primary_result.scalar_one_or_none()
+
     # Create document row with initial status
     doc = Document(
         application_id=application_id,
+        borrower_id=primary_borrower_id,
         doc_type=doc_type,
         status=DocumentStatus.UPLOADED,
         uploaded_by=user.user_id,

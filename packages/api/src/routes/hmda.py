@@ -30,7 +30,7 @@ async def collect_hmda(
     Simulated for demonstration purposes -- not legally compliant HMDA collection.
     """
     try:
-        demographic = await collect_demographics(
+        demographic, conflicts = await collect_demographics(
             lending_session=session,
             compliance_session=compliance_session,
             user=user,
@@ -42,4 +42,7 @@ async def collect_hmda(
             detail=str(exc),
         ) from exc
 
-    return HmdaCollectionResponse.model_validate(demographic)
+    response = HmdaCollectionResponse.model_validate(demographic)
+    if conflicts:
+        response = response.model_copy(update={"conflicts": conflicts})
+    return response

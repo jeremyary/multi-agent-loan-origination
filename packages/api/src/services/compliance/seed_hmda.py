@@ -40,6 +40,7 @@ async def seed_hmda_demographics(
     for demo_data in application_demographics:
         demographic = HmdaDemographic(
             application_id=demo_data["application_id"],
+            borrower_id=demo_data.get("borrower_id"),
             race=demo_data["race"],
             ethnicity=demo_data["ethnicity"],
             sex=demo_data["sex"],

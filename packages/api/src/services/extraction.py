@@ -111,7 +111,10 @@ class ExtractionService:
                 # Route demographic data to compliance schema
                 if demographic_extractions:
                     await route_extraction_demographics(
-                        document_id, application_id, demographic_extractions
+                        document_id,
+                        application_id,
+                        demographic_extractions,
+                        borrower_id=doc.borrower_id,
                     )
 
                 # Store quality flags

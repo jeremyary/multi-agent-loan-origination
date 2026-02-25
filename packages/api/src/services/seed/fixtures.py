@@ -38,6 +38,9 @@ MARIA_CHEN_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567803"
 DAVID_PARK_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567804"
 ADMIN_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567805"
 
+# Co-borrower (spouse of Sarah Mitchell)
+JENNIFER_MITCHELL_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567806"
+
 # Fictional borrowers (not in Keycloak -- only used for historical loan data)
 MICHAEL_JOHNSON_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567811"
 EMILY_RODRIGUEZ_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567812"
@@ -73,6 +76,14 @@ BORROWERS: list[dict] = [
         "email": "sarah.mitchell@example.com",
         "ssn_encrypted": "ENC:293-84-1567",
         "dob": datetime(1988, 6, 15, tzinfo=UTC),
+    },
+    {
+        "keycloak_user_id": JENNIFER_MITCHELL_ID,
+        "first_name": "Jennifer",
+        "last_name": "Mitchell",
+        "email": "jennifer.mitchell@example.com",
+        "ssn_encrypted": "ENC:384-71-2956",
+        "dob": datetime(1990, 2, 8, tzinfo=UTC),
     },
     {
         "keycloak_user_id": "d1a2b3c4-e5f6-7890-abcd-ef1234567811",
@@ -127,6 +138,7 @@ ACTIVE_APPLICATIONS: list[dict] = [
     # --- 3 in APPLICATION stage ---
     {
         "borrower_ref": SARAH_MITCHELL_ID,
+        "co_borrower_refs": [JENNIFER_MITCHELL_ID],
         "stage": ApplicationStage.APPLICATION,
         "loan_type": LoanType.CONVENTIONAL_30,
         "property_address": "1234 Elm Street, Denver, CO 80203",
@@ -277,6 +289,7 @@ ACTIVE_APPLICATIONS: list[dict] = [
     # --- 2 in CONDITIONAL_APPROVAL stage ---
     {
         "borrower_ref": MICHAEL_JOHNSON_ID,
+        "co_borrower_refs": [EMILY_RODRIGUEZ_ID],
         "stage": ApplicationStage.CONDITIONAL_APPROVAL,
         "loan_type": LoanType.JUMBO,
         "property_address": "3456 Cedar Boulevard, Cherry Hills Village, CO 80113",
@@ -657,6 +670,7 @@ def compute_config_hash() -> str:
             "historical_count": len(HISTORICAL_LOANS),
             "hmda_count": len(HMDA_DEMOGRAPHICS),
             "borrower_ids": [b["keycloak_user_id"] for b in BORROWERS],
+            "co_borrower_apps": sum(1 for a in ACTIVE_APPLICATIONS if a.get("co_borrower_refs")),
         },
         sort_keys=True,
     )
