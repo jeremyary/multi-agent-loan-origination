@@ -445,26 +445,39 @@ class TestHmdaFilter:
             {"field_name": "race", "field_value": "Asian"},
             {"field_name": "ethnicity", "field_value": "Not Hispanic"},
             {"field_name": "sex", "field_value": "Male"},
+            {"field_name": "age", "field_value": "35"},
         ]
         lending, demographic = svc._filter_hmda_fields(extractions)
         assert len(lending) == 2
-        assert len(demographic) == 3
+        assert len(demographic) == 4
         assert all(e["field_name"] in ("employer_name", "wages") for e in lending)
-        assert all(e["field_name"] in ("race", "ethnicity", "sex") for e in demographic)
+        assert all(e["field_name"] in ("race", "ethnicity", "sex", "age") for e in demographic)
 
     def test_hmda_filter_normalizes_llm_field_names(self):
         """LLMs return space/hyphen-separated names; filter must still catch them."""
         svc = ExtractionService()
         extractions = [
             {"field_name": "employer_name", "field_value": "Acme Corp"},
-            {"field_name": "Marital Status", "field_value": "Married"},
-            {"field_name": "National Origin", "field_value": "US"},
             {"field_name": "Age-Group", "field_value": "30-40"},
+            {"field_name": "Gender", "field_value": "Female"},
         ]
         lending, demographic = svc._filter_hmda_fields(extractions)
         assert len(lending) == 1
         assert lending[0]["field_name"] == "employer_name"
-        assert len(demographic) == 3
+        assert len(demographic) == 2
+
+    def test_marital_status_not_filtered(self):
+        """marital_status is not a key HMDA demographic -- flows to lending path."""
+        svc = ExtractionService()
+        extractions = [
+            {"field_name": "employer_name", "field_value": "Acme Corp"},
+            {"field_name": "marital_status", "field_value": "Married"},
+            {"field_name": "national_origin", "field_value": "US"},
+            {"field_name": "disability", "field_value": "None"},
+        ]
+        lending, demographic = svc._filter_hmda_fields(extractions)
+        assert len(lending) == 4
+        assert len(demographic) == 0
 
     def test_hmda_no_demographics_no_audit(self):
         svc = ExtractionService()
@@ -491,6 +504,7 @@ class TestHmdaRouting:
         demographic_extractions = [
             {"field_name": "race", "field_value": "Asian"},
             {"field_name": "sex", "field_value": "Male"},
+            {"field_name": "age", "field_value": "35"},
         ]
 
         mock_compliance_session = AsyncMock()
@@ -513,6 +527,7 @@ class TestHmdaRouting:
         assert hmda_obj.collection_method == "document_extraction"
         assert hmda_obj.race == "Asian"
         assert hmda_obj.sex == "Male"
+        assert hmda_obj.age == "35"
 
     @pytest.mark.asyncio
     async def test_hmda_exclusion_creates_audit_event(self):

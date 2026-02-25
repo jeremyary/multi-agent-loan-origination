@@ -258,6 +258,7 @@ async def seed_demo_data(
                     "race": demo_data["race"],
                     "ethnicity": demo_data["ethnicity"],
                     "sex": demo_data["sex"],
+                    "age": demo_data.get("age"),
                     "collection_method": demo_data["collection_method"],
                 }
             )

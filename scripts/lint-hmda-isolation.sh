@@ -15,12 +15,12 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 echo "Checking HMDA isolation boundaries..."
 
 # Pattern 1: Direct references to hmda schema in Python code outside allowed paths
-# Catches: schema="hmda", schema='hmda', "hmda.demographics", hmda.demographics
+# Catches: schema="hmda", schema='hmda', "hmda.demographics", "hmda.loan_data"
 # Excludes: route registrations (prefix="/api/hmda"), module imports (routes.hmda)
 HMDA_REFS=$(grep -rn --include="*.py" \
     -e 'schema.*=.*"hmda"' \
     -e 'schema.*=.*'"'"'hmda'"'"'' \
-    -e '"hmda\.demographics' \
+    -e '"hmda\.' \
     "$ROOT_DIR/packages/api/src/" \
     2>/dev/null \
     | grep -v "services/compliance/" \
@@ -55,9 +55,10 @@ if [ -n "$COMPLIANCE_IMPORTS" ]; then
     VIOLATIONS=$((VIOLATIONS + 1))
 fi
 
-# Pattern 3: Direct import of HmdaDemographic outside allowed paths
+# Pattern 3: Direct import of HMDA models outside allowed paths
 HMDA_MODEL_IMPORTS=$(grep -rn --include="*.py" \
     -e "HmdaDemographic" \
+    -e "HmdaLoanData" \
     "$ROOT_DIR/packages/api/src/" \
     2>/dev/null \
     | grep -v "services/compliance/" \
@@ -66,7 +67,7 @@ HMDA_MODEL_IMPORTS=$(grep -rn --include="*.py" \
 
 if [ -n "$HMDA_MODEL_IMPORTS" ]; then
     echo ""
-    echo "VIOLATION: HmdaDemographic model imported outside services/compliance/:"
+    echo "VIOLATION: HMDA model imported outside services/compliance/:"
     echo "$HMDA_MODEL_IMPORTS"
     VIOLATIONS=$((VIOLATIONS + 1))
 fi
