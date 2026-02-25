@@ -30,6 +30,7 @@ from .models import (
     Document,
     DocumentExtraction,
     HmdaDemographic,
+    HmdaLoanData,
     RateLock,
 )
 
@@ -61,5 +62,6 @@ __all__ = [
     "Document",
     "DocumentExtraction",
     "HmdaDemographic",
+    "HmdaLoanData",
     "RateLock",
 ]

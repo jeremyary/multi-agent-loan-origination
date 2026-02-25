@@ -24,7 +24,7 @@ from sqlalchemy import select
 from ..inference.client import get_completion
 from .compliance.hmda import route_extraction_demographics
 from .extraction_prompts import (
-    HMDA_KEYWORDS,
+    HMDA_DEMOGRAPHIC_KEYWORDS,
     build_extraction_prompt,
     build_image_extraction_prompt,
 )
@@ -245,7 +245,7 @@ class ExtractionService:
         demographic = []
         for ext in extractions:
             field_name = ext.get("field_name", "").lower().replace(" ", "_").replace("-", "_")
-            if field_name in HMDA_KEYWORDS:
+            if field_name in HMDA_DEMOGRAPHIC_KEYWORDS:
                 demographic.append(ext)
             else:
                 lending.append(ext)

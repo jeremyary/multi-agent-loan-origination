@@ -301,9 +301,33 @@ class HmdaDemographic(Base):
     race = Column(String(100), nullable=True)
     ethnicity = Column(String(100), nullable=True)
     sex = Column(String(50), nullable=True)
+    age = Column(String(20), nullable=True)
     collection_method = Column(String(50), nullable=False, default="self_reported")
     collected_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     def __repr__(self):
         return f"<HmdaDemographic(id={self.id}, app_id={self.application_id})>"
+
+
+class HmdaLoanData(Base):
+    """Non-demographic HMDA-reportable loan data -- snapshot at underwriting submission."""
+
+    __tablename__ = "loan_data"
+    __table_args__ = {"schema": "hmda"}
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    application_id = Column(Integer, nullable=False, unique=True, index=True)
+    gross_monthly_income = Column(Numeric(12, 2), nullable=True)
+    dti_ratio = Column(Float, nullable=True)
+    credit_score = Column(Integer, nullable=True)
+    loan_type = Column(String(50), nullable=True)
+    loan_purpose = Column(String(50), nullable=True)
+    property_location = Column(Text, nullable=True)
+    interest_rate = Column(Float, nullable=True)
+    total_fees = Column(Numeric(10, 2), nullable=True)
+    snapshot_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    def __repr__(self):
+        return f"<HmdaLoanData(id={self.id}, app_id={self.application_id})>"

@@ -627,6 +627,8 @@ _ETHNICITY_DIST = ["Not Hispanic or Latino"] * 24 + ["Hispanic or Latino"] * 4
 
 _SEX_DIST = ["Male"] * 14 + ["Female"] * 13 + ["Prefer not to say"] * 1
 
+_AGE_DIST = ["25-34"] * 8 + ["35-44"] * 10 + ["45-54"] * 6 + ["55-64"] * 4
+
 HMDA_DEMOGRAPHICS: list[dict] = []
 for i in range(28):
     HMDA_DEMOGRAPHICS.append(
@@ -635,6 +637,7 @@ for i in range(28):
             "race": _RACE_DIST[i % len(_RACE_DIST)],
             "ethnicity": _ETHNICITY_DIST[i % len(_ETHNICITY_DIST)],
             "sex": _SEX_DIST[i % len(_SEX_DIST)],
+            "age": _AGE_DIST[i % len(_AGE_DIST)],
             "collection_method": "self_reported",
         }
     )

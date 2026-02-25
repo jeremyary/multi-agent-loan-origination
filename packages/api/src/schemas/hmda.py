@@ -13,6 +13,7 @@ class HmdaCollectionRequest(BaseModel):
     race: str | None = None
     ethnicity: str | None = None
     sex: str | None = None
+    age: str | None = None
     race_collected_method: str = Field(default="self_reported")
     ethnicity_collected_method: str = Field(default="self_reported")
     sex_collected_method: str = Field(default="self_reported")

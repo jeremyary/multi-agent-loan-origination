@@ -54,16 +54,15 @@ QUALITY_FLAGS = [
     "unsigned",
 ]
 
-# HMDA demographic keywords for post-extraction filter
-HMDA_KEYWORDS: set[str] = {
+# Only demographic fields that must be blocked from the lending path.
+# Non-demographic HMDA fields (income, DTI, etc.) flow through normally.
+HMDA_DEMOGRAPHIC_KEYWORDS: set[str] = {
     "race",
     "ethnicity",
     "sex",
-    "gender",
-    "marital_status",
-    "national_origin",
-    "disability",
-    "age_group",
+    "gender",  # LLM variant of sex
+    "age",
+    "age_group",  # LLM variant of age
 }
 
 
@@ -87,8 +86,8 @@ def build_extraction_prompt(doc_type: str, text: str) -> list[dict]:
         f"Expected document type: {doc_type}\n"
         f"Expected fields: {fields_csv}\n"
         "IMPORTANT: If the document contains any demographic or government "
-        "monitoring information (race, ethnicity, sex, gender, marital status, "
-        "national origin), extract those fields as well.\n"
+        "monitoring information (race, ethnicity, sex, gender, age), "
+        "extract those fields as well.\n"
         "If a field is not found, omit it. Do not guess values."
     )
 
