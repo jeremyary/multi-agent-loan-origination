@@ -31,6 +31,7 @@ from .enums import (
     DecisionType,
     DocumentStatus,
     DocumentType,
+    EmploymentStatus,
     LoanType,
     UserRole,
 )
@@ -47,6 +48,10 @@ class Borrower(Base):
     email = Column(String(255), nullable=False, index=True)
     ssn_encrypted = Column(String(255), nullable=True)
     dob = Column(DateTime(timezone=True), nullable=True)
+    employment_status = Column(
+        Enum(EmploymentStatus, name="employment_status", native_enum=False),
+        nullable=True,
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

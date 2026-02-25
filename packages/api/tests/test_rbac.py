@@ -150,6 +150,7 @@ def test_co_borrower_sees_shared_application(monkeypatch):
     primary_borrower.email = "primary@example.com"
     primary_borrower.ssn_encrypted = None
     primary_borrower.dob = None
+    primary_borrower.employment_status = None
 
     co_borrower_obj = MagicMock()
     co_borrower_obj.id = 2
@@ -158,6 +159,7 @@ def test_co_borrower_sees_shared_application(monkeypatch):
     co_borrower_obj.email = "coborrower@example.com"
     co_borrower_obj.ssn_encrypted = None
     co_borrower_obj.dob = None
+    co_borrower_obj.employment_status = None
 
     ab_primary = MagicMock()
     ab_primary.borrower = primary_borrower
@@ -296,6 +298,7 @@ def test_add_borrower_to_application(monkeypatch):
     mock_borrower.email = "primary@example.com"
     mock_borrower.ssn_encrypted = None
     mock_borrower.dob = None
+    mock_borrower.employment_status = None
 
     ab_primary = MagicMock()
     ab_primary.borrower = mock_borrower
@@ -321,6 +324,7 @@ def test_add_borrower_to_application(monkeypatch):
     new_borrower.email = "co@example.com"
     new_borrower.ssn_encrypted = None
     new_borrower.dob = None
+    new_borrower.employment_status = None
 
     ab_co = MagicMock()
     ab_co.borrower = new_borrower
@@ -397,6 +401,7 @@ def test_remove_borrower_from_application(monkeypatch):
     mock_borrower.email = "primary@example.com"
     mock_borrower.ssn_encrypted = None
     mock_borrower.dob = None
+    mock_borrower.employment_status = None
 
     ab_primary = MagicMock()
     ab_primary.borrower = mock_borrower

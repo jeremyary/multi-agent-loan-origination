@@ -78,6 +78,13 @@ class ConditionStatus(str, enum.Enum):
     ESCALATED = "escalated"
 
 
+class EmploymentStatus(str, enum.Enum):
+    W2_EMPLOYEE = "w2_employee"
+    SELF_EMPLOYED = "self_employed"
+    RETIRED = "retired"
+    OTHER = "other"
+
+
 class DecisionType(str, enum.Enum):
     APPROVED = "approved"
     CONDITIONAL_APPROVAL = "conditional_approval"
