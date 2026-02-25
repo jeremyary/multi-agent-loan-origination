@@ -59,6 +59,10 @@ DOCUMENT_REQUIREMENTS: dict[str, dict[str, list[DocumentType]]] = {
             DocumentType.BANK_STATEMENT,
             DocumentType.ID,
         ],
+        EmploymentStatus.UNEMPLOYED.value: [
+            DocumentType.BANK_STATEMENT,
+            DocumentType.ID,
+        ],
         EmploymentStatus.OTHER.value: [
             DocumentType.TAX_RETURN,
             DocumentType.BANK_STATEMENT,

@@ -82,6 +82,7 @@ class EmploymentStatus(str, enum.Enum):
     W2_EMPLOYEE = "w2_employee"
     SELF_EMPLOYED = "self_employed"
     RETIRED = "retired"
+    UNEMPLOYED = "unemployed"
     OTHER = "other"
 
 

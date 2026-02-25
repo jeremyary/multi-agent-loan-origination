@@ -119,6 +119,16 @@ def test_get_required_doc_types_fha_w2():
     assert DocumentType.W2 in result
 
 
+def test_get_required_doc_types_unemployed():
+    """Unemployed borrowers need only bank statement and ID."""
+    result = _get_required_doc_types(None, EmploymentStatus.UNEMPLOYED.value)
+    assert DocumentType.BANK_STATEMENT in result
+    assert DocumentType.ID in result
+    assert DocumentType.W2 not in result
+    assert DocumentType.PAY_STUB not in result
+    assert DocumentType.TAX_RETURN not in result
+
+
 def test_get_required_doc_types_fallback_loan_type():
     """Unknown loan type falls back to _default requirements."""
     result = _get_required_doc_types("jumbo", EmploymentStatus.W2_EMPLOYEE.value)
