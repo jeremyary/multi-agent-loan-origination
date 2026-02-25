@@ -4,7 +4,6 @@ Database configuration and utilities
 """
 
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Any
 
@@ -12,22 +11,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL",
-    "postgresql+asyncpg://user:password@localhost:5433/summit-cap",
-)
+from .config import db_settings
 
-COMPLIANCE_DATABASE_URL = os.environ.get(
-    "COMPLIANCE_DATABASE_URL",
-    "postgresql+asyncpg://compliance_app:compliance_pass@localhost:5433/summit-cap",
-)
-
-_SQL_ECHO = os.environ.get("SQL_ECHO", "false").lower() == "true"
-
-engine = create_async_engine(DATABASE_URL, echo=_SQL_ECHO)
+engine = create_async_engine(db_settings.DATABASE_URL, echo=db_settings.SQL_ECHO)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine, class_=AsyncSession)
 
-compliance_engine = create_async_engine(COMPLIANCE_DATABASE_URL, echo=_SQL_ECHO)
+compliance_engine = create_async_engine(db_settings.COMPLIANCE_DATABASE_URL, echo=db_settings.SQL_ECHO)
 ComplianceSessionLocal = sessionmaker(
     autocommit=False, autoflush=False, bind=compliance_engine, class_=AsyncSession,
 )

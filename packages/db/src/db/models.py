@@ -133,14 +133,21 @@ class ApplicationBorrower(Base):
 
 
 class ApplicationFinancials(Base):
-    """Financial details for an application."""
+    """Financial details for an application, optionally per-borrower."""
 
     __tablename__ = "application_financials"
+    __table_args__ = (
+        UniqueConstraint("application_id", "borrower_id", name="uq_app_financials_app_borrower"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     application_id = Column(
         Integer, ForeignKey("applications.id", ondelete="CASCADE"),
-        nullable=False, unique=True, index=True,
+        nullable=False, index=True,
+    )
+    borrower_id = Column(
+        Integer, ForeignKey("borrowers.id", ondelete="SET NULL"),
+        nullable=True, index=True,
     )
     gross_monthly_income = Column(Numeric(12, 2), nullable=True)
     monthly_debts = Column(Numeric(12, 2), nullable=True)
