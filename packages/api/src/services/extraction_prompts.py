@@ -50,6 +50,7 @@ QUALITY_FLAGS = [
     "blurry",
     "incomplete",
     "wrong_period",
+    "future_date",
     "document_type_mismatch",
     "unsigned",
 ]

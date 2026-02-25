@@ -28,6 +28,7 @@ from .extraction_prompts import (
     build_extraction_prompt,
     build_image_extraction_prompt,
 )
+from .freshness import check_freshness
 from .storage import get_storage_service
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,11 @@ class ExtractionService:
                         demographic_extractions,
                         borrower_id=doc.borrower_id,
                     )
+
+                # Document freshness check
+                freshness_flag = check_freshness(doc_type, lending_extractions)
+                if freshness_flag:
+                    quality_flags.append(freshness_flag)
 
                 # Store quality flags
                 doc.quality_flags = json.dumps(quality_flags) if quality_flags else None
