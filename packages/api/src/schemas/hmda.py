@@ -18,6 +18,7 @@ class HmdaCollectionRequest(BaseModel):
     race_collected_method: str = Field(default="self_reported")
     ethnicity_collected_method: str = Field(default="self_reported")
     sex_collected_method: str = Field(default="self_reported")
+    age_collected_method: str = Field(default="self_reported")
 
 
 class HmdaCollectionResponse(BaseModel):

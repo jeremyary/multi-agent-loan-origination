@@ -14,6 +14,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -300,7 +301,7 @@ class AuditEvent(Base):
     event_type = Column(String(100), nullable=False, index=True)
     application_id = Column(Integer, nullable=True, index=True)
     decision_id = Column(Integer, nullable=True)
-    event_data = Column(Text, nullable=True)
+    event_data = Column(JSON, nullable=True)
     session_id = Column(String(255), nullable=True)
 
     def __repr__(self):
@@ -337,7 +338,10 @@ class HmdaDemographic(Base):
     ethnicity = Column(String(100), nullable=True)
     sex = Column(String(50), nullable=True)
     age = Column(String(20), nullable=True)
-    collection_method = Column(String(50), nullable=False, default="self_reported")
+    race_method = Column(String(50), nullable=True)
+    ethnicity_method = Column(String(50), nullable=True)
+    sex_method = Column(String(50), nullable=True)
+    age_method = Column(String(50), nullable=True)
     collected_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(

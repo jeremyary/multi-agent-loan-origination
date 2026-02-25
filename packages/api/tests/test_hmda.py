@@ -1,7 +1,6 @@
 # This project was developed with assistance from AI tools.
 """Tests for HMDA demographic data collection, loan data snapshot, and isolation lint."""
 
-import json
 import subprocess
 from datetime import datetime
 from decimal import Decimal
@@ -393,8 +392,9 @@ async def test_upsert_no_conflict():
     empty_result.scalar_one_or_none.return_value = None
     compliance_session.execute = AsyncMock(return_value=empty_result)
 
+    methods = {"race": "self_reported", "sex": "self_reported"}
     record1, conflicts1 = await _upsert_demographics(
-        compliance_session, 1, 10, {"race": "White", "sex": "Female"}, "self_reported"
+        compliance_session, 1, 10, {"race": "White", "sex": "Female"}, methods
     )
     assert conflicts1 == []
     assert record1.race == "White"
@@ -405,7 +405,7 @@ async def test_upsert_no_conflict():
     compliance_session.execute = AsyncMock(return_value=existing_result)
 
     record2, conflicts2 = await _upsert_demographics(
-        compliance_session, 1, 10, {"race": "White", "sex": "Female"}, "self_reported"
+        compliance_session, 1, 10, {"race": "White", "sex": "Female"}, methods
     )
     assert conflicts2 == []
     assert record2 is record1  # same object updated in place
@@ -426,14 +426,16 @@ async def test_upsert_with_conflict():
         borrower_id=10,
         race="White",
         sex="Female",
-        collection_method="self_reported",
+        race_method="self_reported",
+        sex_method="self_reported",
     )
     existing_result = MagicMock()
     existing_result.scalar_one_or_none.return_value = existing
     compliance_session.execute = AsyncMock(return_value=existing_result)
 
+    methods = {"race": "self_reported", "sex": "self_reported"}
     _, conflicts = await _upsert_demographics(
-        compliance_session, 1, 10, {"race": "Asian", "sex": "Male"}, "self_reported"
+        compliance_session, 1, 10, {"race": "Asian", "sex": "Male"}, methods
     )
     assert len(conflicts) == 2
     assert conflicts[0]["field"] == "race"
@@ -455,19 +457,19 @@ async def test_self_reported_overwrites_extraction():
         application_id=1,
         borrower_id=10,
         race="Asian",
-        collection_method="document_extraction",
+        race_method="document_extraction",
     )
     existing_result = MagicMock()
     existing_result.scalar_one_or_none.return_value = existing
     compliance_session.execute = AsyncMock(return_value=existing_result)
 
     _, conflicts = await _upsert_demographics(
-        compliance_session, 1, 10, {"race": "White"}, "self_reported"
+        compliance_session, 1, 10, {"race": "White"}, {"race": "self_reported"}
     )
     assert len(conflicts) == 1
     assert conflicts[0]["resolution"] == "overwritten"
     assert existing.race == "White"
-    assert existing.collection_method == "self_reported"
+    assert existing.race_method == "self_reported"
 
 
 @pytest.mark.asyncio
@@ -484,19 +486,19 @@ async def test_extraction_does_not_overwrite_self_reported():
         application_id=1,
         borrower_id=10,
         race="White",
-        collection_method="self_reported",
+        race_method="self_reported",
     )
     existing_result = MagicMock()
     existing_result.scalar_one_or_none.return_value = existing
     compliance_session.execute = AsyncMock(return_value=existing_result)
 
     _, conflicts = await _upsert_demographics(
-        compliance_session, 1, 10, {"race": "Asian"}, "document_extraction"
+        compliance_session, 1, 10, {"race": "Asian"}, {"race": "document_extraction"}
     )
     assert len(conflicts) == 1
     assert conflicts[0]["resolution"] == "kept_existing"
     assert existing.race == "White"  # unchanged
-    assert existing.collection_method == "self_reported"  # unchanged
+    assert existing.race_method == "self_reported"  # unchanged
 
 
 @pytest.mark.asyncio
@@ -516,18 +518,143 @@ async def test_null_fields_filled_without_conflict():
         ethnicity=None,
         sex=None,
         age=None,
-        collection_method="document_extraction",
+        race_method="document_extraction",
+        ethnicity_method=None,
+        sex_method=None,
+        age_method=None,
     )
     existing_result = MagicMock()
     existing_result.scalar_one_or_none.return_value = existing
     compliance_session.execute = AsyncMock(return_value=existing_result)
 
+    methods = {"ethnicity": "self_reported", "sex": "self_reported"}
     _, conflicts = await _upsert_demographics(
-        compliance_session, 1, 10, {"ethnicity": "Not Hispanic", "sex": "Male"}, "self_reported"
+        compliance_session, 1, 10, {"ethnicity": "Not Hispanic", "sex": "Male"}, methods
     )
     assert conflicts == []
     assert existing.ethnicity == "Not Hispanic"
     assert existing.sex == "Male"
+
+
+@pytest.mark.asyncio
+async def test_per_field_methods_stored():
+    """Each demographic field stores its collection method independently."""
+    from src.services.compliance.hmda import _upsert_demographics
+
+    compliance_session = AsyncMock()
+    compliance_session.add = MagicMock()
+
+    empty_result = MagicMock()
+    empty_result.scalar_one_or_none.return_value = None
+    compliance_session.execute = AsyncMock(return_value=empty_result)
+
+    fields = {"race": "Asian", "ethnicity": "Not Hispanic", "sex": "Male", "age": "35-44"}
+    methods = {
+        "race": "self_reported",
+        "ethnicity": "self_reported",
+        "sex": "document_extraction",
+        "age": "self_reported",
+    }
+    record, conflicts = await _upsert_demographics(compliance_session, 1, 10, fields, methods)
+    assert conflicts == []
+    assert record.race_method == "self_reported"
+    assert record.ethnicity_method == "self_reported"
+    assert record.sex_method == "document_extraction"
+    assert record.age_method == "self_reported"
+
+
+@pytest.mark.asyncio
+async def test_mixed_method_upsert():
+    """Per-field precedence: self_reported race kept, doc_extraction ethnicity overwritten."""
+    from db import HmdaDemographic
+
+    from src.services.compliance.hmda import _upsert_demographics
+
+    compliance_session = AsyncMock()
+    compliance_session.add = MagicMock()
+
+    existing = HmdaDemographic(
+        application_id=1,
+        borrower_id=10,
+        race="White",
+        ethnicity="Hispanic",
+        race_method="self_reported",
+        ethnicity_method="document_extraction",
+    )
+    existing_result = MagicMock()
+    existing_result.scalar_one_or_none.return_value = existing
+    compliance_session.execute = AsyncMock(return_value=existing_result)
+
+    # Incoming: both via document_extraction
+    fields = {"race": "Asian", "ethnicity": "Not Hispanic"}
+    methods = {"race": "document_extraction", "ethnicity": "document_extraction"}
+    _, conflicts = await _upsert_demographics(compliance_session, 1, 10, fields, methods)
+
+    # Race: self_reported > document_extraction -> kept_existing
+    # Ethnicity: document_extraction >= document_extraction -> overwritten
+    assert len(conflicts) == 2
+    race_conflict = next(c for c in conflicts if c["field"] == "race")
+    eth_conflict = next(c for c in conflicts if c["field"] == "ethnicity")
+    assert race_conflict["resolution"] == "kept_existing"
+    assert eth_conflict["resolution"] == "overwritten"
+    assert existing.race == "White"  # unchanged
+    assert existing.ethnicity == "Not Hispanic"  # overwritten
+
+
+@pytest.mark.asyncio
+async def test_audit_event_data_is_dict():
+    """Audit event_data is stored as a dict (JSONB), not a JSON string."""
+    from src.schemas.hmda import HmdaCollectionRequest
+    from src.services.compliance.hmda import collect_demographics
+
+    lending_session = AsyncMock()
+    compliance_session = AsyncMock()
+    compliance_session.add = MagicMock()
+
+    # Application exists (scoped check)
+    app_result = MagicMock()
+    app_result.scalar_one_or_none.return_value = 1
+    # Primary borrower
+    primary_result = MagicMock()
+    primary_result.scalar_one_or_none.return_value = 10
+
+    call_count = [0]
+
+    async def mock_lending_execute(stmt):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return app_result
+        return primary_result
+
+    lending_session.execute = AsyncMock(side_effect=mock_lending_execute)
+
+    empty_result = MagicMock()
+    empty_result.scalar_one_or_none.return_value = None
+    compliance_session.execute = AsyncMock(return_value=empty_result)
+
+    async def fake_refresh(obj):
+        obj.id = 1
+        obj.collected_at = datetime(2026, 2, 25, 12, 0, 0)
+
+    compliance_session.refresh = fake_refresh
+
+    user = UserContext(
+        user_id="borrower-1",
+        role=UserRole.BORROWER,
+        email="b@test.com",
+        name="Test",
+        data_scope=DataScope(own_data_only=True, user_id="borrower-1"),
+    )
+    request = HmdaCollectionRequest(application_id=1, race="White")
+
+    await collect_demographics(lending_session, compliance_session, user, request)
+
+    # Audit event_data should be a dict, not a string
+    audit_call = compliance_session.add.call_args_list[1]
+    audit_obj = audit_call[0][0]
+    assert isinstance(audit_obj.event_data, dict)
+    assert "race_method" in audit_obj.event_data
+    assert "age_method" in audit_obj.event_data
 
 
 @pytest.mark.asyncio
@@ -584,12 +711,12 @@ async def test_conflicts_in_audit_trail():
     assert demographic.id == 1
     assert conflicts == []
 
-    # Audit event should include conflicts key
+    # Audit event should include conflicts key (event_data is a dict, not JSON string)
     audit_call = compliance_session.add.call_args_list[1]
     audit_obj = audit_call[0][0]
-    event_data = json.loads(audit_obj.event_data)
-    assert "conflicts" in event_data
-    assert "borrower_id" in event_data
+    assert isinstance(audit_obj.event_data, dict)
+    assert "conflicts" in audit_obj.event_data
+    assert "borrower_id" in audit_obj.event_data
 
 
 # ---------------------------------------------------------------------------
@@ -714,13 +841,13 @@ async def test_snapshot_loan_data_audit_event():
     audit_obj = audit_call[0][0]
     assert audit_obj.event_type == "hmda_loan_data_snapshot"
     assert audit_obj.application_id == 1
-    event_data = json.loads(audit_obj.event_data)
-    assert "loan_type" in event_data["captured_fields"]
-    assert "credit_score" in event_data["captured_fields"]
-    assert "loan_purpose" in event_data["null_fields"]
-    assert "interest_rate" in event_data["null_fields"]
-    assert "total_fees" in event_data["null_fields"]
-    assert event_data["is_update"] is False
+    assert isinstance(audit_obj.event_data, dict)
+    assert "loan_type" in audit_obj.event_data["captured_fields"]
+    assert "credit_score" in audit_obj.event_data["captured_fields"]
+    assert "loan_purpose" in audit_obj.event_data["null_fields"]
+    assert "interest_rate" in audit_obj.event_data["null_fields"]
+    assert "total_fees" in audit_obj.event_data["null_fields"]
+    assert audit_obj.event_data["is_update"] is False
 
 
 @pytest.mark.asyncio
@@ -770,8 +897,8 @@ async def test_snapshot_loan_data_upserts():
     # Audit event should mark this as an update
     audit_call = mock_compliance_session.add.call_args_list[0]
     audit_obj = audit_call[0][0]
-    event_data = json.loads(audit_obj.event_data)
-    assert event_data["is_update"] is True
+    assert isinstance(audit_obj.event_data, dict)
+    assert audit_obj.event_data["is_update"] is True
 
 
 @pytest.mark.asyncio
@@ -855,10 +982,10 @@ async def test_snapshot_loan_data_no_financials():
     # Audit event should list financial fields as null
     audit_call = mock_compliance_session.add.call_args_list[1]
     audit_obj = audit_call[0][0]
-    event_data = json.loads(audit_obj.event_data)
-    assert "gross_monthly_income" in event_data["null_fields"]
-    assert "dti_ratio" in event_data["null_fields"]
-    assert "credit_score" in event_data["null_fields"]
+    assert isinstance(audit_obj.event_data, dict)
+    assert "gross_monthly_income" in audit_obj.event_data["null_fields"]
+    assert "dti_ratio" in audit_obj.event_data["null_fields"]
+    assert "credit_score" in audit_obj.event_data["null_fields"]
 
 
 # ---------------------------------------------------------------------------

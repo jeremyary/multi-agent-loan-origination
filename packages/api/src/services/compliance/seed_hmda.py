@@ -38,6 +38,7 @@ async def seed_hmda_demographics(
     """
     count = 0
     for demo_data in application_demographics:
+        method = demo_data.get("collection_method", "self_reported")
         demographic = HmdaDemographic(
             application_id=demo_data["application_id"],
             borrower_id=demo_data.get("borrower_id"),
@@ -45,7 +46,10 @@ async def seed_hmda_demographics(
             ethnicity=demo_data["ethnicity"],
             sex=demo_data["sex"],
             age=demo_data.get("age"),
-            collection_method=demo_data["collection_method"],
+            race_method=method,
+            ethnicity_method=method,
+            sex_method=method,
+            age_method=method,
         )
         compliance_session.add(demographic)
         count += 1

@@ -70,7 +70,7 @@ async def test_write_audit_event_creates_row():
     assert added_obj.session_id == "sess-abc-123"
     assert added_obj.user_id == "test-user"
     assert added_obj.user_role == "prospect"
-    assert '"tool_name": "product_info"' in added_obj.event_data
+    assert added_obj.event_data["tool_name"] == "product_info"
 
 
 @pytest.mark.asyncio
