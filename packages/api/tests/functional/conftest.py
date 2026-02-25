@@ -43,10 +43,15 @@ def make_client(app):
 
 @pytest.fixture
 def make_upload_client(app):
-    """Factory fixture: configure persona + mock DB + mock storage for uploads.
+    """Factory fixture: configure persona + mock DB + mock storage + mock extraction.
 
-    Returns (TestClient, mock_storage). The storage patch is automatically
-    stopped after each test via _clean_overrides.
+    Returns (TestClient, mock_storage). The storage and extraction patches
+    are automatically stopped after each test.
+
+    Background extraction dispatch (asyncio.create_task) is suppressed so
+    upload tests can focus on the upload path itself. Extraction pipeline
+    coverage lives in test_extraction.py (unit tests that call
+    process_document directly).
     """
     patchers = []
 
@@ -57,11 +62,34 @@ def make_upload_client(app):
         mock_storage.build_object_key.return_value = "101/501/test.pdf"
         mock_storage.upload_file = AsyncMock(return_value="101/501/test.pdf")
 
-        patcher = patch("src.services.document.get_storage_service", return_value=mock_storage)
-        patcher.start()
-        patchers.append(patcher)
+        patcher_storage = patch(
+            "src.services.document.get_storage_service", return_value=mock_storage
+        )
+        patcher_storage.start()
+        patchers.append(patcher_storage)
 
-        return TestClient(app), mock_storage
+        # Mock extraction service so background task dispatch doesn't fail
+        mock_extraction_svc = MagicMock()
+        mock_extraction_svc.process_document = AsyncMock()
+        patcher_extraction = patch(
+            "src.routes.documents.get_extraction_service",
+            return_value=mock_extraction_svc,
+        )
+        patcher_extraction.start()
+        patchers.append(patcher_extraction)
+
+        # Only mock create_task, not the entire asyncio module
+        patcher_create_task = patch(
+            "src.routes.documents.asyncio.create_task", new_callable=MagicMock
+        )
+        mock_create_task = patcher_create_task.start()
+        patchers.append(patcher_create_task)
+
+        client = TestClient(app)
+        client._mock_storage = mock_storage
+        client._mock_extraction_svc = mock_extraction_svc
+        client._mock_create_task = mock_create_task
+        return client, mock_storage
 
     yield _make
 

@@ -9,7 +9,7 @@ lint-hmda-isolation CI check.
 import json
 import logging
 
-from db import Application, AuditEvent, HmdaDemographic
+from db import Application, AuditEvent, ComplianceSessionLocal, HmdaDemographic
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +17,68 @@ from ...schemas.auth import UserContext
 from ...schemas.hmda import HmdaCollectionRequest
 
 logger = logging.getLogger(__name__)
+
+
+async def route_extraction_demographics(
+    document_id: int,
+    application_id: int,
+    demographic_extractions: list[dict],
+) -> None:
+    """Route demographic data captured during document extraction to the HMDA schema.
+
+    Creates its own ComplianceSessionLocal -- called from background tasks
+    that do not have a request-scoped session.
+
+    Args:
+        document_id: Source document ID.
+        application_id: Associated application ID.
+        demographic_extractions: List of dicts with field_name/field_value keys.
+    """
+    async with ComplianceSessionLocal() as compliance_session:
+        try:
+            # Map known fields to HmdaDemographic columns
+            field_map: dict[str, str] = {}
+            for ext in demographic_extractions:
+                fname = ext.get("field_name", "").lower()
+                fvalue = ext.get("field_value", "")
+                if fname in ("race",):
+                    field_map["race"] = fvalue
+                elif fname in ("ethnicity",):
+                    field_map["ethnicity"] = fvalue
+                elif fname in ("sex", "gender"):
+                    field_map["sex"] = fvalue
+
+            if field_map:
+                hmda_record = HmdaDemographic(
+                    application_id=application_id,
+                    collection_method="document_extraction",
+                    **field_map,
+                )
+                compliance_session.add(hmda_record)
+
+            # Log audit event for the exclusion
+            event_data = json.dumps(
+                {
+                    "document_id": document_id,
+                    "excluded_fields": [
+                        {"field_name": e.get("field_name"), "field_value": e.get("field_value")}
+                        for e in demographic_extractions
+                    ],
+                    "detection_method": "keyword_match",
+                    "routed_to": "hmda.demographics",
+                }
+            )
+            audit = AuditEvent(
+                event_type="hmda_document_extraction",
+                application_id=application_id,
+                event_data=event_data,
+            )
+            compliance_session.add(audit)
+
+            await compliance_session.commit()
+        except Exception:
+            logger.exception("Failed to route HMDA data for document %s", document_id)
+            await compliance_session.rollback()
 
 
 async def collect_demographics(

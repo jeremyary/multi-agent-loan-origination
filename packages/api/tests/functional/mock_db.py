@@ -67,18 +67,13 @@ def make_upload_session(application: object | None = None) -> AsyncMock:
     mock_result.unique.return_value.scalar_one_or_none.return_value = application
     session.execute = AsyncMock(return_value=mock_result)
 
-    # Track the document added via session.add() so we can assign an id on flush
-    _added_doc = {}
-
-    original_add = session.add
-
+    # session.add() is synchronous in SQLAlchemy -- use MagicMock to avoid
+    # RuntimeWarning about unawaited coroutines from AsyncMock.
     def track_add(obj):
-        _added_doc["ref"] = obj
         obj.id = 501
         obj.created_at = "2026-02-24T12:00:00+00:00"
-        original_add(obj)
 
-    session.add = track_add
+    session.add = MagicMock(side_effect=track_add)
 
     return session
 

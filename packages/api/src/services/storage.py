@@ -43,7 +43,13 @@ class StorageService:
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             region_name=region,
-            config=BotoConfig(signature_version="s3v4"),
+            config=BotoConfig(
+                signature_version="s3v4",
+                s3={
+                    "addressing_style": "path",
+                    "use_accelerate_endpoint": False,
+                },
+            ),
         )
         self._ensure_bucket()
 
@@ -74,6 +80,15 @@ class StorageService:
             ),
         )
         return object_key
+
+    async def download_file(self, object_key: str) -> bytes:
+        """Download file bytes from S3."""
+        loop = asyncio.get_running_loop()
+        response = await loop.run_in_executor(
+            None,
+            partial(self._client.get_object, Bucket=self._bucket, Key=object_key),
+        )
+        return response["Body"].read()
 
     async def get_download_url(self, object_key: str, expires_in: int = 3600) -> str:
         """Return a presigned GET URL for the given object key."""

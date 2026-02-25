@@ -9,6 +9,8 @@ build/
 lib/
 out/
 
+agent-memory/
+
 # Environment variables
 .env
 .env.local
