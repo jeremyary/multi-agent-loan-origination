@@ -419,6 +419,6 @@ async def truncate_all(async_engine):
             text(
                 "TRUNCATE TABLE document_extractions, documents, conditions, decisions, "
                 "rate_locks, application_financials, application_borrowers, applications, "
-                "borrowers, audit_events, demo_data_manifest CASCADE"
+                "borrowers, audit_events, audit_violations, demo_data_manifest CASCADE"
             )
         )
