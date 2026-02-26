@@ -83,33 +83,6 @@ async def test_start_application_finds_existing():
 
 
 @pytest.mark.asyncio
-async def test_start_application_ignores_withdrawn():
-    """Withdrawn applications are not returned as active -- a new one is created."""
-    user = _make_user()
-    new_app = _make_application(app_id=55, stage="inquiry")
-
-    session = AsyncMock()
-
-    # find_active_application filters out withdrawn, so it returns None
-    with (
-        patch(
-            "src.services.intake.find_active_application",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-        patch(
-            "src.services.intake.create_application",
-            new_callable=AsyncMock,
-            return_value=new_app,
-        ),
-    ):
-        result = await start_application(session, user)
-
-    assert result["is_new"] is True
-    assert result["application_id"] == 55
-
-
-@pytest.mark.asyncio
 async def test_start_application_tool_creates_new():
     """The start_application tool creates a new app and writes an audit event."""
     from src.agents.borrower_tools import start_application as start_app_tool
@@ -146,6 +119,7 @@ async def test_start_application_tool_creates_new():
     audit_kwargs = mock_audit.call_args
     assert audit_kwargs.kwargs["event_type"] == "application_started"
     assert audit_kwargs.kwargs["application_id"] == 99
+    mock_session.commit.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -182,3 +156,4 @@ async def test_start_application_tool_returns_existing():
     assert "10" in response
     assert "already have an active application" in response
     mock_audit.assert_not_called()
+    mock_session.commit.assert_not_called()

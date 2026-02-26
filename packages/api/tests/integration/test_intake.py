@@ -154,6 +154,48 @@ async def test_start_application_scope_isolation(db_session, intake_seed):
 
 
 @pytest.mark.asyncio
+async def test_find_active_returns_most_recently_updated(db_session, intake_seed):
+    """When multiple active apps exist, the most recently updated is returned."""
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import update
+
+    sarah_id = intake_seed["sarah_id"]
+
+    # Add a second active app
+    newer_app = Application(
+        stage=ApplicationStage.PROCESSING,
+        property_address="456 Oak Ave, Denver, CO",
+        loan_amount=500000,
+    )
+    db_session.add(newer_app)
+    await db_session.flush()
+    db_session.add(
+        ApplicationBorrower(
+            application_id=newer_app.id,
+            borrower_id=sarah_id,
+            is_primary=True,
+        )
+    )
+    await db_session.flush()
+    newer_app_id = newer_app.id
+
+    # Force the newer app to have a later updated_at
+    future = datetime.now(UTC) + timedelta(hours=1)
+    await db_session.execute(
+        update(Application).where(Application.id == newer_app_id).values(updated_at=future)
+    )
+    await db_session.flush()
+    # Expire cached state so the query sees the updated timestamp
+    db_session.expire_all()
+
+    user = borrower_sarah()
+    result = await find_active_application(db_session, user)
+    assert result is not None
+    assert result.id == newer_app_id
+
+
+@pytest.mark.asyncio
 async def test_find_active_ignores_denied_and_closed(db_session, intake_seed):
     """Denied and closed applications are also filtered out."""
     sarah_id = intake_seed["sarah_id"]
