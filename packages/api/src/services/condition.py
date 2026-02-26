@@ -10,8 +10,6 @@ import json
 import logging
 
 from db import (
-    Application,
-    ApplicationBorrower,
     Condition,
     ConditionStatus,
     Document,
@@ -19,11 +17,10 @@ from db import (
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from ..schemas.auth import UserContext
+from ..services.application import get_application
 from ..services.audit import write_audit_event
-from ..services.scope import apply_data_scope
 
 logger = logging.getLogger(__name__)
 
@@ -53,18 +50,7 @@ async def get_conditions(
     Returns None if the application is not found or out of scope.
     Returns a list of condition dicts otherwise (may be empty).
     """
-    # Verify application exists and is in scope
-    app_stmt = (
-        select(Application)
-        .options(
-            selectinload(Application.application_borrowers).joinedload(ApplicationBorrower.borrower)
-        )
-        .where(Application.id == application_id)
-    )
-    app_stmt = apply_data_scope(app_stmt, user.data_scope, user)
-    app_result = await session.execute(app_stmt)
-    app = app_result.unique().scalar_one_or_none()
-
+    app = await get_application(session, user, application_id)
     if app is None:
         return None
 
@@ -104,18 +90,7 @@ async def respond_to_condition(
     Returns the updated condition dict, or None if not found / out of scope.
     Updates status to RESPONDED if currently OPEN.
     """
-    # Verify application scope
-    app_stmt = (
-        select(Application)
-        .options(
-            selectinload(Application.application_borrowers).joinedload(ApplicationBorrower.borrower)
-        )
-        .where(Application.id == application_id)
-    )
-    app_stmt = apply_data_scope(app_stmt, user.data_scope, user)
-    app_result = await session.execute(app_stmt)
-    app = app_result.unique().scalar_one_or_none()
-
+    app = await get_application(session, user, application_id)
     if app is None:
         return None
 
@@ -171,18 +146,7 @@ async def link_document_to_condition(
 
     Returns the updated condition dict, or None if not found / out of scope.
     """
-    # Verify application scope
-    app_stmt = (
-        select(Application)
-        .options(
-            selectinload(Application.application_borrowers).joinedload(ApplicationBorrower.borrower)
-        )
-        .where(Application.id == application_id)
-    )
-    app_stmt = apply_data_scope(app_stmt, user.data_scope, user)
-    app_result = await session.execute(app_stmt)
-    app = app_result.unique().scalar_one_or_none()
-
+    app = await get_application(session, user, application_id)
     if app is None:
         return None
 
@@ -238,18 +202,7 @@ async def check_condition_documents(
     Returns a dict with condition info, linked documents, extraction details,
     and quality issues for the agent to evaluate.
     """
-    # Verify application scope
-    app_stmt = (
-        select(Application)
-        .options(
-            selectinload(Application.application_borrowers).joinedload(ApplicationBorrower.borrower)
-        )
-        .where(Application.id == application_id)
-    )
-    app_stmt = apply_data_scope(app_stmt, user.data_scope, user)
-    app_result = await session.execute(app_stmt)
-    app = app_result.unique().scalar_one_or_none()
-
+    app = await get_application(session, user, application_id)
     if app is None:
         return None
 

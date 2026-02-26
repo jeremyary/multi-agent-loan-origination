@@ -138,14 +138,15 @@ def test_get_required_doc_types_fallback_employment_status():
 # ---------------------------------------------------------------------------
 
 
-@patch("src.services.completeness.apply_data_scope", side_effect=lambda stmt, *a, **kw: stmt)
-async def test_check_completeness_all_provided(mock_scope):
+@patch("src.services.completeness.get_application")
+async def test_check_completeness_all_provided(mock_get_app):
     """Should return is_complete=True when all required docs exist."""
     from src.services.completeness import check_completeness
 
     app = _make_application(
         loan_type=LoanType.CONVENTIONAL_30, borrower_employment_status=EmploymentStatus.W2_EMPLOYEE
     )
+    mock_get_app.return_value = app
 
     docs = [
         _make_document(doc_id=1, doc_type=DocumentType.W2),
@@ -155,13 +156,9 @@ async def test_check_completeness_all_provided(mock_scope):
     ]
 
     session = AsyncMock()
-    # First call: application query
-    app_result = MagicMock()
-    app_result.unique.return_value.scalar_one_or_none.return_value = app
-    # Second call: document query
     doc_result = MagicMock()
     doc_result.scalars.return_value.all.return_value = docs
-    session.execute = AsyncMock(side_effect=[app_result, doc_result])
+    session.execute = AsyncMock(return_value=doc_result)
 
     user = _make_user(UserRole.ADMIN, data_scope=DataScope(full_pipeline=True))
     result = await check_completeness(session, user, 1)
@@ -172,25 +169,24 @@ async def test_check_completeness_all_provided(mock_scope):
     assert result.required_count == 4
 
 
-@patch("src.services.completeness.apply_data_scope", side_effect=lambda stmt, *a, **kw: stmt)
-async def test_check_completeness_missing_docs(mock_scope):
+@patch("src.services.completeness.get_application")
+async def test_check_completeness_missing_docs(mock_get_app):
     """Should return is_complete=False with missing requirements listed."""
     from src.services.completeness import check_completeness
 
     app = _make_application(
         loan_type=LoanType.CONVENTIONAL_30, borrower_employment_status=EmploymentStatus.W2_EMPLOYEE
     )
+    mock_get_app.return_value = app
 
     docs = [
         _make_document(doc_id=1, doc_type=DocumentType.W2),
     ]
 
     session = AsyncMock()
-    app_result = MagicMock()
-    app_result.unique.return_value.scalar_one_or_none.return_value = app
     doc_result = MagicMock()
     doc_result.scalars.return_value.all.return_value = docs
-    session.execute = AsyncMock(side_effect=[app_result, doc_result])
+    session.execute = AsyncMock(return_value=doc_result)
 
     user = _make_user(UserRole.ADMIN, data_scope=DataScope(full_pipeline=True))
     result = await check_completeness(session, user, 1)
@@ -203,29 +199,28 @@ async def test_check_completeness_missing_docs(mock_scope):
     assert len(missing) == 3
 
 
-@patch("src.services.completeness.apply_data_scope", side_effect=lambda stmt, *a, **kw: stmt)
-async def test_check_completeness_app_not_found(mock_scope):
+@patch("src.services.completeness.get_application")
+async def test_check_completeness_app_not_found(mock_get_app):
     """Should return None when application is not accessible."""
     from src.services.completeness import check_completeness
 
-    session = AsyncMock()
-    app_result = MagicMock()
-    app_result.unique.return_value.scalar_one_or_none.return_value = None
-    session.execute = AsyncMock(return_value=app_result)
+    mock_get_app.return_value = None
 
+    session = AsyncMock()
     user = _make_user(UserRole.BORROWER)
     result = await check_completeness(session, user, 999)
     assert result is None
 
 
-@patch("src.services.completeness.apply_data_scope", side_effect=lambda stmt, *a, **kw: stmt)
-async def test_check_completeness_quality_flags_surfaced(mock_scope):
+@patch("src.services.completeness.get_application")
+async def test_check_completeness_quality_flags_surfaced(mock_get_app):
     """Should include quality flags from documents in requirements."""
     from src.services.completeness import check_completeness
 
     app = _make_application(
         loan_type=LoanType.CONVENTIONAL_30, borrower_employment_status=EmploymentStatus.W2_EMPLOYEE
     )
+    mock_get_app.return_value = app
 
     docs = [
         _make_document(doc_id=1, doc_type=DocumentType.W2, quality_flags=["blurry"]),
@@ -235,11 +230,9 @@ async def test_check_completeness_quality_flags_surfaced(mock_scope):
     ]
 
     session = AsyncMock()
-    app_result = MagicMock()
-    app_result.unique.return_value.scalar_one_or_none.return_value = app
     doc_result = MagicMock()
     doc_result.scalars.return_value.all.return_value = docs
-    session.execute = AsyncMock(side_effect=[app_result, doc_result])
+    session.execute = AsyncMock(return_value=doc_result)
 
     user = _make_user(UserRole.ADMIN, data_scope=DataScope(full_pipeline=True))
     result = await check_completeness(session, user, 1)
@@ -248,8 +241,8 @@ async def test_check_completeness_quality_flags_surfaced(mock_scope):
     assert w2_req.quality_flags == ["blurry"]
 
 
-@patch("src.services.completeness.apply_data_scope", side_effect=lambda stmt, *a, **kw: stmt)
-async def test_check_completeness_null_employment_falls_back(mock_scope):
+@patch("src.services.completeness.get_application")
+async def test_check_completeness_null_employment_falls_back(mock_get_app):
     """NULL employment_status should fall back to _default (W2 employee reqs)."""
     from src.services.completeness import check_completeness
 
@@ -257,13 +250,12 @@ async def test_check_completeness_null_employment_falls_back(mock_scope):
         loan_type=LoanType.CONVENTIONAL_30,
         borrower_employment_status=None,
     )
+    mock_get_app.return_value = app
 
     session = AsyncMock()
-    app_result = MagicMock()
-    app_result.unique.return_value.scalar_one_or_none.return_value = app
     doc_result = MagicMock()
     doc_result.scalars.return_value.all.return_value = []
-    session.execute = AsyncMock(side_effect=[app_result, doc_result])
+    session.execute = AsyncMock(return_value=doc_result)
 
     user = _make_user(UserRole.ADMIN, data_scope=DataScope(full_pipeline=True))
     result = await check_completeness(session, user, 1)

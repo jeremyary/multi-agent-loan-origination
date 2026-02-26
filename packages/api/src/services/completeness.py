@@ -9,15 +9,14 @@ summary.
 import json
 import logging
 
-from db import Application, ApplicationBorrower, Document
+from db import Document
 from db.enums import DocumentStatus, DocumentType, EmploymentStatus
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from ..schemas.auth import UserContext
 from ..schemas.completeness import CompletenessResponse, DocumentRequirement
-from ..services.scope import apply_data_scope
+from ..services.application import get_application
 
 logger = logging.getLogger(__name__)
 
@@ -214,17 +213,7 @@ async def check_completeness(
 
     Returns None if the application is not found or not accessible.
     """
-    # Load application with data scope filtering
-    app_stmt = (
-        select(Application)
-        .options(
-            selectinload(Application.application_borrowers).joinedload(ApplicationBorrower.borrower)
-        )
-        .where(Application.id == application_id)
-    )
-    app_stmt = apply_data_scope(app_stmt, user.data_scope, user)
-    result = await session.execute(app_stmt)
-    app = result.unique().scalar_one_or_none()
+    app = await get_application(session, user, application_id)
     if app is None:
         return None
 
@@ -240,13 +229,11 @@ async def check_completeness(
     loan_type = app.loan_type.value if app.loan_type else None
     required_types = _get_required_doc_types(loan_type, employment_status)
 
-    # Query documents for this app, excluding failed/rejected
+    # Query documents for this app, excluding failed/rejected.
+    # No separate scope filter needed -- get_application already verified access.
     doc_stmt = select(Document).where(
         Document.application_id == application_id,
         Document.status.notin_([s.value for s in _EXCLUDED_STATUSES]),
-    )
-    doc_stmt = apply_data_scope(
-        doc_stmt, user.data_scope, user, join_to_application=Document.application
     )
     doc_result = await session.execute(doc_stmt)
     documents = doc_result.scalars().all()

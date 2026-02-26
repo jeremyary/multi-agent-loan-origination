@@ -43,6 +43,12 @@ class DocumentUploadResponse(BaseModel):
     created_at: datetime
 
 
+class DocumentFilePathResponse(BaseModel):
+    """Response for document content endpoint."""
+
+    file_path: str
+
+
 class DocumentListResponse(BaseModel):
     """Paginated list of documents."""
 

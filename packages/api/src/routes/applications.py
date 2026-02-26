@@ -17,7 +17,12 @@ from ..schemas.application import (
     ApplicationUpdate,
     BorrowerSummary,
 )
-from ..schemas.condition import ConditionListResponse, ConditionRespondRequest
+from ..schemas.condition import (
+    ConditionItem,
+    ConditionListResponse,
+    ConditionRespondRequest,
+    ConditionResponse,
+)
 from ..schemas.rate_lock import RateLockResponse
 from ..schemas.status import ApplicationStatusResponse
 from ..services import application as app_service
@@ -215,6 +220,7 @@ async def list_conditions(
 
 @router.post(
     "/{application_id}/conditions/{condition_id}/respond",
+    response_model=ConditionResponse,
     dependencies=[Depends(require_roles(UserRole.BORROWER, UserRole.ADMIN))],
 )
 async def respond_condition(
@@ -237,7 +243,7 @@ async def respond_condition(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application or condition not found",
         )
-    return {"data": result}
+    return ConditionResponse(data=ConditionItem(**result))
 
 
 @router.post(

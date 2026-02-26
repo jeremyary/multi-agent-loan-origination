@@ -23,6 +23,12 @@ class ConditionListResponse(BaseModel):
     count: int
 
 
+class ConditionResponse(BaseModel):
+    """Response for a single condition after an update."""
+
+    data: ConditionItem
+
+
 class ConditionRespondRequest(BaseModel):
     """Request body for responding to a condition with text."""
 

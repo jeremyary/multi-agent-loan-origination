@@ -7,13 +7,12 @@ current status (active, expired, none) with days remaining.
 
 from datetime import UTC, datetime
 
-from db import Application, ApplicationBorrower, RateLock
+from db import RateLock
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from ..schemas.auth import UserContext
-from ..services.scope import apply_data_scope
+from ..services.application import get_application
 
 
 async def get_rate_lock_status(
@@ -31,18 +30,7 @@ async def get_rate_lock_status(
         Dict with rate lock info, or dict with status='none' if no lock exists,
         or None if application not found / out of scope.
     """
-    # Verify the application exists and is in scope
-    app_stmt = (
-        select(Application)
-        .options(
-            selectinload(Application.application_borrowers).joinedload(ApplicationBorrower.borrower)
-        )
-        .where(Application.id == application_id)
-    )
-    app_stmt = apply_data_scope(app_stmt, user.data_scope, user)
-    app_result = await session.execute(app_stmt)
-    app = app_result.unique().scalar_one_or_none()
-
+    app = await get_application(session, user, application_id)
     if app is None:
         return None
 

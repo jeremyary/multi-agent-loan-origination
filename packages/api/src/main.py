@@ -1,16 +1,24 @@
 # This project was developed with assistance from AI tools.
 """FastAPI application entry point."""
 
+import logging
+import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .admin import setup_admin
 from .core.config import settings
 from .inference.safety import log_safety_status
 from .observability import log_observability_status
 from .routes import admin, applications, borrower_chat, chat, documents, health, hmda, public
+from .schemas.error import ErrorResponse
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -45,6 +53,56 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+_HTTP_STATUS_TITLES: dict[int, str] = {
+    400: "Bad Request",
+    401: "Unauthorized",
+    403: "Forbidden",
+    404: "Not Found",
+    409: "Conflict",
+    413: "Payload Too Large",
+    422: "Unprocessable Entity",
+    500: "Internal Server Error",
+}
+
+
+def _build_error(status_code: int, detail: str, request_id: str) -> ErrorResponse:
+    return ErrorResponse(
+        type="about:blank",
+        title=_HTTP_STATUS_TITLES.get(status_code, "Error"),
+        status=status_code,
+        detail=detail,
+        request_id=request_id,
+    )
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Convert HTTPException to RFC 7807 Problem Details."""
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    body = _build_error(exc.status_code, str(exc.detail), request_id)
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=body.model_dump(),
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Convert Pydantic validation errors to RFC 7807 Problem Details."""
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    body = _build_error(422, str(exc.errors()), request_id)
+    return JSONResponse(status_code=422, content=body.model_dump())
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catch-all for unhandled exceptions -- log and return 500."""
+    request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
+    logger.exception("Unhandled exception (request_id=%s)", request_id)
+    body = _build_error(500, "An unexpected error occurred.", request_id)
+    return JSONResponse(status_code=500, content=body.model_dump())
+
 
 # Include routers
 app.include_router(health.router, prefix="/health", tags=["health"])
