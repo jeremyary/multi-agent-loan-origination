@@ -3,7 +3,12 @@
 SQLAdmin configuration for database administration UI
 
 Access the admin panel at: http://localhost:8000/admin
+
+When AUTH_DISABLED=false, requires admin credentials via login form.
+When AUTH_DISABLED=true, admin panel is open (dev mode).
 """
+
+import secrets
 
 from db import (
     Application,
@@ -18,13 +23,42 @@ from db import (
     RateLock,
 )
 from sqladmin import Admin, ModelView
+from sqladmin.authentication import AuthenticationBackend
 from sqlalchemy import create_engine
+from starlette.requests import Request
+from starlette.responses import Response
 
 from .core.config import settings
 
 # SQLAdmin requires a sync engine; derive from the async DATABASE_URL
 _sync_url = settings.DATABASE_URL.replace("+asyncpg", "")
 engine = create_engine(_sync_url, echo=False)
+
+
+class AdminAuth(AuthenticationBackend):
+    """Session-based auth gate for SQLAdmin.
+
+    When AUTH_DISABLED=true, authenticate() always returns True (dev mode).
+    Otherwise, requires login with credentials from ADMIN_USER / ADMIN_PASSWORD env vars.
+    """
+
+    async def login(self, request: Request) -> bool:
+        form = await request.form()
+        username = form.get("username")
+        password = form.get("password")
+        if username == settings.SQLADMIN_USER and password == settings.SQLADMIN_PASSWORD:
+            request.session.update({"admin_authenticated": True})
+            return True
+        return False
+
+    async def logout(self, request: Request) -> bool:
+        request.session.clear()
+        return True
+
+    async def authenticate(self, request: Request) -> Response | bool:
+        if settings.AUTH_DISABLED:
+            return True
+        return request.session.get("admin_authenticated", False)
 
 
 class BorrowerAdmin(ModelView, model=Borrower):
@@ -178,7 +212,8 @@ class DemoDataManifestAdmin(ModelView, model=DemoDataManifest):
 
 def setup_admin(app):
     """Set up SQLAdmin and mount it to the FastAPI app."""
-    admin = Admin(app, engine, title="Summit Cap Admin")
+    auth_backend = AdminAuth(secret_key=secrets.token_urlsafe(32))
+    admin = Admin(app, engine, title="Summit Cap Admin", authentication_backend=auth_backend)
 
     admin.add_view(BorrowerAdmin)
     admin.add_view(ApplicationAdmin)
