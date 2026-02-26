@@ -253,3 +253,148 @@ def test_rule_based_fallback_still_works():
     assert classify_query("I earn $95k and want to buy a $400k home with 10% down") == (
         "capable_large"
     )
+
+
+# -- Two-pass escalation routing --
+
+
+@pytest.mark.asyncio
+async def test_simple_query_uses_fast_model(_fresh_graph, monkeypatch):
+    """SIMPLE classification with text-only response stays on fast model."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    monkeypatch.setattr("src.agents.base.get_safety_checker", lambda: None)
+
+    # Classifier returns SIMPLE
+    fast_response = AIMessage(content="Hi there! How can I help?")
+    fast_response.tool_calls = []
+
+    mock_fast = MagicMock()
+    mock_fast.ainvoke = AsyncMock(
+        side_effect=[
+            AIMessage(content="SIMPLE"),  # classify call
+            fast_response,  # agent_fast call
+        ]
+    )
+    mock_fast.bind_tools.return_value = mock_fast
+
+    mock_capable = MagicMock()
+    mock_capable.ainvoke = AsyncMock()
+    mock_capable.bind_tools.return_value = mock_capable
+
+    from src.agents.base import build_routed_graph
+    from src.agents.tools import affordability_calc, product_info
+
+    tools = [product_info, affordability_calc]
+    tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
+    graph = build_routed_graph(
+        system_prompt="test",
+        tools=tools,
+        llms={"fast_small": mock_fast, "capable_large": mock_capable},
+        tool_descriptions=tool_descriptions,
+    )
+
+    result = await graph.ainvoke({"messages": [HumanMessage(content="Hello")]})
+
+    assert result["messages"][-1].content == "Hi there! How can I help?"
+    # Capable model should NOT have been called
+    mock_capable.ainvoke.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fast_model_tool_calls_escalate_to_capable(_fresh_graph, monkeypatch):
+    """SIMPLE classification where fast model tries tool calls escalates to capable."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    monkeypatch.setattr("src.agents.base.get_safety_checker", lambda: None)
+
+    # Fast model returns a tool call (unreliable -- should be discarded)
+    fast_tool_response = AIMessage(content="")
+    fast_tool_response.tool_calls = [{"name": "product_info", "args": {}, "id": "1"}]
+
+    mock_fast = MagicMock()
+    mock_fast.ainvoke = AsyncMock(
+        side_effect=[
+            AIMessage(content="SIMPLE"),  # classify call
+            fast_tool_response,  # agent_fast call (has tool calls)
+        ]
+    )
+    mock_fast.bind_tools.return_value = mock_fast
+
+    # Capable model gives a proper text response
+    capable_response = AIMessage(content="Here are our mortgage products...")
+    capable_response.tool_calls = []
+
+    mock_capable = MagicMock()
+    mock_capable.ainvoke = AsyncMock(return_value=capable_response)
+    mock_capable.bind_tools.return_value = mock_capable
+
+    from src.agents.base import build_routed_graph
+    from src.agents.tools import affordability_calc, product_info
+
+    tools = [product_info, affordability_calc]
+    tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
+    graph = build_routed_graph(
+        system_prompt="test",
+        tools=tools,
+        llms={"fast_small": mock_fast, "capable_large": mock_capable},
+        tool_descriptions=tool_descriptions,
+    )
+
+    result = await graph.ainvoke({"messages": [HumanMessage(content="Show me products")]})
+
+    # Final response should be from capable model
+    assert result["messages"][-1].content == "Here are our mortgage products..."
+    # Capable model should have been invoked after escalation
+    mock_capable.ainvoke.assert_awaited_once()
+    # Fast model's tool call response should NOT be in the message history
+    for msg in result["messages"]:
+        if isinstance(msg, AIMessage):
+            assert not msg.tool_calls, "Fast model's tool calls should not be in final messages"
+
+
+@pytest.mark.asyncio
+async def test_complex_query_skips_fast_model(_fresh_graph, monkeypatch):
+    """COMPLEX classification goes directly to capable model."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    monkeypatch.setattr("src.agents.base.get_safety_checker", lambda: None)
+
+    mock_fast = MagicMock()
+    mock_fast.ainvoke = AsyncMock(return_value=AIMessage(content="COMPLEX"))
+    mock_fast.bind_tools.return_value = mock_fast
+
+    capable_response = AIMessage(content="Based on your income of $95k...")
+    capable_response.tool_calls = []
+
+    mock_capable = MagicMock()
+    mock_capable.ainvoke = AsyncMock(return_value=capable_response)
+    mock_capable.bind_tools.return_value = mock_capable
+
+    from src.agents.base import build_routed_graph
+    from src.agents.tools import affordability_calc, product_info
+
+    tools = [product_info, affordability_calc]
+    tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
+    graph = build_routed_graph(
+        system_prompt="test",
+        tools=tools,
+        llms={"fast_small": mock_fast, "capable_large": mock_capable},
+        tool_descriptions=tool_descriptions,
+    )
+
+    result = await graph.ainvoke(
+        {"messages": [HumanMessage(content="Calculate affordability for $95k income")]}
+    )
+
+    assert result["messages"][-1].content == "Based on your income of $95k..."
+    # Fast model called only once (for classification), not for agent_fast
+    assert mock_fast.ainvoke.await_count == 1
+    # Capable model called for agent_capable
+    mock_capable.ainvoke.assert_awaited_once()

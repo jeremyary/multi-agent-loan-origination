@@ -1,5 +1,5 @@
 # This project was developed with assistance from AI tools.
-"""Tests for application intake service (S-2-F3-01)."""
+"""Tests for application intake service (S-2-F3-01, S-2-F3-02, S-2-F3-03)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -157,3 +157,132 @@ async def test_start_application_tool_returns_existing():
     assert "already have an active application" in response
     mock_audit.assert_not_called()
     mock_session.commit.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_update_tool_formats_success():
+    """The update_application_data tool formats updated + remaining fields."""
+    from src.agents.borrower_tools import update_application_data
+
+    state = {"user_id": "borrower-1", "user_role": "borrower"}
+    mock_session = AsyncMock()
+
+    service_result = {
+        "updated": ["gross_monthly_income", "employment_status"],
+        "errors": {},
+        "remaining": ["ssn", "date_of_birth"],
+        "corrections": {},
+    }
+
+    with (
+        patch("src.agents.borrower_tools.SessionLocal") as mock_sl,
+        patch(
+            "src.agents.borrower_tools.update_application_fields",
+            new_callable=AsyncMock,
+            return_value=service_result,
+        ),
+        patch("src.agents.borrower_tools.write_audit_event", new_callable=AsyncMock),
+    ):
+        mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        response = await update_application_data.ainvoke(
+            {
+                "application_id": 42,
+                "fields": '{"gross_monthly_income": "6250", "employment_status": "w2"}',
+                "state": state,
+            }
+        )
+
+    assert "gross_monthly_income" in response
+    assert "employment_status" in response
+    assert "Still needed" in response
+    assert "ssn" in response
+
+
+@pytest.mark.asyncio
+async def test_update_tool_formats_validation_errors():
+    """The update_application_data tool reports validation errors per field."""
+    from src.agents.borrower_tools import update_application_data
+
+    state = {"user_id": "borrower-1", "user_role": "borrower"}
+    mock_session = AsyncMock()
+
+    service_result = {
+        "updated": ["email"],
+        "errors": {"ssn": "SSN must be 9 digits (XXX-XX-XXXX)"},
+        "remaining": ["ssn"],
+        "corrections": {},
+    }
+
+    with (
+        patch("src.agents.borrower_tools.SessionLocal") as mock_sl,
+        patch(
+            "src.agents.borrower_tools.update_application_fields",
+            new_callable=AsyncMock,
+            return_value=service_result,
+        ),
+        patch("src.agents.borrower_tools.write_audit_event", new_callable=AsyncMock),
+    ):
+        mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        response = await update_application_data.ainvoke(
+            {
+                "application_id": 42,
+                "fields": '{"email": "test@example.com", "ssn": "123"}',
+                "state": state,
+            }
+        )
+
+    assert "email" in response
+    assert "Could not save ssn" in response
+    assert "9 digits" in response
+
+
+@pytest.mark.asyncio
+async def test_update_tool_rejects_bad_json():
+    """The update_application_data tool handles unparseable JSON input."""
+    from src.agents.borrower_tools import update_application_data
+
+    state = {"user_id": "borrower-1", "user_role": "borrower"}
+
+    response = await update_application_data.ainvoke(
+        {"application_id": 42, "fields": "not json at all", "state": state}
+    )
+
+    assert "Could not parse" in response
+
+
+@pytest.mark.asyncio
+async def test_update_tool_all_fields_complete():
+    """When all fields are filled, the tool reports completion."""
+    from src.agents.borrower_tools import update_application_data
+
+    state = {"user_id": "borrower-1", "user_role": "borrower"}
+    mock_session = AsyncMock()
+
+    service_result = {
+        "updated": ["credit_score"],
+        "errors": {},
+        "remaining": [],
+        "corrections": {},
+    }
+
+    with (
+        patch("src.agents.borrower_tools.SessionLocal") as mock_sl,
+        patch(
+            "src.agents.borrower_tools.update_application_fields",
+            new_callable=AsyncMock,
+            return_value=service_result,
+        ),
+        patch("src.agents.borrower_tools.write_audit_event", new_callable=AsyncMock),
+    ):
+        mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        response = await update_application_data.ainvoke(
+            {"application_id": 42, "fields": '{"credit_score": "750"}', "state": state}
+        )
+
+    assert "All required fields are complete" in response

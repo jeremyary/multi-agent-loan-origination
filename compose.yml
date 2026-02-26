@@ -15,7 +15,7 @@
 #   make run                                      # alias for full
 
 x-langfuse-environment: &langfuse-env
-  DATABASE_URL: postgresql://user:password@summit-cap-db:5432/langfuse
+  DATABASE_URL: postgresql://user:password@summit-cap-db:5432/langfuse #notsecret
   NEXTAUTH_URL: http://localhost:3001
   NEXTAUTH_SECRET: mysecret
   SALT: mysalt
@@ -30,7 +30,7 @@ x-langfuse-environment: &langfuse-env
   LANGFUSE_INIT_USER_EMAIL: admin@summitcap.dev
   LANGFUSE_INIT_USER_NAME: Admin
   LANGFUSE_INIT_USER_PASSWORD: password
-  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@clickhouse:9000/default
+  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@clickhouse:9000/default #notsecret
   CLICKHOUSE_URL: http://clickhouse:8123
   CLICKHOUSE_USER: clickhouse
   CLICKHOUSE_PASSWORD: clickhouse
@@ -86,8 +86,8 @@ services:
       minio:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql+asyncpg://user:password@summit-cap-db:5432/summit-cap
-      COMPLIANCE_DATABASE_URL: postgresql+asyncpg://compliance_app:compliance_pass@summit-cap-db:5432/summit-cap
+      DATABASE_URL: postgresql+asyncpg://user:password@summit-cap-db:5432/summit-cap #notsecret
+      COMPLIANCE_DATABASE_URL: postgresql+asyncpg://compliance_app:compliance_pass@summit-cap-db:5432/summit-cap #notsecret
       AUTH_DISABLED: "${AUTH_DISABLED:-true}"
       KEYCLOAK_URL: http://keycloak:8080
       LLM_BASE_URL: "${LLM_BASE_URL:-http://host.docker.internal:1234/v1}"

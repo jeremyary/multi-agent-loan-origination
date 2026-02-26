@@ -17,7 +17,8 @@ from langchain_openai import ChatOpenAI
 
 logger = logging.getLogger(__name__)
 
-LLAMA_GUARD_CATEGORIES = """\
+# Full Llama Guard 3 category set (reference only -- not used directly).
+LLAMA_GUARD_ALL_CATEGORIES = """\
 S1: Violent Crimes
 S2: Non-Violent Crimes
 S3: Sex-Related Crimes
@@ -25,6 +26,32 @@ S4: Child Sexual Exploitation
 S5: Defamation
 S6: Specialized Advice
 S7: Privacy
+S8: Intellectual Property
+S9: Indiscriminate Weapons
+S10: Hate
+S11: Suicide & Self-Harm
+S12: Sexual Content
+S13: Elections"""
+
+# Domain-tuned categories for a mortgage intake application.
+# S6 (Specialized Advice) and S7 (Privacy) are excluded from BOTH input and
+# output checks because they conflict with the application's core purpose:
+#
+# S7 -- Privacy:
+#   Input:  Users voluntarily provide PII (name, SSN, income) during intake.
+#   Output: The agent must ask for PII to complete the application. Data-scope
+#           filtering prevents cross-user PII leaks at the DB layer.
+#
+# S6 -- Specialized Advice:
+#   Input:  Users asking for mortgage advice is the application's purpose.
+#   Output: The agent provides mortgage guidance (rates, products, affordability)
+#           as its primary function. Disclaimers are handled in the system prompt.
+LLAMA_GUARD_CATEGORIES = """\
+S1: Violent Crimes
+S2: Non-Violent Crimes
+S3: Sex-Related Crimes
+S4: Child Sexual Exploitation
+S5: Defamation
 S8: Intellectual Property
 S9: Indiscriminate Weapons
 S10: Hate

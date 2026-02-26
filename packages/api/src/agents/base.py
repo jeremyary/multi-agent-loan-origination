@@ -1,10 +1,10 @@
 # This project was developed with assistance from AI tools.
-"""Custom LangGraph graph with safety shields and LLM-based per-query model routing.
+"""Custom LangGraph graph with safety shields and two-pass model routing.
 
 Graph structure:
-    input_shield -> classify (fast LLM) -> agent (routed LLM + tools) <-> tools
+    input_shield -> classify (fast LLM) -> agent_fast / agent_capable
          |                                          |
-         +-(blocked)-> END                          +-(done)-> output_shield -> END
+         +-(blocked)-> END               tools <-> agent_capable -> output_shield -> END
 
 The input_shield node calls Llama Guard on the user's message.  If unsafe, it
 short-circuits to END with a refusal message.  The output_shield node checks the
@@ -14,9 +14,17 @@ Shields are active when SAFETY_MODEL is configured; otherwise they are no-ops.
 On any safety-model error the check is skipped (fail-open).
 
 The classify node sends the user's message to the fast model with a
-prompt listing available tools.  The model replies SIMPLE or COMPLEX,
-which selects the tier for the agent node.  All nodes appear in a single
-LangFuse trace so the routing decision is visible alongside the response.
+prompt listing available tools.  The model replies SIMPLE or COMPLEX.
+
+Two-pass escalation routing:
+  - COMPLEX -> agent_capable directly (tool-calling with reliable model)
+  - SIMPLE  -> agent_fast first.  If agent_fast produces a text-only
+    response, route to output_shield (cheap path).  If agent_fast
+    produces tool calls, discard that response and escalate to
+    agent_capable for reliable tool execution.
+
+This saves cost on chitchat (fast model handles greetings, FAQs) while
+ensuring tool calls are always made by the capable model.
 
 If the classifier LLM call fails, routing falls back to the rule-based
 classifier in inference.router.
@@ -56,6 +64,7 @@ class AgentState(MessagesState):
 
     model_tier: str
     safety_blocked: bool
+    escalated: bool
     user_role: str
     user_id: str
     tool_allowed_roles: dict[str, list[str]]
@@ -70,7 +79,7 @@ def build_routed_graph(
     tool_allowed_roles: dict[str, list[str]] | None = None,
     checkpointer: Any | None = None,
 ) -> Any:
-    """Build a compiled LangGraph graph with safety shields and LLM-based model routing.
+    """Build a compiled LangGraph graph with safety shields and two-pass routing.
 
     Args:
         system_prompt: The agent's system prompt (injected per LLM call).
@@ -82,10 +91,10 @@ def build_routed_graph(
             before each tool invocation (RBAC Layer 3).
 
     Returns:
-        A compiled StateGraph with input_shield -> classify -> agent <-> tools
-        -> output_shield structure (with tool_auth node when tool_allowed_roles set).
+        A compiled StateGraph with two-pass escalation routing.
     """
     classifier_llm = llms["fast_small"]
+    capable_llm = llms["capable_large"]
     classify_system = CLASSIFY_PROMPT_TEMPLATE.format(tool_descriptions=tool_descriptions)
 
     async def input_shield(state: AgentState) -> dict:
@@ -132,10 +141,41 @@ def build_routed_graph(
         logger.info("Routed to '%s' for: %s", tier, last_msg.content[:80])
         return {"model_tier": tier}
 
-    async def agent(state: AgentState) -> dict:
-        """Call the routed LLM with tools bound."""
+    def after_classify(state: AgentState) -> str:
+        """Route to agent_fast for SIMPLE, agent_capable for COMPLEX."""
         tier = state.get("model_tier", "capable_large")
-        llm = llms.get(tier, llms["capable_large"]).bind_tools(tools)
+        if tier == "fast_small":
+            return "agent_fast"
+        return "agent_capable"
+
+    async def agent_fast(state: AgentState) -> dict:
+        """First pass with the fast model (tools bound but not trusted).
+
+        If the fast model returns text only, the response is added to
+        messages and the graph proceeds to output_shield (cheap path).
+        If it attempts tool calls, the response is NOT added to messages
+        and the ``escalated`` flag is set so the graph routes to
+        agent_capable instead.
+        """
+        llm = classifier_llm.bind_tools(tools)
+        messages = [SystemMessage(content=system_prompt), *state["messages"]]
+        response = await llm.ainvoke(messages)
+
+        if response.tool_calls:
+            logger.info("Fast model attempted tool calls, escalating to capable_large")
+            return {"escalated": True}
+
+        return {"messages": [response]}
+
+    def after_agent_fast(state: AgentState) -> str:
+        """Route to agent_capable if fast model tried tool calls."""
+        if state.get("escalated"):
+            return "agent_capable"
+        return "output_shield"
+
+    async def agent_capable(state: AgentState) -> dict:
+        """Call the capable LLM with tools bound (reliable tool-calling)."""
+        llm = capable_llm.bind_tools(tools)
         messages = [SystemMessage(content=system_prompt), *state["messages"]]
         response = await llm.ainvoke(messages)
         return {"messages": [response]}
@@ -227,7 +267,8 @@ def build_routed_graph(
     graph = StateGraph(AgentState)
     graph.add_node("input_shield", input_shield)
     graph.add_node("classify", classify)
-    graph.add_node("agent", agent)
+    graph.add_node("agent_fast", agent_fast)
+    graph.add_node("agent_capable", agent_capable)
     graph.add_node("tools", tool_node)
     graph.add_node("output_shield", output_shield)
 
@@ -235,12 +276,24 @@ def build_routed_graph(
     graph.add_conditional_edges(
         "input_shield", after_input_shield, {END: END, "classify": "classify"}
     )
-    graph.add_edge("classify", "agent")
+    graph.add_conditional_edges(
+        "classify",
+        after_classify,
+        {"agent_fast": "agent_fast", "agent_capable": "agent_capable"},
+    )
 
+    # Fast model path: text-only -> output_shield, tool calls -> agent_capable
+    graph.add_conditional_edges(
+        "agent_fast",
+        after_agent_fast,
+        {"output_shield": "output_shield", "agent_capable": "agent_capable"},
+    )
+
+    # Capable model path: tool calls -> auth/tools loop, text -> output_shield
     if tool_allowed_roles:
         graph.add_node("tool_auth", tool_auth)
         graph.add_conditional_edges(
-            "agent",
+            "agent_capable",
             should_continue,
             {"tool_auth": "tool_auth", "output_shield": "output_shield"},
         )
@@ -251,12 +304,12 @@ def build_routed_graph(
         )
     else:
         graph.add_conditional_edges(
-            "agent",
+            "agent_capable",
             should_continue,
             {"tools": "tools", "output_shield": "output_shield"},
         )
 
-    graph.add_edge("tools", "agent")
+    graph.add_edge("tools", "agent_capable")
     graph.add_edge("output_shield", END)
 
     return graph.compile(checkpointer=checkpointer)

@@ -25,7 +25,12 @@ from ..services.condition import (
     respond_to_condition,
 )
 from ..services.disclosure import get_disclosure_status
-from ..services.intake import start_application as start_application_service
+from ..services.intake import (
+    start_application as start_application_service,
+)
+from ..services.intake import (
+    update_application_fields,
+)
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
 
@@ -519,3 +524,72 @@ async def start_application(
             f"You already have an active application #{result['application_id']} "
             f"(stage: {stage}). Would you like to continue with this application?"
         )
+
+
+@tool
+async def update_application_data(
+    application_id: int,
+    fields: str,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Update one or more fields on a mortgage application.
+
+    Args:
+        application_id: The application ID to update.
+        fields: JSON string of field_name:value pairs, e.g.
+            '{"gross_monthly_income": "6250", "employment_status": "w2"}'
+
+    Valid field names: first_name, last_name, email, ssn, date_of_birth,
+        employment_status, loan_type, property_address, loan_amount,
+        property_value, gross_monthly_income, monthly_debts, total_assets,
+        credit_score
+    """
+    import json as _json
+
+    user = _user_context_from_state(state)
+
+    try:
+        parsed = _json.loads(fields)
+    except _json.JSONDecodeError:
+        return "Could not parse fields -- please provide a valid JSON object."
+
+    if not isinstance(parsed, dict) or not parsed:
+        return "Fields must be a non-empty JSON object of {field_name: value} pairs."
+
+    async with SessionLocal() as session:
+        result = await update_application_fields(session, user, application_id, parsed)
+
+        # Write audit event (field names only, not PII values)
+        audit_data = {
+            "fields_updated": result["updated"],
+            "fields_failed": list(result["errors"].keys()),
+        }
+        if result.get("corrections"):
+            audit_data["corrections"] = list(result["corrections"].keys())
+
+        await write_audit_event(
+            session,
+            event_type="data_collection",
+            user_id=user.user_id,
+            user_role=user.role.value,
+            application_id=application_id,
+            event_data=audit_data,
+        )
+        await session.commit()
+
+    # Format response
+    parts = []
+    if result["updated"]:
+        parts.append(f"Updated: {', '.join(result['updated'])}.")
+    if result["errors"]:
+        for fname, msg in result["errors"].items():
+            if fname == "_":
+                parts.append(msg)
+            else:
+                parts.append(f"Could not save {fname}: {msg}.")
+    if result["remaining"]:
+        parts.append(f"Still needed: {', '.join(result['remaining'])}.")
+    else:
+        parts.append("All required fields are complete!")
+
+    return " ".join(parts)
