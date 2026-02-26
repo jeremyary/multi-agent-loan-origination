@@ -17,7 +17,9 @@ from langgraph.prebuilt import InjectedState
 
 from ..middleware.auth import _build_data_scope
 from ..schemas.auth import UserContext
+from ..services.audit import write_audit_event
 from ..services.completeness import check_completeness
+from ..services.disclosure import get_disclosure_status
 from ..services.status import get_application_status
 
 # REQ-CC-17 disclaimer appended to all regulatory deadline responses
@@ -180,3 +182,90 @@ def regulatory_deadlines(
         )
 
     return "\n".join(lines) + _REGULATORY_DISCLAIMER
+
+
+@tool
+async def acknowledge_disclosure(
+    application_id: int,
+    disclosure_id: str,
+    borrower_confirmation: str,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Record a borrower's acknowledgment of a required disclosure in the audit trail.
+
+    Call this when the borrower confirms they have received and reviewed
+    a disclosure (e.g., "yes", "I acknowledge", "I agree").
+
+    Args:
+        application_id: The loan application ID.
+        disclosure_id: Identifier of the disclosure (loan_estimate, privacy_notice, hmda_notice, equal_opportunity_notice).
+        borrower_confirmation: The borrower's exact confirmation text.
+    """
+    from ..services.disclosure import _DISCLOSURE_BY_ID
+
+    disclosure = _DISCLOSURE_BY_ID.get(disclosure_id)
+    if disclosure is None:
+        valid = ", ".join(sorted(_DISCLOSURE_BY_ID.keys()))
+        return f"Unknown disclosure '{disclosure_id}'. Valid IDs: {valid}"
+
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        await write_audit_event(
+            session,
+            event_type="disclosure_acknowledged",
+            user_id=user.user_id,
+            user_role=user.role.value,
+            application_id=application_id,
+            event_data={
+                "disclosure_id": disclosure_id,
+                "disclosure_label": disclosure["label"],
+                "borrower_confirmation": borrower_confirmation,
+            },
+        )
+        await session.commit()
+
+    return f"Recorded: {disclosure['label']} acknowledged for application {application_id}."
+
+
+@tool
+async def disclosure_status(
+    application_id: int,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Check which required disclosures have been acknowledged and which are still pending for a loan application.
+
+    Args:
+        application_id: The loan application ID to check.
+    """
+    async with SessionLocal() as session:
+        result = await get_disclosure_status(session, application_id)
+
+    lines = [f"Disclosure status for application {application_id}:"]
+
+    if result["all_acknowledged"]:
+        lines.append("All required disclosures have been acknowledged.")
+    else:
+        lines.append(
+            f"{len(result['acknowledged'])}/{len(result['acknowledged']) + len(result['pending'])} "
+            "disclosures acknowledged."
+        )
+
+    if result["acknowledged"]:
+        lines.append("")
+        lines.append("Acknowledged:")
+        for d_id in result["acknowledged"]:
+            from ..services.disclosure import _DISCLOSURE_BY_ID
+
+            label = _DISCLOSURE_BY_ID.get(d_id, {}).get("label", d_id)
+            lines.append(f"  - {label}")
+
+    if result["pending"]:
+        lines.append("")
+        lines.append("Pending:")
+        for d_id in result["pending"]:
+            from ..services.disclosure import _DISCLOSURE_BY_ID
+
+            label = _DISCLOSURE_BY_ID.get(d_id, {}).get("label", d_id)
+            lines.append(f"  - {label}")
+
+    return "\n".join(lines)

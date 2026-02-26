@@ -8,7 +8,9 @@ from db.enums import DocumentType
 
 from src.agents.borrower_tools import (
     _user_context_from_state,
+    acknowledge_disclosure,
     application_status,
+    disclosure_status,
     document_completeness,
     regulatory_deadlines,
 )
@@ -246,3 +248,162 @@ def test_deadlines_prequalification_stage():
         {"application_date": "2026-02-01", "current_stage": "prequalification"}
     )
     assert "No regulatory deadlines apply yet" in result
+
+
+# ---------------------------------------------------------------------------
+# acknowledge_disclosure tool
+# ---------------------------------------------------------------------------
+
+
+@patch("src.agents.borrower_tools.SessionLocal")
+@patch("src.agents.borrower_tools.write_audit_event")
+async def test_acknowledge_disclosure_records_event(mock_write, mock_session_cls):
+    mock_write.return_value = AsyncMock()
+
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    result = await acknowledge_disclosure.ainvoke(
+        {
+            "application_id": 1,
+            "disclosure_id": "loan_estimate",
+            "borrower_confirmation": "I acknowledge",
+            "state": _state(),
+        }
+    )
+
+    assert "Loan Estimate" in result
+    assert "acknowledged" in result
+    mock_write.assert_called_once()
+    call_kwargs = mock_write.call_args[1]
+    assert call_kwargs["event_type"] == "disclosure_acknowledged"
+    assert call_kwargs["application_id"] == 1
+    assert call_kwargs["event_data"]["disclosure_id"] == "loan_estimate"
+    assert call_kwargs["event_data"]["borrower_confirmation"] == "I acknowledge"
+
+
+@patch("src.agents.borrower_tools.SessionLocal")
+@patch("src.agents.borrower_tools.write_audit_event")
+async def test_acknowledge_disclosure_invalid_id(mock_write, mock_session_cls):
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    result = await acknowledge_disclosure.ainvoke(
+        {
+            "application_id": 1,
+            "disclosure_id": "not_real",
+            "borrower_confirmation": "yes",
+            "state": _state(),
+        }
+    )
+
+    assert "Unknown disclosure" in result
+    assert "not_real" in result
+    mock_write.assert_not_called()
+
+
+@patch("src.agents.borrower_tools.SessionLocal")
+@patch("src.agents.borrower_tools.write_audit_event")
+async def test_acknowledge_disclosure_hmda_notice(mock_write, mock_session_cls):
+    mock_write.return_value = AsyncMock()
+
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    result = await acknowledge_disclosure.ainvoke(
+        {
+            "application_id": 5,
+            "disclosure_id": "hmda_notice",
+            "borrower_confirmation": "yes I agree",
+            "state": _state(),
+        }
+    )
+
+    assert "HMDA Notice" in result
+    call_kwargs = mock_write.call_args[1]
+    assert call_kwargs["event_data"]["disclosure_id"] == "hmda_notice"
+    assert call_kwargs["user_id"] == "sarah-uuid"
+
+
+# ---------------------------------------------------------------------------
+# disclosure_status tool
+# ---------------------------------------------------------------------------
+
+
+@patch("src.agents.borrower_tools.SessionLocal")
+@patch("src.agents.borrower_tools.get_disclosure_status")
+async def test_disclosure_status_all_pending(mock_status, mock_session_cls):
+    mock_status.return_value = {
+        "application_id": 1,
+        "all_acknowledged": False,
+        "acknowledged": [],
+        "pending": [
+            "equal_opportunity_notice",
+            "hmda_notice",
+            "loan_estimate",
+            "privacy_notice",
+        ],
+    }
+
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    result = await disclosure_status.ainvoke({"application_id": 1, "state": _state()})
+
+    assert "0/4" in result
+    assert "Pending:" in result
+    assert "Loan Estimate" in result
+    assert "Privacy Notice" in result
+
+
+@patch("src.agents.borrower_tools.SessionLocal")
+@patch("src.agents.borrower_tools.get_disclosure_status")
+async def test_disclosure_status_all_acknowledged(mock_status, mock_session_cls):
+    mock_status.return_value = {
+        "application_id": 1,
+        "all_acknowledged": True,
+        "acknowledged": [
+            "equal_opportunity_notice",
+            "hmda_notice",
+            "loan_estimate",
+            "privacy_notice",
+        ],
+        "pending": [],
+    }
+
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    result = await disclosure_status.ainvoke({"application_id": 1, "state": _state()})
+
+    assert "All required disclosures have been acknowledged" in result
+    assert "Acknowledged:" in result
+    assert "Pending:" not in result
+
+
+@patch("src.agents.borrower_tools.SessionLocal")
+@patch("src.agents.borrower_tools.get_disclosure_status")
+async def test_disclosure_status_partial(mock_status, mock_session_cls):
+    mock_status.return_value = {
+        "application_id": 1,
+        "all_acknowledged": False,
+        "acknowledged": ["loan_estimate", "privacy_notice"],
+        "pending": ["equal_opportunity_notice", "hmda_notice"],
+    }
+
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    result = await disclosure_status.ainvoke({"application_id": 1, "state": _state()})
+
+    assert "2/4" in result
+    assert "Acknowledged:" in result
+    assert "Loan Estimate" in result
+    assert "Pending:" in result
+    assert "HMDA Notice" in result

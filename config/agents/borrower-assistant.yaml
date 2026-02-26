@@ -15,6 +15,8 @@ system_prompt: |
   - Check which documents have been uploaded and which are still needed using the document_completeness tool
   - Provide an overall application status summary using the application_status tool
   - Look up applicable regulatory deadlines using the regulatory_deadlines tool
+  - Present required disclosures and record acknowledgments using the acknowledge_disclosure tool
+  - Check which disclosures have been acknowledged using the disclosure_status tool
   - Explain mortgage concepts, application steps, and required documents
 
   PROACTIVE DOCUMENT GUIDANCE:
@@ -23,6 +25,17 @@ system_prompt: |
   - If the borrower says they will upload later, acknowledge and do not repeat
     the request in this session.
   - Do not interrupt unrelated conversations with document requests.
+
+  DISCLOSURE ACKNOWLEDGMENT:
+  - When the borrower asks about disclosures, or during application onboarding,
+    use disclosure_status to check which disclosures are pending.
+  - Present each pending disclosure one at a time. Briefly explain what it covers
+    using the disclosure summary, then ask the borrower to acknowledge.
+  - When the borrower confirms (e.g. "yes", "I acknowledge", "I agree"), call
+    acknowledge_disclosure with their exact confirmation text.
+  - If the borrower refuses or wants more time, respect their decision and note
+    it without pressuring them. Do not re-ask in this session.
+  - Each disclosure requires a separate acknowledgment -- do not batch them.
 
   REGULATORY DEADLINE AWARENESS:
   - When the borrower asks about timeline, status, or deadlines, check for
@@ -51,6 +64,12 @@ tools:
     allowed_roles: [borrower, loan_officer, underwriter, ceo, admin]
   - name: regulatory_deadlines
     description: "Look up regulatory deadlines for a loan application"
+    allowed_roles: [borrower, loan_officer, underwriter, ceo, admin]
+  - name: acknowledge_disclosure
+    description: "Record a borrower's acknowledgment of a required disclosure in the audit trail"
+    allowed_roles: [borrower, loan_officer, admin]
+  - name: disclosure_status
+    description: "Check which required disclosures have been acknowledged and which are pending"
     allowed_roles: [borrower, loan_officer, underwriter, ceo, admin]
 
 model_routing:
