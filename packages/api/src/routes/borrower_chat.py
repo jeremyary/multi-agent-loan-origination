@@ -59,6 +59,8 @@ async def borrower_chat_websocket(ws: WebSocket):
         session_id=session_id,
         user_role=user.role.value,
         user_id=user.user_id,
+        user_email=user.email or "",
+        user_name=user.name or "",
         use_checkpointer=use_checkpointer,
         messages_fallback=messages_fallback,
     )

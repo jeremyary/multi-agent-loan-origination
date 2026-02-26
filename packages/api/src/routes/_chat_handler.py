@@ -93,6 +93,8 @@ async def run_agent_stream(
     session_id: str,
     user_role: str,
     user_id: str,
+    user_email: str = "",
+    user_name: str = "",
     use_checkpointer: bool,
     messages_fallback: list | None,
 ) -> None:
@@ -164,6 +166,8 @@ async def run_agent_stream(
                         "messages": input_messages,
                         "user_role": user_role,
                         "user_id": user_id,
+                        "user_email": user_email,
+                        "user_name": user_name,
                     },
                     config=config,
                     version="v2",

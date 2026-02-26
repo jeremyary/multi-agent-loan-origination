@@ -31,17 +31,24 @@ def load_agent_config(agent_name: str) -> dict[str, Any]:
     return yaml.safe_load(config_path.read_text())
 
 
+# Agent module registry: agent name -> module path for lazy import
+_AGENT_MODULES: dict[str, str] = {
+    "public-assistant": ".public_assistant",
+    "borrower-assistant": ".borrower_assistant",
+}
+
+
 def _build_graph(agent_name: str, config: dict[str, Any], checkpointer=None):
     """Build a LangGraph graph for the named agent."""
-    if agent_name == "public-assistant":
-        from .public_assistant import build_graph
+    module_path = _AGENT_MODULES.get(agent_name)
+    if module_path is None:
+        raise ValueError(
+            f"Unknown agent: {agent_name}. Registered agents: {sorted(_AGENT_MODULES.keys())}"
+        )
+    import importlib
 
-        return build_graph(config, checkpointer=checkpointer)
-    if agent_name == "borrower-assistant":
-        from .borrower_assistant import build_graph
-
-        return build_graph(config, checkpointer=checkpointer)
-    raise ValueError(f"Unknown agent: {agent_name}")
+    module = importlib.import_module(module_path, package=__package__)
+    return module.build_graph(config, checkpointer=checkpointer)
 
 
 def get_agent(agent_name: str, checkpointer=None):

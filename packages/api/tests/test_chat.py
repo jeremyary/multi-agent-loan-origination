@@ -206,13 +206,6 @@ async def test_output_shield_replaces_unsafe_response(_fresh_graph, monkeypatch)
     mock_agent_llm.bind_tools.return_value = mock_agent_llm
 
     mock_llms = {"fast_small": mock_classifier, "capable_large": mock_agent_llm}
-    monkeypatch.setattr(
-        "src.agents.public_assistant.get_model_tiers", lambda: ["fast_small", "capable_large"]
-    )
-    monkeypatch.setattr(
-        "src.agents.public_assistant.get_model_config",
-        lambda tier: {"model_name": "test", "endpoint": "http://test", "api_key": "key"},
-    )
 
     from src.agents.base import build_routed_graph
     from src.agents.tools import affordability_calc, product_info
