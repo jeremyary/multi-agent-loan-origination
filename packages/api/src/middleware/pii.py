@@ -44,8 +44,8 @@ def mask_account_number(value: str | None) -> str | None:
 def mask_borrower_pii(borrower_dict: dict) -> dict:
     """Apply PII masking to a borrower dict for CEO-role responses."""
     masked = borrower_dict.copy()
-    if "ssn_encrypted" in masked:
-        masked["ssn_encrypted"] = mask_ssn(masked["ssn_encrypted"])
+    if "ssn" in masked:
+        masked["ssn"] = mask_ssn(masked["ssn"])
     if "dob" in masked:
         masked["dob"] = mask_dob(masked["dob"])
     return masked

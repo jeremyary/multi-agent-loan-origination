@@ -124,7 +124,7 @@ REQUIRED_FIELDS: dict[str, tuple[str, str, callable]] = {
     "first_name": ("borrower", "first_name", _identity),
     "last_name": ("borrower", "last_name", _identity),
     "email": ("borrower", "email", _identity),
-    "ssn": ("borrower", "ssn_encrypted", _identity),
+    "ssn": ("borrower", "ssn", _identity),
     "date_of_birth": ("borrower", "dob", _date),
     "employment_status": ("borrower", "employment_status", _employment_status),
     # Financial fields
@@ -251,9 +251,8 @@ async def update_application_fields(
 
     # Auto-compute DTI when both income and debts are present
     if financials.gross_monthly_income and financials.monthly_debts:
-        income = float(financials.gross_monthly_income)
-        if income > 0:
-            financials.dti_ratio = float(financials.monthly_debts) / income
+        if financials.gross_monthly_income > 0:
+            financials.dti_ratio = financials.monthly_debts / financials.gross_monthly_income
 
     await session.flush()
 
@@ -285,7 +284,10 @@ async def get_remaining_fields(
         return list(REQUIRED_FIELDS.keys())
 
     borrower = await _get_borrower_for_app(session, application_id, user)
-    financials = app.financials
+    financials = next(
+        (f for f in (app.financials or []) if borrower and f.borrower_id == borrower.id),
+        None,
+    )
 
     remaining = []
     for field_name, (table, column, _) in REQUIRED_FIELDS.items():
@@ -403,7 +405,10 @@ async def get_application_progress(
         return None
 
     borrower = await _get_borrower_for_app(session, application_id, user)
-    financials = app.financials
+    financials = next(
+        (f for f in (app.financials or []) if borrower and f.borrower_id == borrower.id),
+        None,
+    )
 
     sections: dict[str, dict[str, str | None]] = {}
     remaining: list[str] = []

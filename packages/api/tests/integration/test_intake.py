@@ -306,7 +306,7 @@ async def test_update_fields_auto_computes_dti(db_session, intake_seed):
             select(ApplicationFinancials).where(ApplicationFinancials.application_id == app_id)
         )
     ).scalar_one()
-    assert fin.dti_ratio == pytest.approx(0.3, abs=0.01)
+    assert float(fin.dti_ratio) == pytest.approx(0.3, abs=0.01)
 
 
 @pytest.mark.asyncio

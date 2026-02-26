@@ -46,7 +46,7 @@ class Borrower(Base):
     first_name = Column(String(100), nullable=False)
     last_name = Column(String(100), nullable=False)
     email = Column(String(255), nullable=False, index=True)
-    ssn_encrypted = Column(String(255), nullable=True)
+    ssn = Column(String(255), nullable=True)
     dob = Column(DateTime(timezone=True), nullable=True)
     employment_status = Column(
         Enum(EmploymentStatus, name="employment_status", native_enum=False),
@@ -90,7 +90,7 @@ class Application(Base):
     )
     financials = relationship(
         "ApplicationFinancials", back_populates="application",
-        uselist=False, cascade="all, delete-orphan",
+        cascade="all, delete-orphan",
     )
     rate_locks = relationship(
         "RateLock", back_populates="application", cascade="all, delete-orphan",
@@ -158,7 +158,7 @@ class ApplicationFinancials(Base):
     monthly_debts = Column(Numeric(12, 2), nullable=True)
     total_assets = Column(Numeric(14, 2), nullable=True)
     credit_score = Column(Integer, nullable=True)
-    dti_ratio = Column(Float, nullable=True)
+    dti_ratio = Column(Numeric(5, 4), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -177,7 +177,7 @@ class RateLock(Base):
     application_id = Column(
         Integer, ForeignKey("applications.id", ondelete="CASCADE"), nullable=False, index=True,
     )
-    locked_rate = Column(Float, nullable=False)
+    locked_rate = Column(Numeric(5, 3), nullable=False)
     lock_date = Column(DateTime(timezone=True), nullable=False)
     expiration_date = Column(DateTime(timezone=True), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
@@ -320,7 +320,7 @@ class AuditEvent(Base):
     application_id = Column(Integer, nullable=True, index=True)
     decision_id = Column(Integer, nullable=True)
     event_data = Column(JSON, nullable=True)
-    session_id = Column(String(255), nullable=True)
+    session_id = Column(String(255), nullable=True, index=True)
 
     def __repr__(self):
         return f"<AuditEvent(id={self.id}, type='{self.event_type}')>"
@@ -391,12 +391,12 @@ class HmdaLoanData(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     application_id = Column(Integer, nullable=False, unique=True, index=True)
     gross_monthly_income = Column(Numeric(12, 2), nullable=True)
-    dti_ratio = Column(Float, nullable=True)
+    dti_ratio = Column(Numeric(5, 4), nullable=True)
     credit_score = Column(Integer, nullable=True)
     loan_type = Column(String(50), nullable=True)
     loan_purpose = Column(String(50), nullable=True)
     property_location = Column(Text, nullable=True)
-    interest_rate = Column(Float, nullable=True)
+    interest_rate = Column(Numeric(5, 3), nullable=True)
     total_fees = Column(Numeric(10, 2), nullable=True)
     snapshot_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

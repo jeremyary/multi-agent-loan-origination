@@ -37,7 +37,7 @@ class TestBorrowerSarahVisibility:
         data = resp.json()
         assert data["id"] == 101
         # PII is visible to borrower (it's their own data)
-        assert data["borrowers"][0]["ssn_encrypted"] == "123-45-6789"
+        assert data["borrowers"][0]["ssn"] == "123-45-6789"
 
     def test_out_of_scope_returns_404(self, make_client):
         """Sarah cannot see Michael's app -- returns 404 not 403."""

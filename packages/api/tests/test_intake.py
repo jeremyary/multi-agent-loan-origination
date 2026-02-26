@@ -348,7 +348,7 @@ async def test_get_application_progress_partial():
     borrower.first_name = "John"
     borrower.last_name = "Smith"
     borrower.email = "john@example.com"
-    borrower.ssn_encrypted = "078-05-1120"
+    borrower.ssn = "078-05-1120"
     borrower.dob = None
     borrower.employment_status = EmploymentStatus.W2_EMPLOYEE
 

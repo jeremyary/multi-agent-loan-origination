@@ -74,7 +74,7 @@ BORROWERS: list[dict] = [
         "first_name": "Sarah",
         "last_name": "Mitchell",
         "email": "sarah.mitchell@example.com",
-        "ssn_encrypted": "ENC:293-84-1567",
+        "ssn": "ENC:293-84-1567",
         "dob": datetime(1988, 6, 15, tzinfo=UTC),
     },
     {
@@ -82,7 +82,7 @@ BORROWERS: list[dict] = [
         "first_name": "Jennifer",
         "last_name": "Mitchell",
         "email": "jennifer.mitchell@example.com",
-        "ssn_encrypted": "ENC:384-71-2956",
+        "ssn": "ENC:384-71-2956",
         "dob": datetime(1990, 2, 8, tzinfo=UTC),
     },
     {
@@ -90,7 +90,7 @@ BORROWERS: list[dict] = [
         "first_name": "Michael",
         "last_name": "Johnson",
         "email": "michael.johnson@example.com",
-        "ssn_encrypted": "ENC:481-22-9034",
+        "ssn": "ENC:481-22-9034",
         "dob": datetime(1975, 11, 3, tzinfo=UTC),
     },
     {
@@ -98,7 +98,7 @@ BORROWERS: list[dict] = [
         "first_name": "Emily",
         "last_name": "Rodriguez",
         "email": "emily.rodriguez@example.com",
-        "ssn_encrypted": "ENC:612-50-3478",
+        "ssn": "ENC:612-50-3478",
         "dob": datetime(1992, 3, 22, tzinfo=UTC),
     },
     {
@@ -106,7 +106,7 @@ BORROWERS: list[dict] = [
         "first_name": "Robert",
         "last_name": "Kim",
         "email": "robert.kim@example.com",
-        "ssn_encrypted": "ENC:754-13-8821",
+        "ssn": "ENC:754-13-8821",
         "dob": datetime(1983, 9, 8, tzinfo=UTC),
     },
     {
@@ -114,7 +114,7 @@ BORROWERS: list[dict] = [
         "first_name": "Lisa",
         "last_name": "Washington",
         "email": "lisa.washington@example.com",
-        "ssn_encrypted": "ENC:328-67-4190",
+        "ssn": "ENC:328-67-4190",
         "dob": datetime(1990, 1, 27, tzinfo=UTC),
     },
     {
@@ -122,7 +122,7 @@ BORROWERS: list[dict] = [
         "first_name": "Thomas",
         "last_name": "Nguyen",
         "email": "thomas.nguyen@example.com",
-        "ssn_encrypted": "ENC:519-41-7763",
+        "ssn": "ENC:519-41-7763",
         "dob": datetime(1979, 7, 14, tzinfo=UTC),
     },
 ]

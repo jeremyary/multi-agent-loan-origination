@@ -256,7 +256,7 @@ async def seed_demo_data(
             first_name=b_data["first_name"],
             last_name=b_data["last_name"],
             email=b_data["email"],
-            ssn_encrypted=b_data.get("ssn_encrypted"),
+            ssn=b_data.get("ssn"),
             dob=b_data.get("dob"),
         )
         session.add(borrower)

@@ -39,7 +39,7 @@ def _build_app_response(app: Application) -> ApplicationResponse:
                     first_name=ab.borrower.first_name,
                     last_name=ab.borrower.last_name,
                     email=ab.borrower.email,
-                    ssn_encrypted=ab.borrower.ssn_encrypted,
+                    ssn=ab.borrower.ssn,
                     dob=ab.borrower.dob,
                     employment_status=ab.borrower.employment_status,
                     is_primary=ab.is_primary,
