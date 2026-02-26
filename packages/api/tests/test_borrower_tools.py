@@ -12,6 +12,7 @@ from src.agents.borrower_tools import (
     application_status,
     disclosure_status,
     document_completeness,
+    document_processing_status,
     regulatory_deadlines,
 )
 from src.schemas.completeness import CompletenessResponse, DocumentRequirement
@@ -118,6 +119,61 @@ async def test_completeness_tool_shows_quality_flags(mock_check, mock_session_cl
     result = await document_completeness.ainvoke({"application_id": 1, "state": _state()})
     assert "blurry" in result
     assert "Complete" in result
+
+
+# ---------------------------------------------------------------------------
+# document_processing_status tool
+# ---------------------------------------------------------------------------
+
+
+@patch("src.agents.borrower_tools.SessionLocal")
+@patch("src.agents.borrower_tools.list_documents")
+async def test_processing_status_shows_mixed_statuses(mock_list, mock_session_cls):
+    """Tool correctly labels processing, complete, and failed documents."""
+    from unittest.mock import MagicMock
+
+    from db.enums import DocumentStatus, DocumentType
+
+    docs = []
+    for dtype, status in [
+        (DocumentType.W2, DocumentStatus.PROCESSING_COMPLETE),
+        (DocumentType.PAY_STUB, DocumentStatus.PROCESSING),
+        (DocumentType.BANK_STATEMENT, DocumentStatus.PROCESSING_FAILED),
+    ]:
+        d = MagicMock()
+        d.doc_type = dtype
+        d.status = status
+        docs.append(d)
+
+    mock_list.return_value = (docs, 3)
+
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    result = await document_processing_status.ainvoke({"application_id": 1, "state": _state()})
+
+    assert "3 document(s)" in result
+    assert "Processed successfully" in result
+    assert "Processing..." in result
+    assert "Processing failed" in result
+    assert "1 document(s) still processing" in result
+    assert "1 document(s) failed processing" in result
+
+
+@patch("src.agents.borrower_tools.SessionLocal")
+@patch("src.agents.borrower_tools.list_documents")
+async def test_processing_status_no_documents(mock_list, mock_session_cls):
+    """Tool reports no documents uploaded when list is empty."""
+    mock_list.return_value = ([], 0)
+
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    result = await document_processing_status.ainvoke({"application_id": 1, "state": _state()})
+
+    assert "No documents have been uploaded" in result
 
 
 # ---------------------------------------------------------------------------
