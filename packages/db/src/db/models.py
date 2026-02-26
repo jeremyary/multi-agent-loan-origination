@@ -7,6 +7,7 @@ documents, underwriting conditions/decisions, and audit trail.
 """
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     DateTime,
@@ -14,7 +15,6 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
-    JSON,
     Numeric,
     String,
     Text,
@@ -33,8 +33,8 @@ from .enums import (
     DocumentType,
     EmploymentStatus,
     LoanType,
-    UserRole,
 )
+
 
 class Borrower(Base):
     """Borrower profile linked to Keycloak identity."""
@@ -318,6 +318,18 @@ class AuditEvent(Base):
 
     def __repr__(self):
         return f"<AuditEvent(id={self.id}, type='{self.event_type}')>"
+
+
+class AuditViolation(Base):
+    """Records attempted UPDATE/DELETE on audit_events (trigger-populated)."""
+
+    __tablename__ = "audit_violations"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    attempted_operation = Column(String(10), nullable=False)
+    db_user = Column(String(255), nullable=False)
+    audit_event_id = Column(Integer, nullable=True)
 
 
 class DemoDataManifest(Base):
