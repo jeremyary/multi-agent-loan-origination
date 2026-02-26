@@ -35,7 +35,7 @@ class TestLoanOfficerVisibility:
         data = resp.json()
         assert data["id"] == 101
         # LO sees full PII
-        assert data["borrowers"][0]["ssn_encrypted"] == "123-45-6789"
+        assert data["borrowers"][0]["ssn"] == "123-45-6789"
 
     def test_unassigned_returns_404(self, make_client):
         """App 102 is unassigned, so LO gets 404."""

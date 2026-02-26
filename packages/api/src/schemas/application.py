@@ -37,7 +37,7 @@ class BorrowerSummary(BaseModel):
     first_name: str
     last_name: str
     email: str
-    ssn_encrypted: str | None = None
+    ssn: str | None = None
     dob: datetime | None = None
     employment_status: EmploymentStatus | None = None
     is_primary: bool = False

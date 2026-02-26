@@ -28,8 +28,8 @@ class TestCeoPiiMasking:
 
         for item in data["data"]:
             for borrower in item.get("borrowers", []):
-                if borrower.get("ssn_encrypted"):
-                    assert borrower["ssn_encrypted"].startswith("***-**-")
+                if borrower.get("ssn"):
+                    assert borrower["ssn"].startswith("***-**-")
                 if borrower.get("dob"):
                     assert "**" in borrower["dob"]
 
@@ -40,7 +40,7 @@ class TestCeoPiiMasking:
         resp = client.get("/api/applications/101")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["borrowers"][0]["ssn_encrypted"] == "***-**-6789"
+        assert data["borrowers"][0]["ssn"] == "***-**-6789"
 
     def test_get_application_dob_masked(self, make_client):
         app = make_app_sarah_1()

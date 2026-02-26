@@ -27,7 +27,7 @@ def test_mask_application_pii_masks_borrowers_list():
                 "id": 10,
                 "first_name": "Sarah",
                 "last_name": "Mitchell",
-                "ssn_encrypted": "123-45-6789",
+                "ssn": "123-45-6789",
                 "dob": "1990-03-15T00:00:00",
                 "email": "sarah@example.com",
                 "is_primary": True,
@@ -36,7 +36,7 @@ def test_mask_application_pii_masks_borrowers_list():
                 "id": 11,
                 "first_name": "Jennifer",
                 "last_name": "Mitchell",
-                "ssn_encrypted": "987-65-4321",
+                "ssn": "987-65-4321",
                 "dob": "1992-08-22T00:00:00",
                 "email": "jennifer@example.com",
                 "is_primary": False,
@@ -49,12 +49,12 @@ def test_mask_application_pii_masks_borrowers_list():
     assert masked["borrowers"][0]["first_name"] == "Sarah"
     assert masked["borrowers"][1]["first_name"] == "Jennifer"
     # PII is masked
-    assert masked["borrowers"][0]["ssn_encrypted"] == "***-**-6789"
+    assert masked["borrowers"][0]["ssn"] == "***-**-6789"
     assert masked["borrowers"][0]["dob"] == "1990-**-**"
-    assert masked["borrowers"][1]["ssn_encrypted"] == "***-**-4321"
+    assert masked["borrowers"][1]["ssn"] == "***-**-4321"
     assert masked["borrowers"][1]["dob"] == "1992-**-**"
     # Original not mutated
-    assert app_dict["borrowers"][0]["ssn_encrypted"] == "123-45-6789"
+    assert app_dict["borrowers"][0]["ssn"] == "123-45-6789"
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +148,7 @@ def test_co_borrower_sees_shared_application(monkeypatch):
     primary_borrower.first_name = "Primary"
     primary_borrower.last_name = "Borrower"
     primary_borrower.email = "primary@example.com"
-    primary_borrower.ssn_encrypted = None
+    primary_borrower.ssn = None
     primary_borrower.dob = None
     primary_borrower.employment_status = None
 
@@ -157,7 +157,7 @@ def test_co_borrower_sees_shared_application(monkeypatch):
     co_borrower_obj.first_name = "Co"
     co_borrower_obj.last_name = "Borrower"
     co_borrower_obj.email = "coborrower@example.com"
-    co_borrower_obj.ssn_encrypted = None
+    co_borrower_obj.ssn = None
     co_borrower_obj.dob = None
     co_borrower_obj.employment_status = None
 
@@ -296,7 +296,7 @@ def test_add_borrower_to_application(monkeypatch):
     mock_borrower.first_name = "Primary"
     mock_borrower.last_name = "Borrower"
     mock_borrower.email = "primary@example.com"
-    mock_borrower.ssn_encrypted = None
+    mock_borrower.ssn = None
     mock_borrower.dob = None
     mock_borrower.employment_status = None
 
@@ -322,7 +322,7 @@ def test_add_borrower_to_application(monkeypatch):
     new_borrower.first_name = "Co"
     new_borrower.last_name = "Borrower"
     new_borrower.email = "co@example.com"
-    new_borrower.ssn_encrypted = None
+    new_borrower.ssn = None
     new_borrower.dob = None
     new_borrower.employment_status = None
 
@@ -399,7 +399,7 @@ def test_remove_borrower_from_application(monkeypatch):
     mock_borrower.first_name = "Primary"
     mock_borrower.last_name = "Borrower"
     mock_borrower.email = "primary@example.com"
-    mock_borrower.ssn_encrypted = None
+    mock_borrower.ssn = None
     mock_borrower.dob = None
     mock_borrower.employment_status = None
 

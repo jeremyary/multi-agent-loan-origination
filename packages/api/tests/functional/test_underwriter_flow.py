@@ -33,7 +33,7 @@ class TestUnderwriterVisibility:
         resp = client.get("/api/applications/103")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["borrowers"][0]["ssn_encrypted"] == "987-65-4321"
+        assert data["borrowers"][0]["ssn"] == "987-65-4321"
 
 
 class TestUnderwriterCanUpdate:

@@ -18,7 +18,7 @@ async def test_ceo_list_masks_ssn(client_factory, seed_data):
     data = resp.json()
     for app_item in data["data"]:
         for borrower in app_item.get("borrowers", []):
-            ssn = borrower.get("ssn_encrypted")
+            ssn = borrower.get("ssn")
             if ssn:
                 assert re.match(r"\*{3}-\*{2}-\d{4}", ssn), f"SSN not masked: {ssn}"
     await client.aclose()
@@ -50,7 +50,7 @@ async def test_ceo_get_single_masks_pii(client_factory, seed_data):
     assert resp.status_code == 200
     data = resp.json()
     for borrower in data.get("borrowers", []):
-        ssn = borrower.get("ssn_encrypted")
+        ssn = borrower.get("ssn")
         if ssn:
             assert re.match(r"\*{3}-\*{2}-\d{4}", ssn), f"SSN not masked: {ssn}"
     await client.aclose()
@@ -64,11 +64,11 @@ async def test_lo_sees_full_pii(client_factory, seed_data):
     resp = await client.get(f"/api/applications/{seed_data.sarah_app1.id}")
     assert resp.status_code == 200
     data = resp.json()
-    # Sarah has financials with ssn_encrypted in the seed
-    # The borrower row itself has ssn_encrypted=None in our seed,
+    # Sarah has financials with ssn in the seed
+    # The borrower row itself has ssn=None in our seed,
     # but we verify the field is present and NOT masked
     for borrower in data.get("borrowers", []):
-        ssn = borrower.get("ssn_encrypted")
+        ssn = borrower.get("ssn")
         if ssn:
             assert "***" not in ssn, "SSN should not be masked for LO"
     await client.aclose()
@@ -83,7 +83,7 @@ async def test_admin_sees_full_pii(client_factory, seed_data):
     assert resp.status_code == 200
     data = resp.json()
     for borrower in data.get("borrowers", []):
-        ssn = borrower.get("ssn_encrypted")
+        ssn = borrower.get("ssn")
         if ssn:
             assert "***" not in ssn, "SSN should not be masked for admin"
     await client.aclose()
