@@ -1,17 +1,22 @@
 # This project was developed with assistance from AI tools.
-"""Integration tests for application intake service (S-2-F3-01).
+"""Integration tests for application intake service (S-2-F3-01 through S-2-F3-03).
 
-Tests start_application and find_active_application against a real
-PostgreSQL instance via testcontainers. No mocks except where noted.
+Tests start_application, find_active_application, update_application_fields,
+and get_remaining_fields against a real PostgreSQL instance via testcontainers.
 """
 
 import pytest
 import pytest_asyncio
 from db.enums import ApplicationStage
-from db.models import Application, ApplicationBorrower, Borrower
+from db.models import Application, ApplicationBorrower, ApplicationFinancials, Borrower
 from sqlalchemy import select
 
-from src.services.intake import find_active_application, start_application
+from src.services.intake import (
+    find_active_application,
+    get_remaining_fields,
+    start_application,
+    update_application_fields,
+)
 from tests.functional.personas import (
     MICHAEL_USER_ID,
     SARAH_USER_ID,
@@ -219,3 +224,130 @@ async def test_find_active_ignores_denied_and_closed(db_session, intake_seed):
     # Should still return only the active one, not denied/closed
     assert result is not None
     assert result.stage == ApplicationStage.APPLICATION
+
+
+# ---------------------------------------------------------------------------
+# update_application_fields + get_remaining_fields (S-2-F3-02, S-2-F3-03)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_update_fields_stores_values(db_session, intake_seed):
+    """update_application_fields persists validated values to the correct tables."""
+    user = borrower_sarah()
+    app_id = intake_seed["active_app_id"]
+
+    result = await update_application_fields(
+        db_session,
+        user,
+        app_id,
+        {
+            "loan_type": "fha",
+            "gross_monthly_income": "$6,250",
+            "credit_score": "720",
+        },
+    )
+
+    assert result["errors"] == {}
+    assert set(result["updated"]) == {"loan_type", "gross_monthly_income", "credit_score"}
+
+    # Verify values in DB
+    db_session.expire_all()
+    stmt = select(Application).where(Application.id == app_id)
+    app = (await db_session.execute(stmt)).scalar_one()
+    assert app.loan_type.value == "fha"
+
+    fin_stmt = select(ApplicationFinancials).where(ApplicationFinancials.application_id == app_id)
+    fin = (await db_session.execute(fin_stmt)).scalar_one()
+    assert float(fin.gross_monthly_income) == 6250.00
+    assert fin.credit_score == 720
+
+
+@pytest.mark.asyncio
+async def test_update_fields_validation_rejects_bad_values(db_session, intake_seed):
+    """Invalid values are rejected per field while valid ones still save."""
+    user = borrower_sarah()
+    app_id = intake_seed["active_app_id"]
+
+    result = await update_application_fields(
+        db_session,
+        user,
+        app_id,
+        {
+            "email": "valid@example.com",
+            "credit_score": "999",  # > 850
+            "ssn": "12345",  # too short
+        },
+    )
+
+    assert "email" in result["updated"]
+    assert "credit_score" in result["errors"]
+    assert "ssn" in result["errors"]
+
+
+@pytest.mark.asyncio
+async def test_update_fields_auto_computes_dti(db_session, intake_seed):
+    """DTI ratio is auto-computed when both income and debts are present."""
+    user = borrower_sarah()
+    app_id = intake_seed["active_app_id"]
+
+    await update_application_fields(
+        db_session,
+        user,
+        app_id,
+        {"gross_monthly_income": "10000", "monthly_debts": "3000"},
+    )
+
+    db_session.expire_all()
+    fin = (
+        await db_session.execute(
+            select(ApplicationFinancials).where(ApplicationFinancials.application_id == app_id)
+        )
+    ).scalar_one()
+    assert fin.dti_ratio == pytest.approx(0.3, abs=0.01)
+
+
+@pytest.mark.asyncio
+async def test_update_fields_tracks_corrections(db_session, intake_seed):
+    """Overwriting an existing value is tracked as a correction."""
+    user = borrower_sarah()
+    app_id = intake_seed["active_app_id"]
+
+    # First set income
+    await update_application_fields(db_session, user, app_id, {"gross_monthly_income": "5000"})
+    # Correct it
+    result = await update_application_fields(
+        db_session, user, app_id, {"gross_monthly_income": "8000"}
+    )
+
+    assert "gross_monthly_income" in result["corrections"]
+    assert result["corrections"]["gross_monthly_income"]["old"] == "5000.00"
+
+
+@pytest.mark.asyncio
+async def test_get_remaining_fields_empty_app(db_session, intake_seed):
+    """A fresh application has all fields remaining."""
+    user = borrower_sarah()
+    app_id = intake_seed["active_app_id"]
+
+    remaining = await get_remaining_fields(db_session, user, app_id)
+    # The active_app has property_address and loan_amount set in seed,
+    # but not loan_type, property_value, ssn, dob, employment_status, financials
+    assert "loan_type" in remaining
+    assert "ssn" in remaining
+    assert "credit_score" in remaining
+    # These were set in seed data
+    assert "property_address" not in remaining
+    assert "loan_amount" not in remaining
+
+
+@pytest.mark.asyncio
+async def test_update_fields_scope_isolation(db_session, intake_seed):
+    """Michael cannot update Sarah's application."""
+    user = borrower_michael()
+    app_id = intake_seed["active_app_id"]
+
+    result = await update_application_fields(db_session, user, app_id, {"loan_type": "va"})
+
+    assert result["errors"].get("_") == "Application not found"
+    assert result["updated"] == []
