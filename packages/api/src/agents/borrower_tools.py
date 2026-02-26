@@ -19,6 +19,7 @@ from ..middleware.auth import _build_data_scope
 from ..schemas.auth import UserContext
 from ..services.audit import write_audit_event
 from ..services.completeness import check_completeness
+from ..services.condition import get_conditions, respond_to_condition
 from ..services.disclosure import get_disclosure_status
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
@@ -331,3 +332,76 @@ async def rate_lock_status(
         )
 
     return "\n".join(lines)
+
+
+@tool
+async def list_conditions(
+    application_id: int,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """List underwriting conditions for a loan application. Shows open and responded conditions that the borrower needs to address.
+
+    Args:
+        application_id: The loan application ID to check.
+    """
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        result = await get_conditions(session, user, application_id, open_only=True)
+
+    if result is None:
+        return "Application not found or you don't have access to it."
+
+    if not result:
+        return f"Application {application_id} has no pending conditions. You're all set!"
+
+    lines = [f"Open conditions for application {application_id}:"]
+    for i, cond in enumerate(result, 1):
+        status_label = cond["status"].replace("_", " ").title()
+        line = f"{i}. [{status_label}] {cond['description']} (condition #{cond['id']})"
+        if cond.get("response_text"):
+            line += f"\n   Your response: {cond['response_text']}"
+        lines.append(line)
+
+    open_count = sum(1 for c in result if c["status"] == "open")
+    if open_count > 0:
+        lines.append("")
+        lines.append(
+            f"You have {open_count} condition(s) that still need a response. "
+            "Would you like to address them now?"
+        )
+
+    return "\n".join(lines)
+
+
+@tool
+async def respond_to_condition_tool(
+    application_id: int,
+    condition_id: int,
+    response_text: str,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Record the borrower's text response to an underwriting condition. Use this when the borrower provides an explanation or answer for a condition.
+
+    Args:
+        application_id: The loan application ID.
+        condition_id: The condition ID to respond to (from list_conditions output).
+        response_text: The borrower's response text.
+    """
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        result = await respond_to_condition(
+            session,
+            user,
+            application_id,
+            condition_id,
+            response_text,
+        )
+
+    if result is None:
+        return "Application or condition not found, or you don't have access."
+
+    return (
+        f"Recorded your response for condition #{result['id']}: "
+        f'"{result["description"]}". '
+        "The underwriter will review your response."
+    )

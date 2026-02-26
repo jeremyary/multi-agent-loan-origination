@@ -17,9 +17,11 @@ from ..schemas.application import (
     ApplicationUpdate,
     BorrowerSummary,
 )
+from ..schemas.condition import ConditionListResponse, ConditionRespondRequest
 from ..schemas.rate_lock import RateLockResponse
 from ..schemas.status import ApplicationStatusResponse
 from ..services import application as app_service
+from ..services.condition import get_conditions, respond_to_condition
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
 
@@ -179,6 +181,63 @@ async def get_rate_lock(
             detail="Application not found",
         )
     return RateLockResponse(**result)
+
+
+@router.get(
+    "/{application_id}/conditions",
+    response_model=ConditionListResponse,
+    dependencies=[
+        Depends(
+            require_roles(
+                UserRole.ADMIN,
+                UserRole.BORROWER,
+                UserRole.LOAN_OFFICER,
+                UserRole.UNDERWRITER,
+            )
+        )
+    ],
+)
+async def list_conditions(
+    application_id: int,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_db),
+    open_only: bool = Query(default=False),
+) -> ConditionListResponse:
+    """List conditions for an application."""
+    result = await get_conditions(session, user, application_id, open_only=open_only)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+    return ConditionListResponse(data=result, count=len(result))
+
+
+@router.post(
+    "/{application_id}/conditions/{condition_id}/respond",
+    dependencies=[Depends(require_roles(UserRole.BORROWER, UserRole.ADMIN))],
+)
+async def respond_condition(
+    application_id: int,
+    condition_id: int,
+    body: ConditionRespondRequest,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_db),
+):
+    """Record a borrower's text response to a condition."""
+    result = await respond_to_condition(
+        session,
+        user,
+        application_id,
+        condition_id,
+        body.response_text,
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application or condition not found",
+        )
+    return {"data": result}
 
 
 @router.post(

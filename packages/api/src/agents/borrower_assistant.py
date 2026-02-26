@@ -3,7 +3,8 @@
 
 Tools: product_info, affordability_calc, document_completeness,
 application_status, regulatory_deadlines, acknowledge_disclosure,
-disclosure_status, rate_lock_status.
+disclosure_status, rate_lock_status, list_conditions,
+respond_to_condition_tool.
 """
 
 import logging
@@ -18,8 +19,10 @@ from .borrower_tools import (
     application_status,
     disclosure_status,
     document_completeness,
+    list_conditions,
     rate_lock_status,
     regulatory_deadlines,
+    respond_to_condition_tool,
 )
 from .tools import affordability_calc, product_info
 
@@ -38,6 +41,8 @@ def build_graph(config: dict[str, Any], checkpointer=None):
         acknowledge_disclosure,
         disclosure_status,
         rate_lock_status,
+        list_conditions,
+        respond_to_condition_tool,
     ]
 
     tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
