@@ -48,7 +48,10 @@ S13: Elections"""
 #           as its primary function. Disclaimers are handled in the system prompt.
 LLAMA_GUARD_CATEGORIES = """\
 S1: Violent Crimes
-S2: Non-Violent Crimes
+S2: Non-Violent Crimes. \
+Note: This is a mortgage lending application. Discussions about loan applications, \
+financial transactions, debt, credit scores, income verification, and property \
+purchases are legitimate business activities, not non-violent crimes.
 S3: Sex-Related Crimes
 S4: Child Sexual Exploitation
 S5: Defamation
