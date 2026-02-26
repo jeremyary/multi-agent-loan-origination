@@ -137,6 +137,48 @@ async def test_upload_nonexistent_app_returns_404(client_factory, seed_data):
     await client.aclose()
 
 
+async def test_list_documents_returns_statuses(db_session, seed_data):
+    """list_documents returns documents with their processing statuses against real PG."""
+    from db.enums import DocumentStatus, DocumentType
+    from db.models import Document
+
+    from src.services.document import list_documents
+    from tests.functional.personas import borrower_sarah
+
+    # Add a doc with PROCESSING_COMPLETE status
+    doc3 = Document(
+        application_id=seed_data.sarah_app1.id,
+        borrower_id=seed_data.sarah.id,
+        doc_type=DocumentType.BANK_STATEMENT,
+        status=DocumentStatus.PROCESSING_COMPLETE,
+        file_path="test/doc3.pdf",
+        uploaded_by="sarah-uuid",
+    )
+    db_session.add(doc3)
+    await db_session.flush()
+
+    user = borrower_sarah()
+    documents, total = await list_documents(db_session, user, seed_data.sarah_app1.id, limit=50)
+
+    assert total == 3
+    statuses = {d.doc_type: d.status for d in documents}
+    assert statuses[DocumentType.BANK_STATEMENT] == DocumentStatus.PROCESSING_COMPLETE
+    # Seed docs are UPLOADED
+    assert statuses[DocumentType.W2] == DocumentStatus.UPLOADED
+
+
+async def test_list_documents_scope_isolation(db_session, seed_data):
+    """Michael cannot see Sarah's documents."""
+    from src.services.document import list_documents
+    from tests.functional.personas import borrower_michael
+
+    user = borrower_michael()
+    documents, total = await list_documents(db_session, user, seed_data.sarah_app1.id, limit=50)
+
+    assert total == 0
+    assert documents == []
+
+
 async def test_ceo_blocked_from_document_content(client_factory, seed_data):
     """CEO GET /documents/{id}/content -> 403."""
     from tests.functional.personas import ceo

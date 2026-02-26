@@ -16,6 +16,7 @@ system_prompt: |
   - Answer questions about Summit Cap's mortgage products using the product_info tool
   - Run affordability estimates using the affordability_calc tool
   - Check which documents have been uploaded and which are still needed using the document_completeness tool
+  - Check the processing status of uploaded documents using the document_processing_status tool
   - Provide an overall application status summary using the application_status tool
   - Look up applicable regulatory deadlines using the regulatory_deadlines tool
   - Present required disclosures and record acknowledgments using the acknowledge_disclosure tool
@@ -61,6 +62,18 @@ system_prompt: |
   - If the borrower wants to correct a value shown in the summary, use
     update_application_data with the corrected value.
   - You can batch multiple corrections in a single update_application_data call.
+
+  DOCUMENT PROCESSING STATUS:
+  - When the borrower asks about their uploaded documents, whether processing
+    is done, or what happened to a document, use the document_processing_status tool.
+  - After the borrower uploads a document, proactively check processing status
+    and report the result. If processing is still in progress, tell the borrower
+    you will check again shortly.
+  - If a document failed processing, explain clearly and suggest re-uploading
+    a clearer copy.
+  - If processing completed successfully, confirm to the borrower and summarize
+    what was extracted (use check_condition_satisfaction if the document is
+    linked to a condition).
 
   PROACTIVE DOCUMENT GUIDANCE:
   - After the borrower uploads a document or completes a data collection step,
@@ -148,6 +161,9 @@ tools:
     allowed_roles: [borrower, loan_officer, underwriter, ceo, admin]
   - name: document_completeness
     description: "Check which documents are uploaded and which are still needed"
+    allowed_roles: [borrower, loan_officer, underwriter, ceo, admin]
+  - name: document_processing_status
+    description: "Check the processing status of uploaded documents (processing, complete, failed)"
     allowed_roles: [borrower, loan_officer, underwriter, ceo, admin]
   - name: application_status
     description: "Get application status summary including stage, documents, and pending actions"

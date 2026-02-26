@@ -18,13 +18,14 @@ from langgraph.prebuilt import InjectedState
 from ..middleware.auth import _build_data_scope
 from ..schemas.auth import UserContext
 from ..services.audit import write_audit_event
-from ..services.completeness import check_completeness
+from ..services.completeness import _DOC_TYPE_LABELS, check_completeness
 from ..services.condition import (
     check_condition_documents,
     get_conditions,
     respond_to_condition,
 )
 from ..services.disclosure import get_disclosure_status
+from ..services.document import list_documents
 from ..services.intake import (
     get_application_progress,
     update_application_fields,
@@ -90,6 +91,72 @@ async def document_completeness(
     if missing:
         lines.append("")
         lines.append("Next step: Upload " + missing[0].label)
+
+    return "\n".join(lines)
+
+
+_STATUS_LABELS: dict[str, str] = {
+    "uploaded": "Uploaded (waiting to process)",
+    "processing": "Processing...",
+    "processing_complete": "Processed successfully",
+    "processing_failed": "Processing failed",
+    "pending_review": "Pending review",
+    "accepted": "Accepted",
+    "flagged_for_resubmission": "Needs resubmission",
+    "rejected": "Rejected",
+}
+
+
+@tool
+async def document_processing_status(
+    application_id: int,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Check the processing status of documents uploaded for a loan application. Shows each document's current status (processing, complete, failed, etc.).
+
+    Args:
+        application_id: The loan application ID to check.
+    """
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        documents, total = await list_documents(session, user, application_id, limit=50)
+
+    if total == 0:
+        return (
+            f"No documents have been uploaded for application {application_id} yet. "
+            "Would you like to upload a document?"
+        )
+
+    lines = [f"Document status for application {application_id} ({total} document(s)):"]
+
+    processing_count = 0
+    failed_count = 0
+    complete_count = 0
+
+    for doc in documents:
+        status_val = doc.status.value if hasattr(doc.status, "value") else str(doc.status)
+        label = _DOC_TYPE_LABELS.get(doc.doc_type, str(doc.doc_type))
+        status_label = _STATUS_LABELS.get(status_val, status_val)
+        lines.append(f"- {label}: {status_label}")
+
+        if status_val == "processing":
+            processing_count += 1
+        elif status_val == "processing_failed":
+            failed_count += 1
+        elif status_val == "processing_complete":
+            complete_count += 1
+
+    if processing_count > 0:
+        lines.append("")
+        lines.append(
+            f"{processing_count} document(s) still processing. I'll let you know when they're done."
+        )
+    if failed_count > 0:
+        lines.append("")
+        lines.append(
+            f"{failed_count} document(s) failed processing. "
+            "You may need to re-upload a clearer copy."
+        )
 
     return "\n".join(lines)
 
