@@ -200,7 +200,7 @@ ACTIVE_APPLICATIONS: list[dict] = [
             {
                 "doc_type": DocumentType.PAY_STUB,
                 "status": DocumentStatus.FLAGGED_FOR_RESUBMISSION,
-                "quality_flags": "Document partially illegible, please resubmit",
+                "quality_flags": json.dumps(["partially_illegible"]),
             },
         ],
     },
