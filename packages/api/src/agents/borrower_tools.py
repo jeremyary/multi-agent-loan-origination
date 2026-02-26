@@ -25,6 +25,7 @@ from ..services.condition import (
     respond_to_condition,
 )
 from ..services.disclosure import get_disclosure_status
+from ..services.intake import start_application as start_application_service
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
 
@@ -481,3 +482,40 @@ async def check_condition_satisfaction(
         )
 
     return "\n".join(lines)
+
+
+@tool
+async def start_application(
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Start a new mortgage application or continue an existing one.
+
+    Call this when the borrower expresses intent to apply for a mortgage.
+    If they already have an active application, it returns that instead
+    of creating a duplicate.
+    """
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        result = await start_application_service(session, user)
+
+        if result["is_new"]:
+            await write_audit_event(
+                session,
+                event_type="application_started",
+                user_id=user.user_id,
+                user_role=user.role.value,
+                application_id=result["application_id"],
+                event_data={"source": "conversational_intake"},
+            )
+            await session.commit()
+            return (
+                f"Created new application #{result['application_id']}. "
+                "Let's collect your information. I'll ask about your personal "
+                "details, property information, and financial situation."
+            )
+
+        stage = result["stage"].replace("_", " ").title()
+        return (
+            f"You already have an active application #{result['application_id']} "
+            f"(stage: {stage}). Would you like to continue with this application?"
+        )
