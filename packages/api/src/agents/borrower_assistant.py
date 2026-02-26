@@ -2,7 +2,8 @@
 """Borrower assistant -- LangGraph agent for authenticated borrowers.
 
 Tools: product_info, affordability_calc, document_completeness,
-application_status, regulatory_deadlines.
+application_status, regulatory_deadlines, acknowledge_disclosure,
+disclosure_status.
 """
 
 import logging
@@ -12,7 +13,13 @@ from langchain_openai import ChatOpenAI
 
 from ..inference.config import get_model_config, get_model_tiers
 from .base import build_routed_graph
-from .borrower_tools import application_status, document_completeness, regulatory_deadlines
+from .borrower_tools import (
+    acknowledge_disclosure,
+    application_status,
+    disclosure_status,
+    document_completeness,
+    regulatory_deadlines,
+)
 from .tools import affordability_calc, product_info
 
 logger = logging.getLogger(__name__)
@@ -27,6 +34,8 @@ def build_graph(config: dict[str, Any], checkpointer=None):
         document_completeness,
         application_status,
         regulatory_deadlines,
+        acknowledge_disclosure,
+        disclosure_status,
     ]
 
     tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
