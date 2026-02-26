@@ -48,10 +48,21 @@ def _make_borrower() -> UserContext:
 # ---------------------------------------------------------------------------
 
 
+def _mock_audit_session(prev_event=None):
+    """Build a mock session that supports advisory lock + latest-event query."""
+    mock_session = AsyncMock()
+    # execute is called twice: advisory lock, then latest-event query
+    lock_result = MagicMock()
+    query_result = MagicMock()
+    query_result.scalar_one_or_none.return_value = prev_event
+    mock_session.execute = AsyncMock(side_effect=[lock_result, query_result])
+    return mock_session
+
+
 @pytest.mark.asyncio
 async def test_write_audit_event_creates_row():
-    """write_audit_event adds an AuditEvent with session_id to the session."""
-    mock_session = AsyncMock()
+    """write_audit_event adds an AuditEvent with session_id and prev_hash."""
+    mock_session = _mock_audit_session(prev_event=None)
 
     await write_audit_event(
         mock_session,
@@ -71,12 +82,13 @@ async def test_write_audit_event_creates_row():
     assert added_obj.user_id == "test-user"
     assert added_obj.user_role == "prospect"
     assert added_obj.event_data["tool_name"] == "product_info"
+    assert added_obj.prev_hash == "genesis"
 
 
 @pytest.mark.asyncio
 async def test_write_audit_event_without_event_data():
     """event_data is optional and stored as None."""
-    mock_session = AsyncMock()
+    mock_session = _mock_audit_session(prev_event=None)
 
     await write_audit_event(
         mock_session,
@@ -86,6 +98,29 @@ async def test_write_audit_event_without_event_data():
 
     added_obj = mock_session.add.call_args[0][0]
     assert added_obj.event_data is None
+    assert added_obj.prev_hash == "genesis"
+
+
+@pytest.mark.asyncio
+async def test_write_audit_event_chains_from_previous():
+    """prev_hash is computed from the previous event when one exists."""
+    from src.services.audit import _compute_hash
+
+    prev = MagicMock()
+    prev.id = 42
+    prev.timestamp = "2026-01-15T10:00:00+00:00"
+    prev.event_data = {"tool_name": "calc"}
+    mock_session = _mock_audit_session(prev_event=prev)
+
+    await write_audit_event(
+        mock_session,
+        event_type="tool_invocation",
+        user_id="test-user",
+    )
+
+    added_obj = mock_session.add.call_args[0][0]
+    expected_hash = _compute_hash(42, "2026-01-15T10:00:00+00:00", {"tool_name": "calc"})
+    assert added_obj.prev_hash == expected_hash
 
 
 @pytest.mark.asyncio

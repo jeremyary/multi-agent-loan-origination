@@ -24,6 +24,14 @@ class AuditEventsResponse(BaseModel):
     events: list[AuditEventItem]
 
 
+class AuditChainVerifyResponse(BaseModel):
+    """Response for GET /api/admin/audit/verify."""
+
+    status: str
+    events_checked: int
+    first_break_id: int | None = None
+
+
 class SeedResponse(BaseModel):
     """Response for POST /api/admin/seed."""
 

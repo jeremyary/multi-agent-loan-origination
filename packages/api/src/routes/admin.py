@@ -8,12 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import require_roles
 from ..schemas.admin import (
+    AuditChainVerifyResponse,
     AuditEventItem,
     AuditEventsResponse,
     SeedResponse,
     SeedStatusResponse,
 )
-from ..services.audit import get_events_by_session
+from ..services.audit import get_events_by_session, verify_audit_chain
 from ..services.seed.seeder import get_seed_status, seed_demo_data
 
 router = APIRouter()
@@ -84,3 +85,16 @@ async def get_audit_events(
             for e in events
         ],
     )
+
+
+@router.get(
+    "/audit/verify",
+    response_model=AuditChainVerifyResponse,
+    dependencies=[Depends(require_roles(UserRole.ADMIN))],
+)
+async def verify_audit(
+    session: AsyncSession = Depends(get_db),
+) -> AuditChainVerifyResponse:
+    """Verify audit trail hash chain integrity."""
+    result = await verify_audit_chain(session)
+    return AuditChainVerifyResponse(**result)

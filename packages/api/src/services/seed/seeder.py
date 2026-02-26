@@ -16,7 +16,6 @@ from db import (
     Application,
     ApplicationBorrower,
     ApplicationFinancials,
-    AuditEvent,
     Borrower,
     Condition,
     Decision,
@@ -24,9 +23,10 @@ from db import (
     Document,
     RateLock,
 )
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..audit import write_audit_event
 from ..compliance.seed_hmda import clear_hmda_demographics, seed_hmda_demographics
 from .fixtures import (
     ACTIVE_APPLICATIONS,
@@ -77,8 +77,9 @@ async def _clear_demo_data(session: AsyncSession, compliance_session: AsyncSessi
                     ApplicationFinancials.application_id.in_(app_ids)
                 )
             )
-            # Delete audit events for these applications
-            await session.execute(delete(AuditEvent).where(AuditEvent.application_id.in_(app_ids)))
+            # Truncate ALL audit events + violations to start clean hash chain.
+            # TRUNCATE bypasses row triggers (no need to disable them).
+            await session.execute(text("TRUNCATE TABLE audit_violations, audit_events CASCADE"))
             # Delete HMDA demographics via compliance module (isolation boundary)
             await clear_hmda_demographics(compliance_session, app_ids)
             # Delete junction rows
@@ -91,8 +92,7 @@ async def _clear_demo_data(session: AsyncSession, compliance_session: AsyncSessi
         # Delete borrowers
         await session.execute(delete(Borrower).where(Borrower.id.in_(borrower_ids)))
 
-    # Delete seed-related audit events
-    await session.execute(delete(AuditEvent).where(AuditEvent.event_type == "demo_data_seeded"))
+    # audit_events already truncated above; no per-type delete needed
 
     # Clear manifest
     await session.execute(delete(DemoDataManifest))
@@ -204,15 +204,15 @@ async def _seed_applications(
             )
             session.add(rate_lock)
 
-        # Audit event for application creation
-        audit = AuditEvent(
+        # Audit event for application creation (via write_audit_event for hash chain)
+        await write_audit_event(
+            session,
+            event_type="application_created",
             user_id=app_def["assigned_to"],
             user_role="system",
-            event_type="application_created",
             application_id=app.id,
-            event_data=json.dumps({"source": "demo_seed", "stage": app_def["stage"].value}),
+            event_data={"source": "demo_seed", "stage": app_def["stage"].value},
         )
-        session.add(audit)
 
         applications.append(app)
 
@@ -308,14 +308,14 @@ async def seed_demo_data(
     )
     session.add(manifest)
 
-    # Seed-level audit event
-    audit = AuditEvent(
+    # Seed-level audit event (via write_audit_event for hash chain)
+    await write_audit_event(
+        session,
+        event_type="demo_data_seeded",
         user_id="system",
         user_role="system",
-        event_type="demo_data_seeded",
-        event_data=json.dumps(summary),
+        event_data=summary,
     )
-    session.add(audit)
 
     # 6. Commit both sessions.
     # NOTE: These are separate DB connections so this is NOT atomic. If the
