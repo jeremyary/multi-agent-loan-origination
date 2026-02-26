@@ -11,6 +11,9 @@ Prospects get ephemeral (random UUID) thread IDs that are never resumed.
 import logging
 from typing import Any
 
+from psycopg import AsyncConnection
+from psycopg.rows import dict_row
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,6 +37,7 @@ class ConversationService:
 
     def __init__(self) -> None:
         self._checkpointer: Any | None = None
+        self._conn: AsyncConnection | None = None
         self._initialized: bool = False
 
     @property
@@ -66,7 +70,11 @@ class ConversationService:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
             psycopg_url = derive_psycopg_url(db_url)
-            self._checkpointer = AsyncPostgresSaver.from_conn_string(psycopg_url)
+            conn = await AsyncConnection.connect(
+                psycopg_url, autocommit=True, prepare_threshold=0, row_factory=dict_row
+            )
+            self._conn = conn
+            self._checkpointer = AsyncPostgresSaver(conn=conn)
             await self._checkpointer.setup()
             self._initialized = True
             logger.info("ConversationService initialized (checkpoint persistence active)")
@@ -79,16 +87,14 @@ class ConversationService:
             self._initialized = False
 
     async def shutdown(self) -> None:
-        """Close the checkpointer's connection pool if available."""
-        if self._checkpointer is not None:
-            # AsyncPostgresSaver exposes an async close via its connection pool
+        """Close the checkpointer's underlying psycopg connection."""
+        if self._conn is not None:
             try:
-                if hasattr(self._checkpointer, "conn") and hasattr(
-                    self._checkpointer.conn, "close"
-                ):
-                    await self._checkpointer.conn.close()
+                await self._conn.close()
             except Exception:
                 logger.debug("Error closing checkpointer connection", exc_info=True)
+        self._conn = None
+        self._checkpointer = None
         self._initialized = False
 
     @staticmethod

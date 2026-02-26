@@ -10,9 +10,10 @@ import logging
 import uuid
 
 from db.enums import UserRole
-from fastapi import APIRouter, WebSocket
+from fastapi import APIRouter, Depends, WebSocket
 
 from ..agents.registry import get_agent
+from ..middleware.auth import CurrentUser, require_roles
 from ..services.conversation import ConversationService, get_conversation_service
 from ._chat_handler import authenticate_websocket, run_agent_stream
 
@@ -61,3 +62,18 @@ async def borrower_chat_websocket(ws: WebSocket):
         use_checkpointer=use_checkpointer,
         messages_fallback=messages_fallback,
     )
+
+
+@router.get(
+    "/borrower/conversations/history",
+    dependencies=[Depends(require_roles(UserRole.BORROWER))],
+)
+async def get_conversation_history(user: CurrentUser) -> dict:
+    """Return prior conversation messages for the authenticated borrower.
+
+    Used by the frontend to render chat history when the chat window opens.
+    """
+    service = get_conversation_service()
+    thread_id = ConversationService.get_thread_id(user.user_id, "borrower-assistant")
+    messages = await service.get_conversation_history(thread_id)
+    return {"data": messages}
