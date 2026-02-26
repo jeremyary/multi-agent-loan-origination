@@ -19,7 +19,11 @@ from ..middleware.auth import _build_data_scope
 from ..schemas.auth import UserContext
 from ..services.audit import write_audit_event
 from ..services.completeness import check_completeness
-from ..services.condition import get_conditions, respond_to_condition
+from ..services.condition import (
+    check_condition_documents,
+    get_conditions,
+    respond_to_condition,
+)
 from ..services.disclosure import get_disclosure_status
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
@@ -405,3 +409,75 @@ async def respond_to_condition_tool(
         f'"{result["description"]}". '
         "The underwriter will review your response."
     )
+
+
+@tool
+async def check_condition_satisfaction(
+    application_id: int,
+    condition_id: int,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Check whether a condition has been satisfied by reviewing linked documents and their extraction results. Use this after a borrower uploads a document for a condition.
+
+    Args:
+        application_id: The loan application ID.
+        condition_id: The condition ID to check.
+    """
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        result = await check_condition_documents(
+            session,
+            user,
+            application_id,
+            condition_id,
+        )
+
+    if result is None:
+        return "Application or condition not found, or you don't have access."
+
+    lines = [f"Condition #{result['condition_id']}: {result['description']}"]
+    lines.append(f"Status: {result['status']}")
+
+    if result["response_text"]:
+        lines.append(f"Borrower response: {result['response_text']}")
+
+    if not result["has_documents"]:
+        lines.append("")
+        lines.append("No documents have been linked to this condition yet.")
+        if result["response_text"]:
+            lines.append(
+                "The borrower provided a text response. Review it to determine "
+                "if the explanation is sufficient or if a document is still needed."
+            )
+        return "\n".join(lines)
+
+    lines.append("")
+    lines.append(f"Linked documents ({len(result['documents'])}):")
+    for doc in result["documents"]:
+        label = doc["file_path"].rsplit("/", 1)[-1] if doc.get("file_path") else f"doc-{doc['id']}"
+        doc_line = f"  - {label} (type: {doc['doc_type']}, status: {doc['status']})"
+        lines.append(doc_line)
+
+        if doc["quality_flags"]:
+            lines.append(f"    Quality issues: {', '.join(doc['quality_flags'])}")
+
+        if doc["extractions"]:
+            lines.append("    Extracted fields:")
+            for ext in doc["extractions"]:
+                conf = f" (confidence: {ext['confidence']:.0%})" if ext["confidence"] else ""
+                lines.append(f"      {ext['field']}: {ext['value']}{conf}")
+
+    if result["has_quality_issues"]:
+        lines.append("")
+        lines.append(
+            "There are quality issues with the uploaded document(s). "
+            "Consider asking the borrower to upload a corrected version."
+        )
+    else:
+        lines.append("")
+        lines.append(
+            "The document(s) look good. Confirm to the borrower that their "
+            "submission is complete and the underwriter will review it."
+        )
+
+    return "\n".join(lines)

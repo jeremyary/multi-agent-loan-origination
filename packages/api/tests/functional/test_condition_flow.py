@@ -59,9 +59,10 @@ def _make_conditions_session(application, conditions):
 def _make_respond_session(application, condition):
     """Build a mock session for the respond-to-condition endpoint.
 
-    The respond service runs two queries:
+    The respond service runs these queries:
       1. Application lookup -> unique().scalar_one_or_none()
       2. Condition lookup -> scalar_one_or_none()
+      3+ Audit event writes (advisory lock, latest event query, flush)
     Then commits and refreshes.
     """
     session = AsyncMock()
@@ -72,7 +73,14 @@ def _make_respond_session(application, condition):
     cond_result = MagicMock()
     cond_result.scalar_one_or_none.return_value = condition
 
-    session.execute = AsyncMock(side_effect=[app_result, cond_result])
+    # Audit event queries return generic mocks (advisory lock, latest event)
+    audit_lock_result = MagicMock()
+    audit_latest_result = MagicMock()
+    audit_latest_result.scalar_one_or_none.return_value = None  # No prior events
+
+    session.execute = AsyncMock(
+        side_effect=[app_result, cond_result, audit_lock_result, audit_latest_result]
+    )
     return session
 
 

@@ -2,8 +2,11 @@
 """Condition service for borrower condition responses.
 
 Handles listing open conditions (with data scope), recording text
-responses, and linking uploaded documents to conditions.
+responses, linking uploaded documents to conditions, and checking
+document-based condition satisfaction.
 """
+
+import logging
 
 from db import (
     Application,
@@ -11,13 +14,17 @@ from db import (
     Condition,
     ConditionStatus,
     Document,
+    DocumentExtraction,
 )
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from ..schemas.auth import UserContext
+from ..services.audit import write_audit_event
 from ..services.scope import apply_data_scope
+
+logger = logging.getLogger(__name__)
 
 
 async def get_conditions(
@@ -114,6 +121,20 @@ async def respond_to_condition(
     if condition.status == ConditionStatus.OPEN:
         condition.status = ConditionStatus.RESPONDED
 
+    # Audit trail for borrower condition response
+    await write_audit_event(
+        session,
+        event_type="condition_response",
+        user_id=user.user_id,
+        user_role=user.role.value,
+        application_id=application_id,
+        event_data={
+            "condition_id": condition_id,
+            "description": condition.description,
+            "response_text": response_text,
+        },
+    )
+
     await session.commit()
     await session.refresh(condition)
 
@@ -188,4 +209,91 @@ async def link_document_to_condition(
         "description": condition.description,
         "status": condition.status.value,
         "document_id": document_id,
+    }
+
+
+async def check_condition_documents(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    condition_id: int,
+) -> dict | None:
+    """Check documents linked to a condition and assess satisfaction.
+
+    Returns None if the application or condition is not found / out of scope.
+    Returns a dict with condition info, linked documents, extraction details,
+    and quality issues for the agent to evaluate.
+    """
+    # Verify application scope
+    app_stmt = (
+        select(Application)
+        .options(
+            selectinload(Application.application_borrowers).joinedload(ApplicationBorrower.borrower)
+        )
+        .where(Application.id == application_id)
+    )
+    app_stmt = apply_data_scope(app_stmt, user.data_scope, user)
+    app_result = await session.execute(app_stmt)
+    app = app_result.unique().scalar_one_or_none()
+
+    if app is None:
+        return None
+
+    # Fetch condition
+    cond_stmt = select(Condition).where(
+        Condition.id == condition_id,
+        Condition.application_id == application_id,
+    )
+    cond_result = await session.execute(cond_stmt)
+    condition = cond_result.scalar_one_or_none()
+
+    if condition is None:
+        return None
+
+    # Fetch documents linked to this condition
+    doc_stmt = (
+        select(Document)
+        .where(Document.condition_id == condition_id)
+        .order_by(Document.created_at.desc())
+    )
+    doc_result = await session.execute(doc_stmt)
+    documents = doc_result.scalars().all()
+
+    doc_details = []
+    for doc in documents:
+        # Fetch extractions for each document
+        ext_stmt = (
+            select(DocumentExtraction)
+            .where(DocumentExtraction.document_id == doc.id)
+            .order_by(DocumentExtraction.field_name)
+        )
+        ext_result = await session.execute(ext_stmt)
+        extractions = ext_result.scalars().all()
+
+        doc_details.append(
+            {
+                "id": doc.id,
+                "file_path": doc.file_path,
+                "doc_type": doc.doc_type.value if doc.doc_type else None,
+                "status": doc.status.value if doc.status else None,
+                "quality_flags": doc.quality_flags.split(",") if doc.quality_flags else [],
+                "extractions": [
+                    {
+                        "field": e.field_name,
+                        "value": e.field_value,
+                        "confidence": e.confidence,
+                    }
+                    for e in extractions
+                ],
+            }
+        )
+
+    return {
+        "condition_id": condition.id,
+        "description": condition.description,
+        "status": condition.status.value if condition.status else None,
+        "response_text": condition.response_text,
+        "documents": doc_details,
+        "has_documents": len(doc_details) > 0,
+        "has_quality_issues": any(d["quality_flags"] for d in doc_details),
     }

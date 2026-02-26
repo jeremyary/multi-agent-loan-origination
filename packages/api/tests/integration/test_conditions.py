@@ -2,6 +2,7 @@
 """Condition listing and response with real PostgreSQL."""
 
 import pytest
+from sqlalchemy import select
 
 pytestmark = pytest.mark.integration
 
@@ -186,3 +187,84 @@ class TestDocumentConditionLink:
         result2 = await db_session.execute(select(Document).where(Document.id == seed_data.doc1.id))
         updated = result2.scalar_one()
         assert updated.condition_id == c1_id
+
+
+class TestRespondAuditTrail:
+    """Verify audit event is written when borrower responds to a condition."""
+
+    async def test_respond_creates_audit_event(self, client_factory, seed_data, db_session):
+        from db.models import AuditEvent
+
+        from tests.functional.personas import borrower_sarah
+
+        c1_id, _, _ = await _add_conditions(db_session, seed_data.sarah_app1.id)
+
+        client = await client_factory(borrower_sarah())
+        resp = await client.post(
+            f"/api/applications/{seed_data.sarah_app1.id}/conditions/{c1_id}/respond",
+            json={"response_text": "Gift from my parents"},
+        )
+        assert resp.status_code == 200
+
+        # Check that an audit event was created
+        result = await db_session.execute(
+            select(AuditEvent)
+            .where(AuditEvent.event_type == "condition_response")
+            .where(AuditEvent.application_id == seed_data.sarah_app1.id)
+        )
+        audit = result.scalar_one()
+        assert audit.event_data["condition_id"] == c1_id
+        assert audit.event_data["response_text"] == "Gift from my parents"
+        assert audit.user_role == "borrower"
+        await client.aclose()
+
+
+class TestCheckConditionDocuments:
+    """Service-level tests for check_condition_documents against real DB."""
+
+    async def test_check_with_no_linked_documents(self, db_session, seed_data):
+        from src.services.condition import check_condition_documents
+        from tests.functional.personas import borrower_sarah
+
+        c1_id, _, _ = await _add_conditions(db_session, seed_data.sarah_app1.id)
+
+        user = borrower_sarah()
+        result = await check_condition_documents(db_session, user, seed_data.sarah_app1.id, c1_id)
+        assert result is not None
+        assert result["condition_id"] == c1_id
+        assert result["has_documents"] is False
+        assert result["documents"] == []
+
+    async def test_check_with_linked_document(self, db_session, seed_data):
+        from db.models import Document
+
+        from src.services.condition import check_condition_documents
+        from tests.functional.personas import borrower_sarah
+
+        c1_id, _, _ = await _add_conditions(db_session, seed_data.sarah_app1.id)
+
+        # Link seed doc to condition
+        doc_result = await db_session.execute(
+            select(Document).where(Document.id == seed_data.doc1.id)
+        )
+        doc = doc_result.scalar_one()
+        doc.condition_id = c1_id
+        await db_session.flush()
+
+        user = borrower_sarah()
+        result = await check_condition_documents(db_session, user, seed_data.sarah_app1.id, c1_id)
+        assert result is not None
+        assert result["has_documents"] is True
+        assert len(result["documents"]) == 1
+        assert result["documents"][0]["id"] == seed_data.doc1.id
+
+    async def test_check_out_of_scope(self, db_session, seed_data):
+        from src.services.condition import check_condition_documents
+        from tests.functional.personas import borrower_sarah
+
+        c1_id, _, _ = await _add_conditions(db_session, seed_data.michael_app.id)
+
+        user = borrower_sarah()
+        # Sarah can't check conditions on Michael's app
+        result = await check_condition_documents(db_session, user, seed_data.michael_app.id, c1_id)
+        assert result is None
