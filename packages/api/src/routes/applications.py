@@ -17,8 +17,10 @@ from ..schemas.application import (
     ApplicationUpdate,
     BorrowerSummary,
 )
+from ..schemas.rate_lock import RateLockResponse
 from ..schemas.status import ApplicationStatusResponse
 from ..services import application as app_service
+from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
 
 router = APIRouter()
@@ -147,6 +149,36 @@ async def get_status(
             detail="Application not found",
         )
     return result
+
+
+@router.get(
+    "/{application_id}/rate-lock",
+    response_model=RateLockResponse,
+    dependencies=[
+        Depends(
+            require_roles(
+                UserRole.ADMIN,
+                UserRole.BORROWER,
+                UserRole.LOAN_OFFICER,
+                UserRole.UNDERWRITER,
+                UserRole.CEO,
+            )
+        )
+    ],
+)
+async def get_rate_lock(
+    application_id: int,
+    user: CurrentUser,
+    session: AsyncSession = Depends(get_db),
+) -> RateLockResponse:
+    """Get rate lock status for an application."""
+    result = await get_rate_lock_status(session, user, application_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Application not found",
+        )
+    return RateLockResponse(**result)
 
 
 @router.post(
