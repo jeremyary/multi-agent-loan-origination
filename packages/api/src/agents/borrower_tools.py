@@ -26,10 +26,11 @@ from ..services.condition import (
 )
 from ..services.disclosure import get_disclosure_status
 from ..services.intake import (
-    start_application as start_application_service,
+    get_application_progress,
+    update_application_fields,
 )
 from ..services.intake import (
-    update_application_fields,
+    start_application as start_application_service,
 )
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
@@ -593,3 +594,54 @@ async def update_application_data(
         parts.append("All required fields are complete!")
 
     return " ".join(parts)
+
+
+@tool
+async def get_application_summary(
+    application_id: int,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Show collected application data and remaining fields. Use when the borrower asks to review their application, see what's been collected, or check progress.
+
+    Args:
+        application_id: The application ID to summarize.
+    """
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        progress = await get_application_progress(session, user, application_id)
+
+        if progress is None:
+            return "Application not found or you don't have access to it."
+
+        await write_audit_event(
+            session,
+            event_type="data_access",
+            user_id=user.user_id,
+            user_role=user.role.value,
+            application_id=application_id,
+            event_data={"action": "review", "tool": "get_application_summary"},
+        )
+        await session.commit()
+
+    pct = round(progress["completed"] / progress["total"] * 100) if progress["total"] else 0
+    stage = progress["stage"].replace("_", " ").title()
+
+    lines = [
+        f"Application #{progress['application_id']} (Stage: {stage})",
+        f"Progress: {progress['completed']}/{progress['total']} fields ({pct}%)",
+        "",
+    ]
+
+    for section_name, fields in progress["sections"].items():
+        lines.append(f"{section_name}:")
+        for label, value in fields.items():
+            display = value if value is not None else "(not provided)"
+            lines.append(f"  {label}: {display}")
+        lines.append("")
+
+    if progress["remaining"]:
+        lines.append(f"Still needed: {', '.join(progress['remaining'])}")
+    else:
+        lines.append("All required fields are complete!")
+
+    return "\n".join(lines)

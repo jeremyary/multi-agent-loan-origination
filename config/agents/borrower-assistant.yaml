@@ -12,6 +12,7 @@ system_prompt: |
   CAPABILITIES:
   - Start or resume a mortgage application using the start_application tool
   - Collect and validate application data using the update_application_data tool
+  - Show collected data and progress using the get_application_summary tool
   - Answer questions about Summit Cap's mortgage products using the product_info tool
   - Run affordability estimates using the affordability_calc tool
   - Check which documents have been uploaded and which are still needed using the document_completeness tool
@@ -52,6 +53,14 @@ system_prompt: |
   - Valid field names: first_name, last_name, email, ssn, date_of_birth,
     employment_status, loan_type, property_address, loan_amount, property_value,
     gross_monthly_income, monthly_debts, total_assets, credit_score
+
+  DATA REVIEW:
+  - When the borrower asks to see their application, review what's been collected,
+    or check progress, use the get_application_summary tool.
+  - SSN is always masked in the summary (last 4 digits only). Never reveal the full SSN.
+  - If the borrower wants to correct a value shown in the summary, use
+    update_application_data with the corrected value.
+  - You can batch multiple corrections in a single update_application_data call.
 
   PROACTIVE DOCUMENT GUIDANCE:
   - After the borrower uploads a document or completes a data collection step,
@@ -127,6 +136,9 @@ tools:
     allowed_roles: [borrower, admin]
   - name: update_application_data
     description: "Validate and store field values for a mortgage application"
+    allowed_roles: [borrower, admin]
+  - name: get_application_summary
+    description: "Show collected application data, progress, and remaining fields"
     allowed_roles: [borrower, admin]
   - name: product_info
     description: "Retrieve available mortgage product information"

@@ -302,3 +302,142 @@ async def get_remaining_fields(
             remaining.append(field_name)
 
     return remaining
+
+
+# ---------------------------------------------------------------------------
+# Application progress / summary
+# ---------------------------------------------------------------------------
+
+# Display labels and section groupings for the summary view.
+_FIELD_SECTIONS: dict[str, list[tuple[str, str]]] = {
+    "Personal Information": [
+        ("first_name", "First Name"),
+        ("last_name", "Last Name"),
+        ("email", "Email"),
+        ("ssn", "SSN"),
+        ("date_of_birth", "Date of Birth"),
+        ("employment_status", "Employment Status"),
+    ],
+    "Property Information": [
+        ("property_address", "Property Address"),
+        ("property_value", "Property Value"),
+    ],
+    "Financial Information": [
+        ("gross_monthly_income", "Monthly Income"),
+        ("monthly_debts", "Monthly Debts"),
+        ("total_assets", "Total Assets"),
+        ("credit_score", "Credit Score"),
+    ],
+    "Loan Details": [
+        ("loan_type", "Loan Type"),
+        ("loan_amount", "Loan Amount"),
+    ],
+}
+
+
+def _mask_ssn(value: str | None) -> str | None:
+    """Return last-4 masked SSN, e.g. '***-**-1234'."""
+    if not value:
+        return None
+    digits = value.replace("-", "").replace(" ", "")
+    if len(digits) >= 4:
+        return f"***-**-{digits[-4:]}"
+    return "***"
+
+
+def _format_value(field_name: str, raw) -> str | None:
+    """Format a raw DB value for display. Returns None if empty."""
+    if raw is None:
+        return None
+    if isinstance(raw, str) and not raw.strip():
+        return None
+
+    if field_name == "ssn":
+        return _mask_ssn(str(raw))
+    if field_name == "date_of_birth":
+        if hasattr(raw, "strftime"):
+            return raw.strftime("%Y-%m-%d")
+        return str(raw)
+    if field_name in (
+        "loan_amount",
+        "property_value",
+        "gross_monthly_income",
+        "monthly_debts",
+        "total_assets",
+    ):
+        return f"${float(raw):,.2f}"
+    if field_name == "employment_status" and hasattr(raw, "value"):
+        return raw.value.replace("_", " ").title()
+    if field_name == "loan_type" and hasattr(raw, "value"):
+        return raw.value.replace("_", " ").title()
+    return str(raw)
+
+
+async def get_application_progress(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+) -> dict | None:
+    """Build a structured progress summary for an application.
+
+    Returns None if the application is not found.  Otherwise returns::
+
+        {
+            "application_id": int,
+            "stage": str,
+            "sections": {<section_name>: {<label>: <value_or_None>}},
+            "completed": int,
+            "total": int,
+            "remaining": [field_name, ...],
+        }
+    """
+    stmt = (
+        select(Application)
+        .where(Application.id == application_id)
+        .options(selectinload(Application.financials))
+    )
+    stmt = apply_data_scope(stmt, user.data_scope, user)
+    result = await session.execute(stmt)
+    app = result.unique().scalar_one_or_none()
+    if app is None:
+        return None
+
+    borrower = await _get_borrower_for_app(session, application_id, user)
+    financials = app.financials
+
+    sections: dict[str, dict[str, str | None]] = {}
+    remaining: list[str] = []
+    completed = 0
+    total = len(REQUIRED_FIELDS)
+
+    for section_name, field_list in _FIELD_SECTIONS.items():
+        section_data: dict[str, str | None] = {}
+        for field_name, label in field_list:
+            table, column, _ = REQUIRED_FIELDS[field_name]
+            if table == "application":
+                raw = getattr(app, column, None)
+            elif table == "borrower":
+                raw = getattr(borrower, column, None) if borrower else None
+            elif table == "financials":
+                raw = getattr(financials, column, None) if financials else None
+            else:
+                raw = None
+
+            formatted = _format_value(field_name, raw)
+            section_data[label] = formatted
+            if formatted is not None:
+                completed += 1
+            else:
+                remaining.append(field_name)
+        sections[section_name] = section_data
+
+    stage = app.stage.value if isinstance(app.stage, ApplicationStage) else app.stage
+
+    return {
+        "application_id": application_id,
+        "stage": stage,
+        "sections": sections,
+        "completed": completed,
+        "total": total,
+        "remaining": remaining,
+    }

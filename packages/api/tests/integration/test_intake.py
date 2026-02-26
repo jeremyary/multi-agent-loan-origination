@@ -1,8 +1,9 @@
 # This project was developed with assistance from AI tools.
-"""Integration tests for application intake service (S-2-F3-01 through S-2-F3-03).
+"""Integration tests for application intake service (S-2-F3-01 through S-2-F3-04).
 
 Tests start_application, find_active_application, update_application_fields,
-and get_remaining_fields against a real PostgreSQL instance via testcontainers.
+get_remaining_fields, and get_application_progress against a real PostgreSQL
+instance via testcontainers.
 """
 
 import pytest
@@ -13,6 +14,7 @@ from sqlalchemy import select
 
 from src.services.intake import (
     find_active_application,
+    get_application_progress,
     get_remaining_fields,
     start_application,
     update_application_fields,
@@ -351,3 +353,60 @@ async def test_update_fields_scope_isolation(db_session, intake_seed):
 
     assert result["errors"].get("_") == "Application not found"
     assert result["updated"] == []
+
+
+# ---------------------------------------------------------------------------
+# get_application_progress (S-2-F3-04)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_progress_reports_correct_counts_after_updates(db_session, intake_seed):
+    """get_application_progress reflects fields stored across all 3 tables."""
+    user = borrower_sarah()
+    app_id = intake_seed["active_app_id"]
+
+    # Seed already has property_address + loan_amount on the app.
+    # Add borrower + financial fields.
+    await update_application_fields(
+        db_session,
+        user,
+        app_id,
+        {
+            "gross_monthly_income": "8500",
+            "credit_score": "740",
+            "ssn": "078-05-1120",
+            "email": "sarah@test.com",
+        },
+    )
+    await db_session.flush()
+
+    progress = await get_application_progress(db_session, user, app_id)
+
+    assert progress is not None
+    assert progress["application_id"] == app_id
+    # Seed: first_name, last_name, email, property_address, loan_amount (5)
+    # Update: gross_monthly_income, credit_score, ssn, email-overwrite (3 new)
+    # Total = 8 completed
+    assert progress["completed"] == 8
+    assert progress["total"] == 14
+    assert len(progress["remaining"]) == 6
+
+    # SSN must be masked in the returned sections
+    personal = progress["sections"]["Personal Information"]
+    assert personal["SSN"] == "***-**-1120"
+
+    # Financial values formatted as currency
+    financial = progress["sections"]["Financial Information"]
+    assert financial["Monthly Income"] == "$8,500.00"
+    assert financial["Credit Score"] == "740"
+
+
+@pytest.mark.asyncio
+async def test_progress_scope_isolation(db_session, intake_seed):
+    """Michael cannot view Sarah's application progress."""
+    user = borrower_michael()
+    app_id = intake_seed["active_app_id"]
+
+    progress = await get_application_progress(db_session, user, app_id)
+    assert progress is None

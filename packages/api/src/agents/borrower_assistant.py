@@ -2,10 +2,10 @@
 """Borrower assistant -- LangGraph agent for authenticated borrowers.
 
 Tools: product_info, affordability_calc, start_application,
-update_application_data, document_completeness, application_status,
-regulatory_deadlines, acknowledge_disclosure, disclosure_status,
-rate_lock_status, list_conditions, respond_to_condition_tool,
-check_condition_satisfaction.
+update_application_data, get_application_summary, document_completeness,
+application_status, regulatory_deadlines, acknowledge_disclosure,
+disclosure_status, rate_lock_status, list_conditions,
+respond_to_condition_tool, check_condition_satisfaction.
 """
 
 import logging
@@ -21,6 +21,7 @@ from .borrower_tools import (
     check_condition_satisfaction,
     disclosure_status,
     document_completeness,
+    get_application_summary,
     list_conditions,
     rate_lock_status,
     regulatory_deadlines,
@@ -41,6 +42,7 @@ def build_graph(config: dict[str, Any], checkpointer=None):
         affordability_calc,
         start_application,
         update_application_data,
+        get_application_summary,
         document_completeness,
         application_status,
         regulatory_deadlines,
