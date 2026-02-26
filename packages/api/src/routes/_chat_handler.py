@@ -171,7 +171,11 @@ async def run_agent_stream(
                     kind = event.get("event")
                     node = event.get("metadata", {}).get("langgraph_node")
 
-                    if kind == "on_chat_model_stream" and node == "agent":
+                    if kind == "on_chat_model_stream" and node in (
+                        "agent",
+                        "agent_fast",
+                        "agent_capable",
+                    ):
                         chunk = event.get("data", {}).get("chunk")
                         if isinstance(chunk, AIMessageChunk) and chunk.content:
                             await ws.send_json({"type": "token", "content": chunk.content})
