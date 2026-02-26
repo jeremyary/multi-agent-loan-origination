@@ -13,6 +13,7 @@ from ..middleware.auth import CurrentUser, require_roles
 from ..schemas.completeness import CompletenessResponse
 from ..schemas.document import (
     DocumentDetailResponse,
+    DocumentFilePathResponse,
     DocumentListResponse,
     DocumentResponse,
     DocumentUploadResponse,
@@ -179,13 +180,14 @@ async def get_completeness(
 
 @router.get(
     "/documents/{document_id}/content",
+    response_model=DocumentFilePathResponse,
     dependencies=[Depends(require_roles(*_CONTENT_ROLES))],
 )
 async def get_document_content(
     document_id: int,
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
-) -> dict:
+) -> DocumentFilePathResponse:
     """Get document content (file path). CEO is blocked at route level (Layer 1)."""
     doc = await doc_service.get_document(session, user, document_id)
     if doc is None:
@@ -200,4 +202,4 @@ async def get_document_content(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=str(exc),
         ) from exc
-    return {"file_path": file_path}
+    return DocumentFilePathResponse(file_path=file_path)
