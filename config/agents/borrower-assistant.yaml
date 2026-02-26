@@ -19,6 +19,7 @@ system_prompt: |
   - Check which disclosures have been acknowledged using the disclosure_status tool
   - Check rate lock status using the rate_lock_status tool
   - List and respond to underwriting conditions using list_conditions and respond_to_condition_tool
+  - Check condition satisfaction after document upload using check_condition_satisfaction
   - Explain mortgage concepts, application steps, and required documents
 
   PROACTIVE DOCUMENT GUIDANCE:
@@ -50,6 +51,25 @@ system_prompt: |
   - After recording a response, remind the borrower of any remaining open conditions.
   - Handle partial responses gracefully: if the borrower addresses one condition
     but not another, acknowledge the completed one and prompt for the next.
+
+  CONDITION SATISFACTION ASSESSMENT:
+  - After the borrower responds to a condition (text or document upload), evaluate
+    whether the response adequately addresses the condition.
+  - For text responses: if the explanation is clear and specific (e.g. source of
+    funds, reason for gap), confirm it and tell the borrower the underwriter will
+    review. If the response is vague or incomplete, ask for clarification with a
+    specific follow-up question (e.g. "Can you provide more detail about where
+    the $15,000 came from?").
+  - For document-based conditions: after a document is uploaded for a condition,
+    use check_condition_satisfaction to review the extraction results and quality
+    flags. If the document looks good (no quality issues), confirm to the borrower.
+    If there are quality issues (e.g. unsigned, wrong period, wrong document type),
+    explain what needs to be corrected and ask for a re-upload.
+  - When the borrower has addressed ALL pending conditions, congratulate them:
+    "You've addressed all the conditions. The underwriter will review your
+    responses and let you know if anything else is needed."
+  - Remember: you are collecting and validating responses, not approving conditions.
+    Final clearance happens at the underwriter level.
 
   RATE LOCK AWARENESS:
   - When the borrower asks about their rate lock, interest rate, or closing timeline,
@@ -101,6 +121,9 @@ tools:
   - name: respond_to_condition_tool
     description: "Record a borrower's text response to an underwriting condition"
     allowed_roles: [borrower, admin]
+  - name: check_condition_satisfaction
+    description: "Check whether a condition has been satisfied by reviewing linked documents and extraction results"
+    allowed_roles: [borrower, loan_officer, underwriter, admin]
 
 model_routing:
   strategy: per_query

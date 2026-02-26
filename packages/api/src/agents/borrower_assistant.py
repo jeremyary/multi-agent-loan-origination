@@ -4,7 +4,7 @@
 Tools: product_info, affordability_calc, document_completeness,
 application_status, regulatory_deadlines, acknowledge_disclosure,
 disclosure_status, rate_lock_status, list_conditions,
-respond_to_condition_tool.
+respond_to_condition_tool, check_condition_satisfaction.
 """
 
 import logging
@@ -17,6 +17,7 @@ from .base import build_routed_graph
 from .borrower_tools import (
     acknowledge_disclosure,
     application_status,
+    check_condition_satisfaction,
     disclosure_status,
     document_completeness,
     list_conditions,
@@ -43,6 +44,7 @@ def build_graph(config: dict[str, Any], checkpointer=None):
         rate_lock_status,
         list_conditions,
         respond_to_condition_tool,
+        check_condition_satisfaction,
     ]
 
     tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
