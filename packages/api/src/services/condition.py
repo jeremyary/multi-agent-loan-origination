@@ -6,6 +6,7 @@ responses, linking uploaded documents to conditions, and checking
 document-based condition satisfaction.
 """
 
+import json
 import logging
 
 from db import (
@@ -25,6 +26,19 @@ from ..services.audit import write_audit_event
 from ..services.scope import apply_data_scope
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_quality_flags(raw: str | None) -> list[str]:
+    """Parse quality_flags stored as JSON array or plain CSV string."""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, list):
+            return [str(f) for f in parsed]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return [f.strip() for f in raw.split(",") if f.strip()]
 
 
 async def get_conditions(
@@ -276,7 +290,7 @@ async def check_condition_documents(
                 "file_path": doc.file_path,
                 "doc_type": doc.doc_type.value if doc.doc_type else None,
                 "status": doc.status.value if doc.status else None,
-                "quality_flags": doc.quality_flags.split(",") if doc.quality_flags else [],
+                "quality_flags": _parse_quality_flags(doc.quality_flags),
                 "extractions": [
                     {
                         "field": e.field_name,

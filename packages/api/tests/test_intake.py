@@ -5,7 +5,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.services.intake import _mask_ssn, start_application
+from src.middleware.pii import mask_ssn
+from src.services.intake import start_application
 
 
 def _make_user(user_id="borrower-1", role="borrower"):
@@ -293,18 +294,18 @@ async def test_update_tool_all_fields_complete():
 
 def test_mask_ssn_full():
     """should mask all but last 4 digits of a full SSN."""
-    assert _mask_ssn("078-05-1120") == "***-**-1120"
+    assert mask_ssn("078-05-1120") == "***-**-1120"
 
 
 def test_mask_ssn_digits_only():
     """should handle SSNs without dashes."""
-    assert _mask_ssn("078051120") == "***-**-1120"
+    assert mask_ssn("078051120") == "***-**-1120"
 
 
 def test_mask_ssn_none():
-    """should return None for empty/None input."""
-    assert _mask_ssn(None) is None
-    assert _mask_ssn("") is None
+    """should return None for None, masked placeholder for empty."""
+    assert mask_ssn(None) is None
+    assert mask_ssn("") == "***-**-****"
 
 
 # -- Field section consistency --

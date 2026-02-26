@@ -7,6 +7,7 @@ and tracking collection progress.
 """
 
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
 
@@ -16,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from ..middleware.pii import mask_ssn
 from ..schemas.auth import UserContext
 from ..services.application import create_application
 from ..services.intake_validation import validate_field
@@ -109,7 +111,7 @@ def _identity(v: str) -> str:
     return v
 
 
-REQUIRED_FIELDS: dict[str, tuple[str, str, callable]] = {
+REQUIRED_FIELDS: dict[str, tuple[str, str, Callable]] = {
     # Application fields
     "loan_type": ("application", "loan_type", _loan_type),
     "property_address": ("application", "property_address", _identity),
@@ -332,16 +334,6 @@ _FIELD_SECTIONS: dict[str, list[tuple[str, str]]] = {
 }
 
 
-def _mask_ssn(value: str | None) -> str | None:
-    """Return last-4 masked SSN, e.g. '***-**-1234'."""
-    if not value:
-        return None
-    digits = value.replace("-", "").replace(" ", "")
-    if len(digits) >= 4:
-        return f"***-**-{digits[-4:]}"
-    return "***"
-
-
 def _format_value(field_name: str, raw) -> str | None:
     """Format a raw DB value for display. Returns None if empty."""
     if raw is None:
@@ -350,7 +342,7 @@ def _format_value(field_name: str, raw) -> str | None:
         return None
 
     if field_name == "ssn":
-        return _mask_ssn(str(raw))
+        return mask_ssn(str(raw))
     if field_name == "date_of_birth":
         if hasattr(raw, "strftime"):
             return raw.strftime("%Y-%m-%d")

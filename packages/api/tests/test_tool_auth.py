@@ -49,15 +49,9 @@ def mock_llms():
     return {"fast_small": fast, "capable_large": capable}
 
 
-# ---------------------------------------------------------------------------
-# Unit tests for tool_auth node logic
-# ---------------------------------------------------------------------------
-
-
-def test_tool_auth_allows_authorized_role(real_tools, mock_llms):
-    """Authorized role proceeds -- tool_auth node present in graph."""
-    tool_allowed_roles = {"fake_tool": ["loan_officer", "admin"]}
-    graph = build_routed_graph(
+def _build_graph_with_auth(real_tools, mock_llms, tool_allowed_roles):
+    """Helper to build a graph with tool_allowed_roles."""
+    return build_routed_graph(
         system_prompt=SYSTEM_PROMPT,
         tools=real_tools,
         llms=mock_llms,
@@ -65,132 +59,118 @@ def test_tool_auth_allows_authorized_role(real_tools, mock_llms):
         tool_allowed_roles=tool_allowed_roles,
     )
 
-    assert "tool_auth" in [n for n in graph.get_graph().nodes]
+
+def _extract_tool_auth_node(graph):
+    """Extract the tool_auth node function from a compiled graph."""
+    nodes = graph.get_graph().nodes
+    assert "tool_auth" in nodes, "tool_auth node should exist in graph"
+    # LangGraph stores node data with a .runnable attribute
+    node_data = nodes["tool_auth"]
+    return node_data.data
 
 
-def test_tool_auth_blocks_unauthorized_role(real_tools, mock_llms):
-    """Unauthorized role gets blocked -- tool_auth node present in graph."""
-    tool_allowed_roles = {"fake_tool": ["admin"]}
-    graph = build_routed_graph(
-        system_prompt=SYSTEM_PROMPT,
-        tools=real_tools,
-        llms=mock_llms,
-        tool_descriptions=TOOL_DESCRIPTIONS,
-        tool_allowed_roles=tool_allowed_roles,
-    )
+# ---------------------------------------------------------------------------
+# Graph structure tests
+# ---------------------------------------------------------------------------
 
+
+def test_tool_auth_node_present_when_roles_configured(real_tools, mock_llms):
+    """Graph includes tool_auth node when tool_allowed_roles is set."""
+    graph = _build_graph_with_auth(real_tools, mock_llms, {"fake_tool": ["admin"]})
     assert "tool_auth" in [n for n in graph.get_graph().nodes]
 
 
 def test_graph_without_tool_auth_has_no_auth_node(real_tools, mock_llms):
     """When tool_allowed_roles is None, no tool_auth node is added."""
-    graph = build_routed_graph(
-        system_prompt=SYSTEM_PROMPT,
-        tools=real_tools,
-        llms=mock_llms,
-        tool_descriptions=TOOL_DESCRIPTIONS,
-        tool_allowed_roles=None,
-    )
-
+    graph = _build_graph_with_auth(real_tools, mock_llms, None)
     assert "tool_auth" not in [n for n in graph.get_graph().nodes]
 
 
 # ---------------------------------------------------------------------------
-# Direct node function tests (bypass graph compilation)
+# Actual tool_auth node invocation tests
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
-async def test_tool_auth_node_allows_when_role_in_allowed():
-    """Directly test tool_auth node function: authorized role returns empty."""
-    # We need to test the inner function. Build the graph and extract the node.
-    # Instead, replicate the logic for direct testing.
-    tool_calls = [{"name": "product_info", "args": {}, "id": "call_1"}]
-    ai_msg = AIMessage(content="", tool_calls=tool_calls)
+async def test_tool_auth_allows_authorized_role(real_tools, mock_llms):
+    """Invoking tool_auth with an authorized role returns empty dict."""
+    graph = _build_graph_with_auth(real_tools, mock_llms, {"fake_tool": ["loan_officer", "admin"]})
+    tool_auth_fn = _extract_tool_auth_node(graph)
 
+    tool_calls = [{"name": "fake_tool", "args": {}, "id": "call_1"}]
     state = {
-        "messages": [HumanMessage(content="hi"), ai_msg],
+        "messages": [HumanMessage(content="hi"), AIMessage(content="", tool_calls=tool_calls)],
         "user_role": "loan_officer",
         "user_id": "test-user",
-        "tool_allowed_roles": {"product_info": ["loan_officer", "admin"]},
+        "tool_allowed_roles": {},
         "model_tier": "fast_small",
         "safety_blocked": False,
     }
 
-    # Simulate the tool_auth check
-    blocked = []
-    roles_map = state.get("tool_allowed_roles", {})
-    for tc in ai_msg.tool_calls:
-        allowed = roles_map.get(tc["name"])
-        if allowed is not None and state["user_role"] not in allowed:
-            blocked.append(tc["name"])
-
-    assert blocked == [], "Loan officer should be allowed to use product_info"
+    result = await tool_auth_fn.ainvoke(state)
+    assert result == {} or result.get("messages") is None or result.get("messages") == []
 
 
 @pytest.mark.asyncio
-async def test_tool_auth_node_blocks_when_role_not_in_allowed():
-    """Directly test tool_auth logic: unauthorized role blocks tool."""
-    tool_calls = [{"name": "submit_to_underwriting", "args": {}, "id": "call_1"}]
-    ai_msg = AIMessage(content="", tool_calls=tool_calls)
+async def test_tool_auth_blocks_unauthorized_role(real_tools, mock_llms):
+    """Invoking tool_auth with an unauthorized role returns denial message."""
+    graph = _build_graph_with_auth(real_tools, mock_llms, {"fake_tool": ["admin"]})
+    tool_auth_fn = _extract_tool_auth_node(graph)
 
+    tool_calls = [{"name": "fake_tool", "args": {}, "id": "call_1"}]
     state = {
-        "messages": [HumanMessage(content="submit"), ai_msg],
+        "messages": [HumanMessage(content="hi"), AIMessage(content="", tool_calls=tool_calls)],
         "user_role": "borrower",
         "user_id": "test-user",
-        "tool_allowed_roles": {"submit_to_underwriting": ["loan_officer", "admin"]},
+        "tool_allowed_roles": {},
         "model_tier": "fast_small",
         "safety_blocked": False,
     }
 
-    blocked = []
-    roles_map = state.get("tool_allowed_roles", {})
-    for tc in ai_msg.tool_calls:
-        allowed = roles_map.get(tc["name"])
-        if allowed is not None and state["user_role"] not in allowed:
-            blocked.append(tc["name"])
-
-    assert blocked == ["submit_to_underwriting"], "Borrower should be blocked"
+    result = await tool_auth_fn.ainvoke(state)
+    assert "messages" in result
+    assert len(result["messages"]) == 1
+    assert "authorization denied" in result["messages"][0].content.lower()
+    assert "fake_tool" in result["messages"][0].content
 
 
 @pytest.mark.asyncio
-async def test_tool_auth_node_allows_when_no_roles_defined():
+async def test_tool_auth_allows_when_no_roles_defined(real_tools, mock_llms):
     """Tool with no allowed_roles entry is unrestricted."""
-    tool_calls = [{"name": "unknown_tool", "args": {}, "id": "call_1"}]
-    ai_msg = AIMessage(content="", tool_calls=tool_calls)
+    graph = _build_graph_with_auth(real_tools, mock_llms, {"other_tool": ["admin"]})
+    tool_auth_fn = _extract_tool_auth_node(graph)
 
-    roles_map = {"product_info": ["prospect"]}
+    tool_calls = [{"name": "fake_tool", "args": {}, "id": "call_1"}]
+    state = {
+        "messages": [HumanMessage(content="hi"), AIMessage(content="", tool_calls=tool_calls)],
+        "user_role": "prospect",
+        "user_id": "test-user",
+        "tool_allowed_roles": {},
+        "model_tier": "fast_small",
+        "safety_blocked": False,
+    }
 
-    blocked = []
-    for tc in ai_msg.tool_calls:
-        allowed = roles_map.get(tc["name"])
-        if allowed is not None and "prospect" not in allowed:
-            blocked.append(tc["name"])
-
-    assert blocked == [], "Tool with no allowed_roles entry should not be blocked"
+    result = await tool_auth_fn.ainvoke(state)
+    assert result == {} or result.get("messages") is None or result.get("messages") == []
 
 
 @pytest.mark.asyncio
-async def test_tool_auth_logs_denial():
-    """Tool auth denial is logged with user_id, role, tool_name."""
-    from unittest.mock import patch
+async def test_tool_auth_no_tool_calls_returns_empty(real_tools, mock_llms):
+    """tool_auth returns empty when last message has no tool calls."""
+    graph = _build_graph_with_auth(real_tools, mock_llms, {"fake_tool": ["admin"]})
+    tool_auth_fn = _extract_tool_auth_node(graph)
 
-    with patch("src.agents.base.logger") as mock_logger:
-        mock_logger.warning(
-            "Tool auth DENIED: user=%s role=%s tool=%s allowed=%s",
-            "user-123",
-            "borrower",
-            "submit_to_underwriting",
-            ["loan_officer"],
-        )
+    state = {
+        "messages": [HumanMessage(content="hi"), AIMessage(content="just text")],
+        "user_role": "borrower",
+        "user_id": "test-user",
+        "tool_allowed_roles": {},
+        "model_tier": "fast_small",
+        "safety_blocked": False,
+    }
 
-        mock_logger.warning.assert_called_once()
-        call_args = mock_logger.warning.call_args
-        msg = call_args[0][0] % tuple(call_args[0][1:])
-        assert "Tool auth DENIED" in msg
-        assert "user-123" in msg
-        assert "borrower" in msg
-        assert "submit_to_underwriting" in msg
+    result = await tool_auth_fn.ainvoke(state)
+    assert result == {}
 
 
 def test_public_assistant_config_extracts_allowed_roles():

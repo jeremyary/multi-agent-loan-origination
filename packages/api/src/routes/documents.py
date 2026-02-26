@@ -2,6 +2,7 @@
 """Document routes with CEO content restriction (Layer 1)."""
 
 import asyncio
+import logging
 
 from db import get_db
 from db.enums import DocumentType, UserRole
@@ -20,6 +21,11 @@ from ..services import document as doc_service
 from ..services.completeness import check_completeness
 from ..services.document import DocumentAccessDenied, DocumentUploadError
 from ..services.extraction import get_extraction_service
+
+logger = logging.getLogger(__name__)
+
+# Track background extraction tasks so exceptions aren't silently lost
+_extraction_tasks: set[asyncio.Task] = set()
 
 router = APIRouter()
 
@@ -93,9 +99,14 @@ async def upload_document(
             detail="Application not found",
         )
 
-    # Fire background extraction pipeline
+    # Fire background extraction pipeline (retain reference for error handling)
     extraction_svc = get_extraction_service()
-    asyncio.create_task(extraction_svc.process_document(doc.id))
+    task = asyncio.create_task(
+        extraction_svc.process_document(doc.id),
+        name=f"extract-doc-{doc.id}",
+    )
+    _extraction_tasks.add(task)
+    task.add_done_callback(_extraction_tasks.discard)
 
     return DocumentUploadResponse.model_validate(doc)
 

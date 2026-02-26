@@ -165,12 +165,12 @@ class ExtractionService:
             # Sufficient text layer -- use text-based extraction
             return await self._extract_via_llm(text, doc_type)
 
-        # Scanned PDF -- render pages to images and use vision
-        images = self._pdf_pages_to_images(file_data)
-        if not images:
+        # Scanned PDF -- render first page and use vision
+        image = self._pdf_first_page_to_image(file_data)
+        if image is None:
             return None
 
-        return await self._extract_image_via_llm(images[0], "image/png", doc_type)
+        return await self._extract_image_via_llm(image, "image/png", doc_type)
 
     def _extract_text_from_pdf(self, file_data: bytes) -> str | None:
         """Use pymupdf to extract text from all pages.
@@ -189,19 +189,20 @@ class ExtractionService:
             logger.exception("Failed to open PDF with pymupdf")
             return None
 
-    def _pdf_pages_to_images(self, file_data: bytes) -> list[bytes]:
-        """Render PDF pages as PNG images via pymupdf get_pixmap()."""
+    def _pdf_first_page_to_image(self, file_data: bytes) -> bytes | None:
+        """Render only the first page of a PDF as a PNG image."""
         try:
             pdf = fitz.open(stream=file_data, filetype="pdf")
-            images = []
-            for page in pdf:
-                pix = page.get_pixmap()
-                images.append(pix.tobytes("png"))
+            if len(pdf) == 0:
+                pdf.close()
+                return None
+            pix = pdf[0].get_pixmap()
+            image = pix.tobytes("png")
             pdf.close()
-            return images
+            return image
         except Exception:
-            logger.exception("Failed to render PDF pages to images")
-            return []
+            logger.exception("Failed to render PDF first page to image")
+            return None
 
     async def _extract_via_llm(self, text: str, doc_type: str) -> dict | None:
         """Send text to LLM, get structured extractions + quality flags."""

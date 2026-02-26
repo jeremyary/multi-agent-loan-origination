@@ -6,6 +6,7 @@ collected during conversational intake.
 """
 
 import re
+from collections.abc import Callable
 from datetime import date, datetime
 
 
@@ -170,7 +171,7 @@ def validate_employment_status(value: str) -> tuple[bool, str, str | None]:
         return False, f"Unknown status. Valid: {', '.join(valid)}", None
 
 
-_VALIDATORS: dict[str, callable] = {
+_VALIDATORS: dict[str, Callable] = {
     "ssn": validate_ssn,
     "date_of_birth": validate_dob,
     "email": validate_email,
