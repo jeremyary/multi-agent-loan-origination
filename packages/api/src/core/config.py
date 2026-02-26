@@ -55,6 +55,16 @@ class Settings(BaseSettings):
         description="JWKS cache lifetime in seconds (default 5 minutes).",
     )
 
+    # -- Admin panel --
+    SQLADMIN_USER: str = Field(
+        default="admin",
+        description="Username for SQLAdmin login (ignored when AUTH_DISABLED=true).",
+    )
+    SQLADMIN_PASSWORD: str = Field(
+        default="admin",
+        description="Password for SQLAdmin login (ignored when AUTH_DISABLED=true).",
+    )
+
     # -- Safety / Shields --
     SAFETY_MODEL: str | None = Field(
         default=None,
