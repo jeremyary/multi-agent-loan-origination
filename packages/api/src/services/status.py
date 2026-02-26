@@ -87,15 +87,11 @@ STAGE_INFO: dict[str, StageInfo] = {
     ),
 }
 
-_TERMINAL_STAGES = {
-    ApplicationStage.CLOSED.value,
-    ApplicationStage.DENIED.value,
-    ApplicationStage.WITHDRAWN.value,
-}
+_TERMINAL_STAGES = ApplicationStage.terminal_stages()
 
 _RESOLVED_CONDITION_STATUSES = {
-    ConditionStatus.CLEARED.value,
-    ConditionStatus.WAIVED.value,
+    ConditionStatus.CLEARED,
+    ConditionStatus.WAIVED,
 }
 
 

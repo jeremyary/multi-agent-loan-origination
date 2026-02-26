@@ -289,17 +289,37 @@ async def update_application(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No fields to update",
         )
-    app = await app_service.update_application(
-        session,
-        user,
-        application_id,
-        **updates,
-    )
-    if app is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Application not found",
+
+    # Stage transitions go through the state machine
+    new_stage = updates.pop("stage", None)
+    app = None
+
+    if new_stage is not None:
+        app = await app_service.transition_stage(
+            session,
+            user,
+            application_id,
+            new_stage,
         )
+        if app is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Application not found",
+            )
+
+    if updates:
+        app = await app_service.update_application(
+            session,
+            user,
+            application_id,
+            **updates,
+        )
+        if app is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Application not found",
+            )
+
     return _build_app_response(app)
 
 

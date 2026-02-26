@@ -22,6 +22,32 @@ class ApplicationStage(str, enum.Enum):
     WITHDRAWN = "withdrawn"
 
 
+    @classmethod
+    def terminal_stages(cls) -> frozenset["ApplicationStage"]:
+        """Stages where an application is no longer active."""
+        return frozenset({cls.CLOSED, cls.DENIED, cls.WITHDRAWN})
+
+    @classmethod
+    def valid_transitions(cls) -> dict["ApplicationStage", frozenset["ApplicationStage"]]:
+        """Allowed stage transitions in the lending lifecycle."""
+        return {
+            cls.INQUIRY: frozenset({cls.PREQUALIFICATION, cls.APPLICATION, cls.WITHDRAWN}),
+            cls.PREQUALIFICATION: frozenset({cls.APPLICATION, cls.DENIED, cls.WITHDRAWN}),
+            cls.APPLICATION: frozenset({cls.PROCESSING, cls.DENIED, cls.WITHDRAWN}),
+            cls.PROCESSING: frozenset({cls.UNDERWRITING, cls.DENIED, cls.WITHDRAWN}),
+            cls.UNDERWRITING: frozenset(
+                {cls.CONDITIONAL_APPROVAL, cls.CLEAR_TO_CLOSE, cls.DENIED, cls.WITHDRAWN}
+            ),
+            cls.CONDITIONAL_APPROVAL: frozenset(
+                {cls.CLEAR_TO_CLOSE, cls.DENIED, cls.WITHDRAWN}
+            ),
+            cls.CLEAR_TO_CLOSE: frozenset({cls.CLOSED, cls.WITHDRAWN}),
+            cls.CLOSED: frozenset(),
+            cls.DENIED: frozenset(),
+            cls.WITHDRAWN: frozenset(),
+        }
+
+
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
     PROSPECT = "prospect"
