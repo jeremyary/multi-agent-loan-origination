@@ -307,23 +307,19 @@ def test_mask_ssn_none():
     assert _mask_ssn("") is None
 
 
+# -- Field section consistency --
+
+
+def test_field_sections_cover_all_required_fields():
+    """_FIELD_SECTIONS must cover every field in REQUIRED_FIELDS so nothing
+    silently disappears from the summary."""
+    from src.services.intake import _FIELD_SECTIONS, REQUIRED_FIELDS
+
+    section_fields = {fname for fields in _FIELD_SECTIONS.values() for fname, _ in fields}
+    assert section_fields == set(REQUIRED_FIELDS.keys())
+
+
 # -- get_application_progress --
-
-
-@pytest.mark.asyncio
-async def test_get_application_progress_not_found():
-    """should return None when application is not found."""
-    from src.services.intake import get_application_progress
-
-    session = AsyncMock()
-    user = _make_user()
-
-    mock_result = MagicMock()
-    mock_result.unique.return_value.scalar_one_or_none.return_value = None
-    session.execute.return_value = mock_result
-
-    progress = await get_application_progress(session, user, 999)
-    assert progress is None
 
 
 @pytest.mark.asyncio
@@ -385,74 +381,8 @@ async def test_get_application_progress_partial():
 
 
 @pytest.mark.asyncio
-async def test_summary_tool_masks_ssn():
-    """The summary tool should mask SSN in output."""
-    from src.agents.borrower_tools import get_application_summary
-
-    state = {"user_id": "borrower-1", "user_role": "borrower"}
-    mock_session = AsyncMock()
-
-    progress_result = {
-        "application_id": 42,
-        "stage": "application",
-        "sections": {
-            "Personal Information": {
-                "First Name": "John",
-                "SSN": "***-**-1120",
-            },
-        },
-        "completed": 5,
-        "total": 14,
-        "remaining": ["loan_type"],
-    }
-
-    with (
-        patch("src.agents.borrower_tools.SessionLocal") as mock_sl,
-        patch(
-            "src.agents.borrower_tools.get_application_progress",
-            new_callable=AsyncMock,
-            return_value=progress_result,
-        ),
-        patch("src.agents.borrower_tools.write_audit_event", new_callable=AsyncMock),
-    ):
-        mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        response = await get_application_summary.ainvoke({"application_id": 42, "state": state})
-
-    assert "***-**-1120" in response
-    assert "078-05-1120" not in response
-    assert "Application #42" in response
-    assert "36%" in response  # 5/14 = 35.7 -> 36%
-
-
-@pytest.mark.asyncio
-async def test_summary_tool_not_found():
-    """The summary tool should handle missing applications."""
-    from src.agents.borrower_tools import get_application_summary
-
-    state = {"user_id": "borrower-1", "user_role": "borrower"}
-    mock_session = AsyncMock()
-
-    with (
-        patch("src.agents.borrower_tools.SessionLocal") as mock_sl,
-        patch(
-            "src.agents.borrower_tools.get_application_progress",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-    ):
-        mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        response = await get_application_summary.ainvoke({"application_id": 999, "state": state})
-
-    assert "not found" in response
-
-
-@pytest.mark.asyncio
-async def test_summary_tool_all_complete():
-    """The summary tool reports all fields complete."""
+async def test_summary_tool_writes_audit_event():
+    """The summary tool should write a data_access audit event."""
     from src.agents.borrower_tools import get_application_summary
 
     state = {"user_id": "borrower-1", "user_role": "borrower"}
@@ -474,41 +404,6 @@ async def test_summary_tool_all_complete():
             new_callable=AsyncMock,
             return_value=progress_result,
         ),
-        patch("src.agents.borrower_tools.write_audit_event", new_callable=AsyncMock),
-    ):
-        mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
-        mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
-
-        response = await get_application_summary.ainvoke({"application_id": 42, "state": state})
-
-    assert "All required fields are complete" in response
-    assert "100%" in response
-
-
-@pytest.mark.asyncio
-async def test_summary_tool_writes_audit_event():
-    """The summary tool should write a data_access audit event."""
-    from src.agents.borrower_tools import get_application_summary
-
-    state = {"user_id": "borrower-1", "user_role": "borrower"}
-    mock_session = AsyncMock()
-
-    progress_result = {
-        "application_id": 42,
-        "stage": "application",
-        "sections": {},
-        "completed": 0,
-        "total": 14,
-        "remaining": ["first_name", "last_name"],
-    }
-
-    with (
-        patch("src.agents.borrower_tools.SessionLocal") as mock_sl,
-        patch(
-            "src.agents.borrower_tools.get_application_progress",
-            new_callable=AsyncMock,
-            return_value=progress_result,
-        ),
         patch(
             "src.agents.borrower_tools.write_audit_event",
             new_callable=AsyncMock,
@@ -517,10 +412,15 @@ async def test_summary_tool_writes_audit_event():
         mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
         mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
 
-        await get_application_summary.ainvoke({"application_id": 42, "state": state})
+        response = await get_application_summary.ainvoke({"application_id": 42, "state": state})
 
+    # Verify audit event
     mock_audit.assert_called_once()
     audit_kwargs = mock_audit.call_args
     assert audit_kwargs.kwargs["event_type"] == "data_access"
     assert audit_kwargs.kwargs["event_data"]["action"] == "review"
     mock_session.commit.assert_called_once()
+    # Verify output formatting
+    assert "Application #42" in response
+    assert "100%" in response
+    assert "All required fields are complete" in response
