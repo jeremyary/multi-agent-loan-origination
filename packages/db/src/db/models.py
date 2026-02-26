@@ -208,12 +208,14 @@ class Condition(Base):
         nullable=False,
         default=ConditionStatus.OPEN,
     )
+    response_text = Column(Text, nullable=True)
     issued_by = Column(String(255), nullable=True)
     cleared_by = Column(String(255), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     application = relationship("Application", back_populates="conditions")
+    documents = relationship("Document", back_populates="condition")
 
     def __repr__(self):
         return f"<Condition(id={self.id}, status='{self.status}')>"
@@ -255,6 +257,9 @@ class Document(Base):
     borrower_id = Column(
         Integer, ForeignKey("borrowers.id", ondelete="SET NULL"), nullable=True, index=True,
     )
+    condition_id = Column(
+        Integer, ForeignKey("conditions.id", ondelete="SET NULL"), nullable=True, index=True,
+    )
     doc_type = Column(
         Enum(DocumentType, name="document_type", native_enum=False),
         nullable=False,
@@ -271,6 +276,7 @@ class Document(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     application = relationship("Application", back_populates="documents")
+    condition = relationship("Condition", back_populates="documents")
     extractions = relationship(
         "DocumentExtraction", back_populates="document", cascade="all, delete-orphan",
     )
