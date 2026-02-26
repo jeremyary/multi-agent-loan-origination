@@ -96,6 +96,51 @@ async def test_check_input_sends_user_message_in_prompt():
 
 
 @pytest.mark.asyncio
+async def test_check_input_excludes_privacy_and_advice_categories():
+    """Input checks should not flag S6 (Specialized Advice) or S7 (Privacy).
+
+    Users voluntarily provide PII during mortgage intake, and asking for
+    mortgage advice is the application's purpose.
+    """
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke.return_value = AsyncMock(content="safe")
+
+    checker = SafetyChecker(model="test", endpoint="http://test", api_key="key")
+    checker._llm = mock_llm
+
+    await checker.check_input("My SSN is 078-05-1120 and income is $8500/month")
+
+    prompt_sent = mock_llm.ainvoke.call_args[0][0]
+    assert "S7: Privacy" not in prompt_sent
+    assert "S6: Specialized Advice" not in prompt_sent
+    # Other categories should still be present
+    assert "S1: Violent Crimes" in prompt_sent
+
+
+@pytest.mark.asyncio
+async def test_check_output_excludes_privacy_and_advice_categories():
+    """Output checks should also exclude S6 and S7 for mortgage intake.
+
+    The agent must ask for PII (S7) and provide mortgage guidance (S6) as
+    part of its core function.  Data-scope filtering prevents cross-user
+    PII leaks at the DB layer; disclaimers are handled in the system prompt.
+    """
+    mock_llm = AsyncMock()
+    mock_llm.ainvoke.return_value = AsyncMock(content="safe")
+
+    checker = SafetyChecker(model="test", endpoint="http://test", api_key="key")
+    checker._llm = mock_llm
+
+    await checker.check_output("what rates?", "We offer 30-year fixed at 6.5%.")
+
+    prompt_sent = mock_llm.ainvoke.call_args[0][0]
+    assert "S7: Privacy" not in prompt_sent
+    assert "S6: Specialized Advice" not in prompt_sent
+    # Other categories should still be present
+    assert "S1: Violent Crimes" in prompt_sent
+
+
+@pytest.mark.asyncio
 async def test_check_output_sends_both_messages_in_prompt():
     """should include both user and assistant messages in the output check prompt."""
     mock_llm = AsyncMock()
