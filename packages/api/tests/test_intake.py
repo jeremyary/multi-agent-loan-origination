@@ -1,11 +1,11 @@
 # This project was developed with assistance from AI tools.
-"""Tests for application intake service (S-2-F3-01, S-2-F3-02, S-2-F3-03)."""
+"""Tests for application intake service (S-2-F3-01 through S-2-F3-04)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.services.intake import start_application
+from src.services.intake import _mask_ssn, start_application
 
 
 def _make_user(user_id="borrower-1", role="borrower"):
@@ -286,3 +286,241 @@ async def test_update_tool_all_fields_complete():
         )
 
     assert "All required fields are complete" in response
+
+
+# -- SSN masking --
+
+
+def test_mask_ssn_full():
+    """should mask all but last 4 digits of a full SSN."""
+    assert _mask_ssn("078-05-1120") == "***-**-1120"
+
+
+def test_mask_ssn_digits_only():
+    """should handle SSNs without dashes."""
+    assert _mask_ssn("078051120") == "***-**-1120"
+
+
+def test_mask_ssn_none():
+    """should return None for empty/None input."""
+    assert _mask_ssn(None) is None
+    assert _mask_ssn("") is None
+
+
+# -- get_application_progress --
+
+
+@pytest.mark.asyncio
+async def test_get_application_progress_not_found():
+    """should return None when application is not found."""
+    from src.services.intake import get_application_progress
+
+    session = AsyncMock()
+    user = _make_user()
+
+    mock_result = MagicMock()
+    mock_result.unique.return_value.scalar_one_or_none.return_value = None
+    session.execute.return_value = mock_result
+
+    progress = await get_application_progress(session, user, 999)
+    assert progress is None
+
+
+@pytest.mark.asyncio
+async def test_get_application_progress_partial():
+    """should report correct completed/remaining counts for partial data."""
+    from decimal import Decimal
+
+    from db.enums import ApplicationStage, EmploymentStatus
+
+    from src.services.intake import get_application_progress
+
+    session = AsyncMock()
+    user = _make_user()
+
+    # Mock application with some fields set
+    app = MagicMock()
+    app.id = 42
+    app.stage = ApplicationStage.APPLICATION
+    app.loan_type = None
+    app.property_address = "123 Main St"
+    app.loan_amount = None
+    app.property_value = Decimal("450000")
+    app.financials = None
+
+    borrower = MagicMock()
+    borrower.first_name = "John"
+    borrower.last_name = "Smith"
+    borrower.email = "john@example.com"
+    borrower.ssn_encrypted = "078-05-1120"
+    borrower.dob = None
+    borrower.employment_status = EmploymentStatus.W2_EMPLOYEE
+
+    mock_result = MagicMock()
+    mock_result.unique.return_value.scalar_one_or_none.return_value = app
+    session.execute.return_value = mock_result
+
+    with patch(
+        "src.services.intake._get_borrower_for_app",
+        new_callable=AsyncMock,
+        return_value=borrower,
+    ):
+        progress = await get_application_progress(session, user, 42)
+
+    assert progress is not None
+    assert progress["application_id"] == 42
+    assert progress["completed"] == 7  # 4 borrower + 2 property + 1 employment
+    assert progress["total"] == 14
+    assert "date_of_birth" in progress["remaining"]
+    assert "loan_type" in progress["remaining"]
+
+    # SSN should be masked
+    personal = progress["sections"]["Personal Information"]
+    assert personal["SSN"] == "***-**-1120"
+    assert personal["First Name"] == "John"
+    assert personal["Date of Birth"] is None
+
+
+# -- get_application_summary tool --
+
+
+@pytest.mark.asyncio
+async def test_summary_tool_masks_ssn():
+    """The summary tool should mask SSN in output."""
+    from src.agents.borrower_tools import get_application_summary
+
+    state = {"user_id": "borrower-1", "user_role": "borrower"}
+    mock_session = AsyncMock()
+
+    progress_result = {
+        "application_id": 42,
+        "stage": "application",
+        "sections": {
+            "Personal Information": {
+                "First Name": "John",
+                "SSN": "***-**-1120",
+            },
+        },
+        "completed": 5,
+        "total": 14,
+        "remaining": ["loan_type"],
+    }
+
+    with (
+        patch("src.agents.borrower_tools.SessionLocal") as mock_sl,
+        patch(
+            "src.agents.borrower_tools.get_application_progress",
+            new_callable=AsyncMock,
+            return_value=progress_result,
+        ),
+        patch("src.agents.borrower_tools.write_audit_event", new_callable=AsyncMock),
+    ):
+        mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        response = await get_application_summary.ainvoke({"application_id": 42, "state": state})
+
+    assert "***-**-1120" in response
+    assert "078-05-1120" not in response
+    assert "Application #42" in response
+    assert "36%" in response  # 5/14 = 35.7 -> 36%
+
+
+@pytest.mark.asyncio
+async def test_summary_tool_not_found():
+    """The summary tool should handle missing applications."""
+    from src.agents.borrower_tools import get_application_summary
+
+    state = {"user_id": "borrower-1", "user_role": "borrower"}
+    mock_session = AsyncMock()
+
+    with (
+        patch("src.agents.borrower_tools.SessionLocal") as mock_sl,
+        patch(
+            "src.agents.borrower_tools.get_application_progress",
+            new_callable=AsyncMock,
+            return_value=None,
+        ),
+    ):
+        mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        response = await get_application_summary.ainvoke({"application_id": 999, "state": state})
+
+    assert "not found" in response
+
+
+@pytest.mark.asyncio
+async def test_summary_tool_all_complete():
+    """The summary tool reports all fields complete."""
+    from src.agents.borrower_tools import get_application_summary
+
+    state = {"user_id": "borrower-1", "user_role": "borrower"}
+    mock_session = AsyncMock()
+
+    progress_result = {
+        "application_id": 42,
+        "stage": "application",
+        "sections": {"Personal Information": {"First Name": "John"}},
+        "completed": 14,
+        "total": 14,
+        "remaining": [],
+    }
+
+    with (
+        patch("src.agents.borrower_tools.SessionLocal") as mock_sl,
+        patch(
+            "src.agents.borrower_tools.get_application_progress",
+            new_callable=AsyncMock,
+            return_value=progress_result,
+        ),
+        patch("src.agents.borrower_tools.write_audit_event", new_callable=AsyncMock),
+    ):
+        mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        response = await get_application_summary.ainvoke({"application_id": 42, "state": state})
+
+    assert "All required fields are complete" in response
+    assert "100%" in response
+
+
+@pytest.mark.asyncio
+async def test_summary_tool_writes_audit_event():
+    """The summary tool should write a data_access audit event."""
+    from src.agents.borrower_tools import get_application_summary
+
+    state = {"user_id": "borrower-1", "user_role": "borrower"}
+    mock_session = AsyncMock()
+
+    progress_result = {
+        "application_id": 42,
+        "stage": "application",
+        "sections": {},
+        "completed": 0,
+        "total": 14,
+        "remaining": ["first_name", "last_name"],
+    }
+
+    with (
+        patch("src.agents.borrower_tools.SessionLocal") as mock_sl,
+        patch(
+            "src.agents.borrower_tools.get_application_progress",
+            new_callable=AsyncMock,
+            return_value=progress_result,
+        ),
+        patch(
+            "src.agents.borrower_tools.write_audit_event",
+            new_callable=AsyncMock,
+        ) as mock_audit,
+    ):
+        mock_sl.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_sl.return_value.__aexit__ = AsyncMock(return_value=False)
+
+        await get_application_summary.ainvoke({"application_id": 42, "state": state})
+
+    mock_audit.assert_called_once()
+    audit_kwargs = mock_audit.call_args
+    assert audit_kwargs.kwargs["event_type"] == "data_access"
+    assert audit_kwargs.kwargs["event_data"]["action"] == "review"
+    mock_session.commit.assert_called_once()
