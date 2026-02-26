@@ -66,7 +66,7 @@ async def borrower_chat_websocket(ws: WebSocket):
 
 @router.get(
     "/borrower/conversations/history",
-    dependencies=[Depends(require_roles(UserRole.BORROWER))],
+    dependencies=[Depends(require_roles(UserRole.BORROWER, UserRole.ADMIN))],
 )
 async def get_conversation_history(user: CurrentUser) -> dict:
     """Return prior conversation messages for the authenticated borrower.
