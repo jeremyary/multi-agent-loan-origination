@@ -2,7 +2,7 @@
 """Tests for borrower assistant LangGraph tools."""
 
 from datetime import date, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from db.enums import DocumentType
 
@@ -389,9 +389,10 @@ async def test_acknowledge_disclosure_hmda_notice(mock_write, mock_session_cls):
 # ---------------------------------------------------------------------------
 
 
+@patch("src.agents.borrower_tools.app_service")
 @patch("src.agents.borrower_tools.SessionLocal")
 @patch("src.agents.borrower_tools.get_disclosure_status")
-async def test_disclosure_status_all_pending(mock_status, mock_session_cls):
+async def test_disclosure_status_all_pending(mock_status, mock_session_cls, mock_app_svc):
     mock_status.return_value = {
         "application_id": 1,
         "all_acknowledged": False,
@@ -407,6 +408,7 @@ async def test_disclosure_status_all_pending(mock_status, mock_session_cls):
     session = AsyncMock()
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    mock_app_svc.get_application = AsyncMock(return_value=MagicMock())
 
     result = await disclosure_status.ainvoke({"application_id": 1, "state": _state()})
 
@@ -416,9 +418,10 @@ async def test_disclosure_status_all_pending(mock_status, mock_session_cls):
     assert "Privacy Notice" in result
 
 
+@patch("src.agents.borrower_tools.app_service")
 @patch("src.agents.borrower_tools.SessionLocal")
 @patch("src.agents.borrower_tools.get_disclosure_status")
-async def test_disclosure_status_all_acknowledged(mock_status, mock_session_cls):
+async def test_disclosure_status_all_acknowledged(mock_status, mock_session_cls, mock_app_svc):
     mock_status.return_value = {
         "application_id": 1,
         "all_acknowledged": True,
@@ -434,6 +437,7 @@ async def test_disclosure_status_all_acknowledged(mock_status, mock_session_cls)
     session = AsyncMock()
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    mock_app_svc.get_application = AsyncMock(return_value=MagicMock())
 
     result = await disclosure_status.ainvoke({"application_id": 1, "state": _state()})
 
@@ -442,9 +446,10 @@ async def test_disclosure_status_all_acknowledged(mock_status, mock_session_cls)
     assert "Pending:" not in result
 
 
+@patch("src.agents.borrower_tools.app_service")
 @patch("src.agents.borrower_tools.SessionLocal")
 @patch("src.agents.borrower_tools.get_disclosure_status")
-async def test_disclosure_status_partial(mock_status, mock_session_cls):
+async def test_disclosure_status_partial(mock_status, mock_session_cls, mock_app_svc):
     mock_status.return_value = {
         "application_id": 1,
         "all_acknowledged": False,
@@ -455,6 +460,7 @@ async def test_disclosure_status_partial(mock_status, mock_session_cls):
     session = AsyncMock()
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+    mock_app_svc.get_application = AsyncMock(return_value=MagicMock())
 
     result = await disclosure_status.ainvoke({"application_id": 1, "state": _state()})
 

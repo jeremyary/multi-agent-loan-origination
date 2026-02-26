@@ -8,6 +8,7 @@ via ``init_storage_service()``.
 
 import asyncio
 import logging
+import os
 from functools import partial
 
 import boto3
@@ -106,8 +107,12 @@ class StorageService:
 
     @staticmethod
     def build_object_key(application_id: int, document_id: int, filename: str) -> str:
-        """Build the S3 object key: {application_id}/{document_id}/{filename}."""
-        return f"{application_id}/{document_id}/{filename}"
+        """Build the S3 object key: {application_id}/{document_id}/{filename}.
+
+        Strips path components from filename to prevent path traversal attacks.
+        """
+        safe_name = os.path.basename(filename) or f"doc-{document_id}"
+        return f"{application_id}/{document_id}/{safe_name}"
 
 
 # ---------------------------------------------------------------------------
