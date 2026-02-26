@@ -10,7 +10,8 @@ import logging
 from decimal import Decimal
 
 from db import Application, ApplicationBorrower, Borrower
-from db.enums import LoanType
+from db.enums import ApplicationStage, LoanType
+from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -120,7 +121,6 @@ async def create_application(
 
 
 _UPDATABLE_FIELDS = {
-    "stage",
     "loan_type",
     "property_address",
     "loan_amount",
@@ -129,13 +129,50 @@ _UPDATABLE_FIELDS = {
 }
 
 
+async def transition_stage(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    new_stage: ApplicationStage,
+) -> Application | None:
+    """Transition an application to a new stage with validation.
+
+    Returns None if the application is not found or not accessible.
+    Raises HTTPException 422 if the transition is not allowed.
+    """
+    app = await get_application(session, user, application_id)
+    if app is None:
+        return None
+
+    current = app.stage or ApplicationStage.INQUIRY
+    valid = ApplicationStage.valid_transitions()
+    allowed = valid.get(current, frozenset())
+
+    if new_stage not in allowed:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Cannot transition from '{current.value}' to '{new_stage.value}'. "
+                f"Allowed: {sorted(s.value for s in allowed) if allowed else 'none (terminal stage)'}."
+            ),
+        )
+
+    app.stage = new_stage
+    await session.commit()
+    return await get_application(session, user, application_id)
+
+
 async def update_application(
     session: AsyncSession,
     user: UserContext,
     application_id: int,
     **updates,
 ) -> Application | None:
-    """Update an application if visible to the current user."""
+    """Update an application if visible to the current user.
+
+    Stage transitions must use ``transition_stage()`` instead.
+    Passing 'stage' in updates is silently ignored.
+    """
     app = await get_application(session, user, application_id)
     if app is None:
         return None

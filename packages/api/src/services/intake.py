@@ -23,12 +23,7 @@ from ..services.scope import apply_data_scope
 
 logger = logging.getLogger(__name__)
 
-# Terminal stages -- applications in these stages are not considered "active"
-_TERMINAL_STAGES = {
-    ApplicationStage.WITHDRAWN,
-    ApplicationStage.DENIED,
-    ApplicationStage.CLOSED,
-}
+_TERMINAL_STAGES = ApplicationStage.terminal_stages()
 
 
 async def find_active_application(
