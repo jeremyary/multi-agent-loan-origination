@@ -152,3 +152,53 @@ class TestGraphCheckpointing:
         thread_id = ConversationService.get_thread_id("sarah-001", "borrower-assistant")
         with pytest.raises(PermissionError):
             ConversationService.verify_thread_ownership(thread_id, "james-002")
+
+
+@pytest.mark.functional
+class TestGetConversationHistory:
+    """Tests for ConversationService.get_conversation_history()."""
+
+    @pytest.mark.asyncio
+    async def test_returns_messages_after_invocation(self):
+        """should return prior messages from checkpoint after graph invocation."""
+        saver = MemorySaver()
+        graph = _build_echo_graph(checkpointer=saver)
+        thread_id = "history-test-thread"
+        config = {"configurable": {"thread_id": thread_id}}
+
+        graph.invoke(
+            {
+                "messages": [HumanMessage(content="Hello there")],
+                "user_role": "borrower",
+                "user_id": "u1",
+            },
+            config=config,
+        )
+
+        service = ConversationService()
+        service._checkpointer = saver
+        service._initialized = True
+
+        history = await service.get_conversation_history(thread_id)
+        assert len(history) == 2
+        assert history[0] == {"role": "user", "content": "Hello there"}
+        assert history[1]["role"] == "assistant"
+        assert "Echo: Hello there" in history[1]["content"]
+
+    @pytest.mark.asyncio
+    async def test_empty_thread_returns_empty_list(self):
+        """should return empty list for a thread with no prior messages."""
+        saver = MemorySaver()
+        service = ConversationService()
+        service._checkpointer = saver
+        service._initialized = True
+
+        history = await service.get_conversation_history("nonexistent-thread")
+        assert history == []
+
+    @pytest.mark.asyncio
+    async def test_returns_empty_when_not_initialized(self):
+        """should return empty list when service is not initialized."""
+        service = ConversationService()
+        history = await service.get_conversation_history("any-thread")
+        assert history == []

@@ -1,6 +1,8 @@
 # This project was developed with assistance from AI tools.
 """Unit tests for ConversationService -- thread ID generation, ownership, URL derivation."""
 
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from src.services.conversation import ConversationService, derive_psycopg_url
@@ -71,3 +73,65 @@ class TestDerivePsycopgUrl:
         """should handle URL without driver prefix."""
         url = "postgresql://user:pass@localhost:5433/summit-cap"
         assert derive_psycopg_url(url) == "postgresql://user:pass@localhost:5433/summit-cap"
+
+
+class TestInitialize:
+    """Tests for ConversationService.initialize()."""
+
+    @pytest.mark.asyncio
+    async def test_initialize_creates_working_checkpointer(self):
+        """should connect via AsyncConnection and call setup() on AsyncPostgresSaver."""
+        service = ConversationService()
+        mock_conn = AsyncMock()
+        mock_saver = MagicMock()
+        mock_saver.setup = AsyncMock()
+
+        with (
+            patch(
+                "src.services.conversation.AsyncConnection.connect",
+                new_callable=AsyncMock,
+                return_value=mock_conn,
+            ) as mock_connect,
+            patch(
+                "langgraph.checkpoint.postgres.aio.AsyncPostgresSaver",
+                return_value=mock_saver,
+            ),
+        ):
+            await service.initialize("postgresql+asyncpg://user:pass@localhost:5433/summit-cap")
+
+        mock_connect.assert_awaited_once_with(
+            "postgresql://user:pass@localhost:5433/summit-cap",
+            autocommit=True,
+            prepare_threshold=0,
+            row_factory=pytest.importorskip("psycopg.rows").dict_row,
+        )
+        mock_saver.setup.assert_awaited_once()
+        assert service.is_initialized is True
+        assert service._conn is mock_conn
+
+
+class TestShutdown:
+    """Tests for ConversationService.shutdown()."""
+
+    @pytest.mark.asyncio
+    async def test_shutdown_closes_connection(self):
+        """should close the underlying psycopg connection."""
+        service = ConversationService()
+        mock_conn = AsyncMock()
+        service._conn = mock_conn
+        service._checkpointer = MagicMock()
+        service._initialized = True
+
+        await service.shutdown()
+
+        mock_conn.close.assert_awaited_once()
+        assert service._conn is None
+        assert service._checkpointer is None
+        assert service.is_initialized is False
+
+    @pytest.mark.asyncio
+    async def test_shutdown_when_not_initialized(self):
+        """should be safe to call when service was never initialized."""
+        service = ConversationService()
+        await service.shutdown()
+        assert service.is_initialized is False
