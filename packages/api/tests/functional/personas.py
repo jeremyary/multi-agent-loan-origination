@@ -2,7 +2,7 @@
 """Persona factories for functional tests.
 
 Each function returns a UserContext matching the DataScope built by
-``middleware/auth.py:_build_data_scope()`` for that role. Fixed user IDs
+``middleware/auth.py:build_data_scope()`` for that role. Fixed user IDs
 ensure cross-test consistency.
 """
 

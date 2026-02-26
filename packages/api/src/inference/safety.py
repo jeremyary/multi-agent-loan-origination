@@ -6,8 +6,9 @@ inputs and agent outputs against 13 safety categories (S1-S13).  The same
 ChatOpenAI infrastructure used for inference models is reused here.
 
 Design principle: shields ON by default when SAFETY_MODEL is set, degrade
-gracefully (no-op + warning) when not configured, and fail-open on errors
-so the conversation is never blocked by a transient safety-model outage.
+gracefully (no-op + warning) when not configured.  Input checks fail-closed
+(block on error) to prevent unsafe content from reaching the system. Output
+checks fail-open (allow on error) so transient outages don't block responses.
 """
 
 import logging
@@ -159,8 +160,8 @@ class SafetyChecker:
             response = await self._llm.ainvoke(prompt)
             return self._parse_response(response.content)
         except Exception:
-            logger.warning("Safety input check failed, treating as safe (fail-open)", exc_info=True)
-            return SafetyResult(is_safe=True, explanation="Check failed, fail-open")
+            logger.error("Safety input check failed, blocking input (fail-closed)", exc_info=True)
+            return SafetyResult(is_safe=False, explanation="Safety check unavailable")
 
     async def check_output(self, user_message: str, assistant_response: str) -> SafetyResult:
         """Check an assistant response for unsafe content."""

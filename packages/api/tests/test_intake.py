@@ -12,7 +12,7 @@ def _make_user(user_id="borrower-1", role="borrower"):
     """Build a mock UserContext."""
     from db.enums import UserRole
 
-    from src.middleware.auth import _build_data_scope
+    from src.middleware.auth import build_data_scope
     from src.schemas.auth import UserContext
 
     r = UserRole(role)
@@ -21,7 +21,7 @@ def _make_user(user_id="borrower-1", role="borrower"):
         role=r,
         email=f"{user_id}@summit-cap.local",
         name=user_id,
-        data_scope=_build_data_scope(r, user_id),
+        data_scope=build_data_scope(r, user_id),
     )
 
 

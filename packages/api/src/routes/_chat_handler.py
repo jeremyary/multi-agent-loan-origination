@@ -14,7 +14,7 @@ from fastapi import WebSocket
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
 from ..core.config import settings
-from ..middleware.auth import _build_data_scope, _decode_token, _resolve_role
+from ..middleware.auth import _decode_token, _resolve_role, build_data_scope
 from ..observability import build_langfuse_config, flush_langfuse
 from ..schemas.auth import UserContext
 from ..services.audit import write_audit_event
@@ -40,7 +40,7 @@ async def authenticate_websocket(
             role=role,
             email="dev@summit-cap.local",
             name="Dev User",
-            data_scope=_build_data_scope(role, "dev-user"),
+            data_scope=build_data_scope(role, "dev-user"),
         )
 
     token = ws.query_params.get("token")
@@ -53,7 +53,7 @@ async def authenticate_websocket(
         return None
 
     try:
-        payload = _decode_token(token)
+        payload = await _decode_token(token)
     except (pyjwt.ExpiredSignatureError, pyjwt.InvalidTokenError) as exc:
         logger.warning("WebSocket auth failed: %s", exc)
         await ws.close(code=4001, reason="Invalid or expired token")
@@ -75,7 +75,7 @@ async def authenticate_websocket(
         await ws.close(code=4003, reason="Insufficient permissions")
         return None
 
-    data_scope = _build_data_scope(role, payload.sub)
+    data_scope = build_data_scope(role, payload.sub)
     return UserContext(
         user_id=payload.sub,
         role=role,

@@ -15,8 +15,9 @@ from db.enums import UserRole
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 
-from ..middleware.auth import _build_data_scope
+from ..middleware.auth import build_data_scope
 from ..schemas.auth import UserContext
+from ..services import application as app_service
 from ..services.audit import write_audit_event
 from ..services.completeness import _DOC_TYPE_LABELS, check_completeness
 from ..services.condition import (
@@ -53,7 +54,7 @@ def _user_context_from_state(state: dict) -> UserContext:
         role=role,
         email=f"{user_id}@summit-cap.local",
         name=user_id,
-        data_scope=_build_data_scope(role, user_id),
+        data_scope=build_data_scope(role, user_id),
     )
 
 
@@ -317,7 +318,12 @@ async def disclosure_status(
     Args:
         application_id: The loan application ID to check.
     """
+    user = _user_context_from_state(state)
     async with SessionLocal() as session:
+        # Verify user has access to this application
+        app = await app_service.get_application(session, user, application_id)
+        if app is None:
+            return f"Application {application_id} not found or access denied."
         result = await get_disclosure_status(session, application_id)
 
     lines = [f"Disclosure status for application {application_id}:"]

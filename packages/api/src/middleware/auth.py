@@ -30,30 +30,31 @@ _jwks_data: dict | None = None
 _jwks_fetched_at: float = 0
 
 
-def _fetch_jwks() -> dict:
+async def _fetch_jwks() -> dict:
     """Fetch JSON Web Key Set from Keycloak. Raises on failure."""
     url = f"{settings.KEYCLOAK_URL}/realms/{settings.KEYCLOAK_REALM}/protocol/openid-connect/certs"
-    response = httpx.get(url, timeout=5)
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, timeout=5)
     response.raise_for_status()
     return response.json()
 
 
-def _get_jwks(force_refresh: bool = False) -> dict:
+async def _get_jwks(force_refresh: bool = False) -> dict:
     """Return cached JWKS, refreshing if stale or forced."""
     global _jwks_data, _jwks_fetched_at  # noqa: PLW0603
 
     now = time.time()
     if _jwks_data is None or force_refresh or (now - _jwks_fetched_at) > settings.JWKS_CACHE_TTL:
-        _jwks_data = _fetch_jwks()
+        _jwks_data = await _fetch_jwks()
         _jwks_fetched_at = now
 
     return _jwks_data
 
 
-def _get_signing_key(token: str) -> jwt.PyJWK:
+async def _get_signing_key(token: str) -> jwt.PyJWK:
     """Find the signing key for the given token from the JWKS."""
     try:
-        jwks = _get_jwks()
+        jwks = await _get_jwks()
         jwk_set = jwt.PyJWKSet.from_dict(jwks)
         header = jwt.get_unverified_header(token)
         kid = header.get("kid")
@@ -63,7 +64,7 @@ def _get_signing_key(token: str) -> jwt.PyJWK:
                 return key
 
         # kid not found -- cache-bust and retry once (key rotation)
-        jwks = _get_jwks(force_refresh=True)
+        jwks = await _get_jwks(force_refresh=True)
         jwk_set = jwt.PyJWKSet.from_dict(jwks)
         for key in jwk_set.keys:
             if key.key_id == kid:
@@ -92,9 +93,9 @@ def _extract_token(request: Request) -> str | None:
     return None
 
 
-def _decode_token(token: str) -> TokenPayload:
+async def _decode_token(token: str) -> TokenPayload:
     """Validate and decode a JWT against Keycloak's JWKS."""
-    signing_key = _get_signing_key(token)
+    signing_key = await _get_signing_key(token)
     issuer = f"{settings.KEYCLOAK_URL}/realms/{settings.KEYCLOAK_REALM}"
 
     payload = jwt.decode(
@@ -133,7 +134,7 @@ def _resolve_role(token_payload: TokenPayload) -> UserRole:
     return UserRole(user_roles[0])
 
 
-def _build_data_scope(role: UserRole, user_id: str) -> DataScope:
+def build_data_scope(role: UserRole, user_id: str) -> DataScope:
     """Build data scope rules based on the user's role."""
     if role == UserRole.BORROWER:
         return DataScope(own_data_only=True, user_id=user_id)
@@ -179,7 +180,7 @@ async def get_current_user(request: Request) -> UserContext:
         )
 
     try:
-        payload = _decode_token(token)
+        payload = await _decode_token(token)
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -194,7 +195,7 @@ async def get_current_user(request: Request) -> UserContext:
         ) from exc
 
     role = _resolve_role(payload)
-    data_scope = _build_data_scope(role, payload.sub)
+    data_scope = build_data_scope(role, payload.sub)
 
     return UserContext(
         user_id=payload.sub,
