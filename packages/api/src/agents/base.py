@@ -67,6 +67,8 @@ class AgentState(MessagesState):
     escalated: bool
     user_role: str
     user_id: str
+    user_email: str
+    user_name: str
     tool_allowed_roles: dict[str, list[str]]
 
 
@@ -313,3 +315,45 @@ def build_routed_graph(
     graph.add_edge("output_shield", END)
 
     return graph.compile(checkpointer=checkpointer)
+
+
+def build_agent_graph(
+    config: dict[str, Any],
+    tools: list,
+    *,
+    checkpointer=None,
+):
+    """Shared factory for building agent graphs from YAML config + tool list.
+
+    Handles LLM initialization, tool_allowed_roles extraction, and
+    build_routed_graph invocation -- the boilerplate common to all agents.
+    """
+    from ..inference.config import get_model_config, get_model_tiers
+
+    system_prompt = config.get("system_prompt", "You are a helpful mortgage assistant.")
+    tool_descriptions = "\n".join(f"- {t.name}: {t.description}" for t in tools)
+
+    tool_allowed_roles: dict[str, list[str]] = {}
+    for tool_cfg in config.get("tools", []):
+        name = tool_cfg.get("name")
+        allowed = tool_cfg.get("allowed_roles")
+        if name and allowed:
+            tool_allowed_roles[name] = allowed
+
+    llms: dict[str, ChatOpenAI] = {}
+    for tier in get_model_tiers():
+        model_cfg = get_model_config(tier)
+        llms[tier] = ChatOpenAI(
+            model=model_cfg["model_name"],
+            base_url=model_cfg["endpoint"],
+            api_key=model_cfg.get("api_key", "not-needed"),
+        )
+
+    return build_routed_graph(
+        system_prompt=system_prompt,
+        tools=tools,
+        llms=llms,
+        tool_descriptions=tool_descriptions,
+        tool_allowed_roles=tool_allowed_roles,
+        checkpointer=checkpointer,
+    )

@@ -5,6 +5,14 @@ These wrap the completeness and status services so the agent can
 check document requirements, application status, and regulatory
 deadlines during a conversation.  DB-backed tools use InjectedState
 to receive the caller's identity from the graph state.
+
+Design note -- session-per-tool-call:
+    Each tool opens its own ``SessionLocal()`` context rather than sharing
+    a single session across the agent turn.  This is intentional: LangGraph
+    tool nodes run as independent async tasks and may execute in any order,
+    so sharing a session would risk interleaved flushes, stale reads, and
+    MissingGreenlet errors.  The per-tool pattern keeps each DB interaction
+    self-contained and avoids cross-tool state leakage.
 """
 
 from datetime import date, datetime, timedelta
@@ -52,8 +60,8 @@ def _user_context_from_state(state: dict) -> UserContext:
     return UserContext(
         user_id=user_id,
         role=role,
-        email=f"{user_id}@summit-cap.local",
-        name=user_id,
+        email=state.get("user_email") or f"{user_id}@summit-cap.local",
+        name=state.get("user_name") or user_id,
         data_scope=build_data_scope(role, user_id),
     )
 
