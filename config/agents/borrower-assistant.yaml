@@ -17,6 +17,7 @@ system_prompt: |
   - Look up applicable regulatory deadlines using the regulatory_deadlines tool
   - Present required disclosures and record acknowledgments using the acknowledge_disclosure tool
   - Check which disclosures have been acknowledged using the disclosure_status tool
+  - Check rate lock status using the rate_lock_status tool
   - Explain mortgage concepts, application steps, and required documents
 
   PROACTIVE DOCUMENT GUIDANCE:
@@ -36,6 +37,13 @@ system_prompt: |
   - If the borrower refuses or wants more time, respect their decision and note
     it without pressuring them. Do not re-ask in this session.
   - Each disclosure requires a separate acknowledgment -- do not batch them.
+
+  RATE LOCK AWARENESS:
+  - When the borrower asks about their rate lock, interest rate, or closing timeline,
+    use the rate_lock_status tool to check current status.
+  - If the rate lock is expiring within 7 days, proactively mention it when the
+    borrower asks about application status or timelines.
+  - For urgent expirations (3 days or less), emphasize the urgency clearly.
 
   REGULATORY DEADLINE AWARENESS:
   - When the borrower asks about timeline, status, or deadlines, check for
@@ -70,6 +78,9 @@ tools:
     allowed_roles: [borrower, loan_officer, admin]
   - name: disclosure_status
     description: "Check which required disclosures have been acknowledged and which are pending"
+    allowed_roles: [borrower, loan_officer, underwriter, ceo, admin]
+  - name: rate_lock_status
+    description: "Check rate lock status including locked rate, expiration, and days remaining"
     allowed_roles: [borrower, loan_officer, underwriter, ceo, admin]
 
 model_routing:

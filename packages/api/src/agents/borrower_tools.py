@@ -20,6 +20,7 @@ from ..schemas.auth import UserContext
 from ..services.audit import write_audit_event
 from ..services.completeness import check_completeness
 from ..services.disclosure import get_disclosure_status
+from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
 
 # REQ-CC-17 disclaimer appended to all regulatory deadline responses
@@ -267,5 +268,66 @@ async def disclosure_status(
 
             label = _DISCLOSURE_BY_ID.get(d_id, {}).get("label", d_id)
             lines.append(f"  - {label}")
+
+    return "\n".join(lines)
+
+
+@tool
+async def rate_lock_status(
+    application_id: int,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Check the current rate lock status for a loan application, including locked rate, expiration date, and days remaining.
+
+    Args:
+        application_id: The loan application ID to check.
+    """
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        result = await get_rate_lock_status(session, user, application_id)
+
+    if result is None:
+        return "Application not found or you don't have access to it."
+
+    if result["status"] == "none":
+        return (
+            f"Application {application_id} does not have a rate lock yet. "
+            "Would you like me to explain how rate locks work?"
+        )
+
+    lines = [f"Rate lock status for application {application_id}:"]
+
+    if result["status"] == "active":
+        lines.append("Status: Active")
+        lines.append(f"Locked rate: {result['locked_rate']}%")
+        lines.append(f"Lock date: {result['lock_date']}")
+        lines.append(f"Expiration date: {result['expiration_date']}")
+        days = result["days_remaining"]
+        lines.append(f"Days remaining: {days}")
+
+        if days == 0:
+            lines.append("")
+            lines.append("Your rate lock expires today! Contact your loan officer immediately.")
+        elif days <= 3:
+            lines.append("")
+            lines.append(
+                f"Urgent: Your rate lock expires in {days} days. "
+                "You need to close soon, or you may need to re-lock at a different rate."
+            )
+        elif days <= 7:
+            lines.append("")
+            lines.append(
+                f"Note: Your rate lock expires in {days} days. "
+                "Please work with your loan officer to close on time."
+            )
+    else:
+        lines.append("Status: Expired")
+        lines.append(f"Locked rate was: {result['locked_rate']}%")
+        lines.append(f"Expired on: {result['expiration_date']}")
+        lines.append("")
+        lines.append(
+            "Your rate lock has expired. You'll need to request a new rate lock. "
+            "Contact your loan officer to discuss current rates."
+        )
 
     return "\n".join(lines)
