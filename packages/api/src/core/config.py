@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     )
 
     # -- LLM --
+    # These env vars are consumed by config/models.yaml via ${VAR:-default}
+    # substitution (see inference/config.py).  Settings here provide defaults
+    # that pydantic-settings exposes; the YAML loader reads os.environ directly.
     LLM_API_KEY: str = Field(
         default="not-needed",
         description="API key for OpenAI-compatible LLM endpoint.",

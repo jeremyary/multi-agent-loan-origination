@@ -4,6 +4,11 @@
 Masks sensitive fields in response data so that CEO-role users see
 aggregate/metadata without individual PII. Masking failure returns 500
 rather than leaking unmasked data.
+
+TODO: When more endpoints need PII masking (Phase 3+), convert to FastAPI
+response middleware keyed on user role so masking is applied automatically
+rather than per-route.  At MVP only 2 call sites use this module, so the
+current utility-function approach is adequate.
 """
 
 import re

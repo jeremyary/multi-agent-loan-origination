@@ -39,6 +39,26 @@ class TestGetThreadId:
         tid = ConversationService.get_thread_id("sarah-001")
         assert tid == "user:sarah-001:agent:public-assistant"
 
+    def test_with_application_id(self):
+        """should append app:{id} when application_id is provided."""
+        tid = ConversationService.get_thread_id(
+            "sarah-001", "borrower-assistant", application_id=42
+        )
+        assert tid == "user:sarah-001:agent:borrower-assistant:app:42"
+
+    def test_without_application_id(self):
+        """should omit app segment when application_id is None."""
+        tid = ConversationService.get_thread_id(
+            "sarah-001", "borrower-assistant", application_id=None
+        )
+        assert tid == "user:sarah-001:agent:borrower-assistant"
+
+    def test_different_applications(self):
+        """should produce different thread_ids for different application_ids."""
+        tid1 = ConversationService.get_thread_id("lo-001", "lo-assistant", application_id=1)
+        tid2 = ConversationService.get_thread_id("lo-001", "lo-assistant", application_id=2)
+        assert tid1 != tid2
+
 
 class TestVerifyThreadOwnership:
     """Tests for ConversationService.verify_thread_ownership()."""
@@ -80,18 +100,17 @@ class TestInitialize:
 
     @pytest.mark.asyncio
     async def test_initialize_creates_working_checkpointer(self):
-        """should connect via AsyncConnection and call setup() on AsyncPostgresSaver."""
+        """should create a connection pool and call setup() on AsyncPostgresSaver."""
         service = ConversationService()
-        mock_conn = AsyncMock()
+        mock_pool = AsyncMock()
         mock_saver = MagicMock()
         mock_saver.setup = AsyncMock()
 
         with (
             patch(
-                "src.services.conversation.AsyncConnection.connect",
-                new_callable=AsyncMock,
-                return_value=mock_conn,
-            ) as mock_connect,
+                "src.services.conversation.AsyncConnectionPool",
+                return_value=mock_pool,
+            ) as mock_pool_cls,
             patch(
                 "langgraph.checkpoint.postgres.aio.AsyncPostgresSaver",
                 return_value=mock_saver,
@@ -99,15 +118,12 @@ class TestInitialize:
         ):
             await service.initialize("postgresql+asyncpg://user:pass@localhost:5433/summit-cap")
 
-        mock_connect.assert_awaited_once_with(
-            "postgresql://user:pass@localhost:5433/summit-cap",
-            autocommit=True,
-            prepare_threshold=0,
-            row_factory=pytest.importorskip("psycopg.rows").dict_row,
-        )
+        mock_pool_cls.assert_called_once()
+        # Verify the pool was opened
+        mock_pool.open.assert_awaited_once()
         mock_saver.setup.assert_awaited_once()
         assert service.is_initialized is True
-        assert service._conn is mock_conn
+        assert service._pool is mock_pool
 
 
 class TestShutdown:
@@ -115,17 +131,17 @@ class TestShutdown:
 
     @pytest.mark.asyncio
     async def test_shutdown_closes_connection(self):
-        """should close the underlying psycopg connection."""
+        """should close the underlying connection pool."""
         service = ConversationService()
-        mock_conn = AsyncMock()
-        service._conn = mock_conn
+        mock_pool = AsyncMock()
+        service._pool = mock_pool
         service._checkpointer = MagicMock()
         service._initialized = True
 
         await service.shutdown()
 
-        mock_conn.close.assert_awaited_once()
-        assert service._conn is None
+        mock_pool.close.assert_awaited_once()
+        assert service._pool is None
         assert service._checkpointer is None
         assert service.is_initialized is False
 
