@@ -86,6 +86,9 @@ class Application(Base):
     assigned_to = Column(String(255), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    le_delivery_date = Column(DateTime(timezone=True), nullable=True)
+    cd_delivery_date = Column(DateTime(timezone=True), nullable=True)
+    closing_date = Column(DateTime(timezone=True), nullable=True)
 
     application_borrowers = relationship(
         "ApplicationBorrower", back_populates="application", cascade="all, delete-orphan",
