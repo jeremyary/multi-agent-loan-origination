@@ -5,7 +5,8 @@ Tools: uw_queue_view, uw_application_detail, uw_risk_assessment,
 uw_preliminary_recommendation, compliance_check, product_info,
 affordability_calc, kb_search, uw_issue_condition, uw_review_condition,
 uw_clear_condition, uw_waive_condition, uw_return_condition,
-uw_condition_summary.
+uw_condition_summary, uw_render_decision, uw_draft_adverse_action,
+uw_generate_le, uw_generate_cd.
 """
 
 from typing import Any
@@ -20,6 +21,12 @@ from .condition_tools import (
     uw_return_condition,
     uw_review_condition,
     uw_waive_condition,
+)
+from .decision_tools import (
+    uw_draft_adverse_action,
+    uw_generate_cd,
+    uw_generate_le,
+    uw_render_decision,
 )
 from .tools import affordability_calc, product_info
 from .underwriter_tools import (
@@ -49,6 +56,10 @@ def build_graph(config: dict[str, Any], checkpointer=None):
             uw_waive_condition,
             uw_return_condition,
             uw_condition_summary,
+            uw_render_decision,
+            uw_draft_adverse_action,
+            uw_generate_le,
+            uw_generate_cd,
         ],
         checkpointer=checkpointer,
     )

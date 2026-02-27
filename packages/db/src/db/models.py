@@ -245,6 +245,12 @@ class Decision(Base):
     rationale = Column(Text, nullable=True)
     ai_recommendation = Column(Text, nullable=True)
     decided_by = Column(String(255), nullable=True)
+    ai_agreement = Column(Boolean, nullable=True)
+    override_rationale = Column(Text, nullable=True)
+    denial_reasons = Column(Text, nullable=True)
+    credit_score_used = Column(Integer, nullable=True)
+    credit_score_source = Column(String(100), nullable=True)
+    contributing_factors = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     application = relationship("Application", back_populates="decisions")
