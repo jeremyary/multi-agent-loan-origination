@@ -1,8 +1,10 @@
 # This project was developed with assistance from AI tools.
 """Application CRUD routes with RBAC enforcement."""
 
+from typing import Literal
+
 from db import Application, ApplicationBorrower, Borrower, get_db
-from db.enums import UserRole
+from db.enums import ApplicationStage, UserRole
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,16 +27,22 @@ from ..schemas.condition import (
 )
 from ..schemas.rate_lock import RateLockResponse
 from ..schemas.status import ApplicationStatusResponse
+from ..schemas.urgency import UrgencyLevel
 from ..services import application as app_service
 from ..services.condition import get_conditions, respond_to_condition
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
+from ..services.urgency import compute_urgency
 
 router = APIRouter()
 
 
 def _build_app_response(app: Application) -> ApplicationResponse:
-    """Build ApplicationResponse from ORM object, populating borrowers list."""
+    """Build ApplicationResponse from ORM object, populating borrowers list.
+
+    The ``urgency`` field is schema-only (not an ORM column) and is set to
+    None here. The route layer populates it after batch computation.
+    """
     borrowers = []
     for ab in getattr(app, "application_borrowers", []) or []:
         if ab.borrower:
@@ -50,8 +58,29 @@ def _build_app_response(app: Application) -> ApplicationResponse:
                     is_primary=ab.is_primary,
                 )
             )
-    resp = ApplicationResponse.model_validate(app)
-    return resp.model_copy(update={"borrowers": borrowers})
+
+    return ApplicationResponse(
+        id=app.id,
+        stage=app.stage,
+        loan_type=app.loan_type,
+        property_address=app.property_address,
+        loan_amount=app.loan_amount,
+        property_value=app.property_value,
+        assigned_to=app.assigned_to,
+        created_at=app.created_at,
+        updated_at=app.updated_at,
+        borrowers=borrowers,
+    )
+
+
+_URGENCY_ROLES = {UserRole.LOAN_OFFICER, UserRole.ADMIN}
+
+_URGENCY_ORDER = {
+    UrgencyLevel.CRITICAL: 0,
+    UrgencyLevel.HIGH: 1,
+    UrgencyLevel.MEDIUM: 2,
+    UrgencyLevel.NORMAL: 3,
+}
 
 
 @router.get(
@@ -74,6 +103,9 @@ async def list_applications(
     session: AsyncSession = Depends(get_db),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=20, ge=1, le=100),
+    sort_by: Literal["urgency", "updated_at", "loan_amount"] | None = None,
+    filter_stage: ApplicationStage | None = None,
+    filter_stalled: bool = Query(default=False),
 ) -> ApplicationListResponse:
     """List applications visible to the current user's role and data scope."""
     applications, total = await app_service.list_applications(
@@ -81,8 +113,28 @@ async def list_applications(
         user,
         offset=offset,
         limit=limit,
+        filter_stage=filter_stage,
+        filter_stalled=filter_stalled,
+        sort_by=sort_by if sort_by != "urgency" else None,
     )
+
     items = [_build_app_response(app) for app in applications]
+
+    # Enrich with urgency for LO/admin roles
+    if user.role in _URGENCY_ROLES and applications:
+        urgency_map = await compute_urgency(session, list(applications))
+        for item in items:
+            item.urgency = urgency_map.get(item.id)
+
+        # Post-query sort by urgency level
+        if sort_by == "urgency":
+            items.sort(
+                key=lambda x: _URGENCY_ORDER.get(
+                    x.urgency.level if x.urgency else UrgencyLevel.NORMAL,
+                    3,
+                )
+            )
+
     return ApplicationListResponse(
         data=items,
         pagination=Pagination(
