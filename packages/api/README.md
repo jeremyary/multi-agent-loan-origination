@@ -1,284 +1,178 @@
 # summit-cap API
 
-FastAPI backend application architecture and development guide.
+FastAPI backend for Summit Cap Financial mortgage loan origination.
 
 > **Setup & Installation**: See the [root README](../../README.md) for installation and quick start instructions.
-
-## Architecture Overview
-
-This API package follows FastAPI best practices with a modular, async-first architecture:
-
-```
-Request → Router → Route Handler → Schema Validation → Business Logic → Response
-                                                              ↓
-                                                         Database (if enabled)
-```
-
-### Key Architectural Patterns
-
-- **Dependency Injection**: FastAPI's dependency system for database sessions, authentication, and shared resources
-- **Async/Await**: All route handlers use `async def` for non-blocking I/O operations
-- **Pydantic Schemas**: Request/response validation and serialization
-- **Router Organization**: Routes grouped by domain in separate modules
-- **Configuration Management**: Centralized settings via Pydantic Settings
-
-- **Database Integration**: Async SQLAlchemy with connection pooling via dependency injection
 
 ## Directory Structure
 
 ```
 src/
-├── main.py              # FastAPI app instance, middleware, router registration
-├── core/
-│   └── config.py        # Pydantic Settings class for environment-based configuration
-├── routes/              # API route modules (one file per domain/resource)
-│   └── health.py        # Example: Health check endpoints
-├── schemas/             # Pydantic models for request/response validation
-│   └── health.py        # Example: Health response schema
-├── models/              # SQLAlchemy ORM models (when DB package is enabled)
-│   └── __init__.py       # Model exports
-└── __init__.py
-
+  main.py              # FastAPI app, middleware, router registration
+  core/config.py       # Pydantic Settings (env-driven config)
+  middleware/
+    auth.py            # JWT validation, RBAC, UserContext
+    pii.py             # PII masking middleware (CEO role)
+  routes/
+    health.py          # GET /health/
+    public.py          # Public endpoints (products, affordability)
+    applications.py    # Application CRUD + status + conditions
+    documents.py       # Document upload, list, completeness
+    chat.py            # Public WebSocket chat (unauthenticated)
+    borrower_chat.py   # Borrower WebSocket chat (authenticated) + history
+    admin.py           # Admin endpoints (seed, audit, verification)
+    hmda.py            # HMDA demographics endpoint
+    _chat_handler.py   # Shared WebSocket streaming logic
+  schemas/             # Pydantic request/response models
+  services/            # Business logic layer
+  agents/              # LangGraph agent definitions
+  inference/           # LLM client, model routing, safety shields
 tests/
-├── test_health.py       # Test file matching route structure
-└── __init__.py
+  test_*.py            # Unit tests
+  functional/          # Persona-based functional tests
+  integration/         # DB-backed integration tests
 ```
 
-### Directory Purposes
+## REST API Routes
 
-- **`src/main.py`**: Application entry point where the FastAPI app is created, middleware configured, and routers are registered. This is where you add new route modules.
+### Health
+- `GET /health/` - Service health check
 
-- **`src/core/`**: Core application infrastructure. Currently contains configuration management via Pydantic Settings.
+### Public (no authentication)
+- `GET /api/public/products` - List mortgage product catalog
+- `POST /api/public/calculate-affordability` - Calculate affordability based on income and debts
 
-- **`src/routes/`**: Route handlers organized by domain. Each file defines an `APIRouter` instance with related endpoints. Routers are registered in `main.py`.
+### Applications (authenticated)
+- `GET /api/applications/` - List applications (paginated, role-scoped)
+- `POST /api/applications/` - Create new application (borrower, admin)
+- `GET /api/applications/{id}` - Get single application
+- `PATCH /api/applications/{id}` - Update application (loan officer, underwriter, admin)
+- `GET /api/applications/{id}/status` - Get aggregated application status summary
+- `GET /api/applications/{id}/rate-lock` - Get rate lock status
+- `GET /api/applications/{id}/conditions` - List conditions for application
+- `POST /api/applications/{id}/conditions/{cid}/respond` - Respond to a condition
+- `POST /api/applications/{id}/borrowers` - Add borrower to application
+- `DELETE /api/applications/{id}/borrowers/{bid}` - Remove borrower from application
 
-- **`src/schemas/`**: Pydantic models for request/response validation. Schemas ensure type safety and automatic API documentation generation.
+### Documents (authenticated)
+- `POST /api/applications/{id}/documents` - Upload document (multipart form)
+- `GET /api/applications/{id}/documents` - List application documents
+- `GET /api/applications/{id}/documents/{did}` - Get document detail (CEO: file_path redacted)
+- `GET /api/applications/{id}/documents/{did}/content` - Get document file path (CEO blocked)
+- `GET /api/applications/{id}/completeness` - Check document completeness
 
-- **`src/models/`**: SQLAlchemy ORM models. See the [DB package README](../../db/README.md) for details on creating models.
+### HMDA (authenticated)
+- `POST /api/hmda/demographics` - Upsert borrower demographics (isolated schema)
 
-- **`tests/`**: Test files mirror the `src/` structure. Each route module should have a corresponding test file.
+### Admin (admin role only)
+- `POST /api/admin/seed` - Seed demo data
+- `GET /api/admin/seed/status` - Check seed status
+- `GET /api/admin/audit` - Query audit log
+- `GET /api/admin/audit/verify` - Verify hash chain integrity
 
-## Adding New Endpoints
+### Conversation History (authenticated)
+- `GET /api/borrower/conversations/history` - Get conversation history for authenticated borrower
 
-Follow these steps to add a new API endpoint:
+## WebSocket Protocol
 
-### 1. Create Pydantic Schemas
+### Endpoints
 
-Define request/response models in `src/schemas/`:
+**Public Chat (unauthenticated):**
+```
+ws://host/api/chat
+```
+No authentication required. Session ID is ephemeral (UUID). Conversations do not persist.
 
-```python
-# src/schemas/users.py
-from pydantic import BaseModel
+**Borrower Chat (authenticated):**
+```
+ws://host/api/borrower/chat?token=<jwt>
+```
+JWT passed via query parameter. Thread ID is deterministic (`user:{userId}:agent:borrower-assistant`). Conversations persist via PostgreSQL checkpoint.
 
-class UserCreate(BaseModel):
-    email: str
-    name: str
+When `AUTH_DISABLED=true`, returns a development user.
 
-class UserResponse(BaseModel):
-    id: int
-    email: str
-    name: str
+### Message Protocol
+
+**Client sends:**
+```json
+{"type": "message", "content": "user text here"}
 ```
 
-### 2. Create Route Module
-
-Create a new router file in `src/routes/`:
-
-```python
-# src/routes/users.py
-from fastapi import APIRouter
-from ..schemas.users import UserCreate, UserResponse
-
-router = APIRouter()
-
-@router.post("/", response_model=UserResponse)
-async def create_user(user: UserCreate) -> UserResponse:
-    # Business logic here
-    return UserResponse(id=1, email=user.email, name=user.name)
-
-@router.get("/{user_id}", response_model=UserResponse)
-async def get_user(user_id: int) -> UserResponse:
-    # Business logic here
-    return UserResponse(id=user_id, email="example@example.com", name="Example")
+**Server sends (streaming):**
+```json
+{"type": "token", "content": "partial"}
+{"type": "safety_override", "content": "reason for safety intervention"}
+{"type": "done"}
+{"type": "error", "content": "error message"}
 ```
 
-### 3. Register Router in Main App
+Tokens stream incrementally as the LLM generates responses. `done` signals end of response. `safety_override` indicates the safety shield triggered and overrode the LLM output.
 
-Add the router to `src/main.py`:
+## Authentication & RBAC
 
-```python
-from .routes import health, users
+Authentication via Keycloak JWT. Five roles supported:
+- `admin` - Full system access
+- `borrower` - Own application access
+- `loan_officer` - Assigned applications access
+- `underwriter` - Applications in review
+- `ceo` - Read-only access with PII masking
 
-# Include routers
-app.include_router(health.router, prefix="/health", tags=["health"])
-app.include_router(users.router, prefix="/users", tags=["users"])
+Set `AUTH_DISABLED=true` for local development to bypass authentication.
+
+## Error Format
+
+Errors follow RFC 7807 Problem Details:
+```json
+{
+  "type": "about:blank",
+  "title": "Not Found",
+  "status": 404,
+  "detail": "Application not found",
+  "request_id": "550e8400-e29b-41d4-a716-446655440000"
+}
 ```
 
-### 4. Add Tests
+## Pagination
 
-Create a test file in `tests/`:
-
-```python
-# tests/test_users.py
-import pytest
-from httpx import AsyncClient
-from src.main import app
-
-@pytest.mark.asyncio
-async def test_create_user():
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.post("/users/", json={
-            "email": "test@example.com",
-            "name": "Test User"
-        })
-        assert response.status_code == 200
-        assert response.json()["email"] == "test@example.com"
+List endpoints return paginated responses:
+```json
+{
+  "data": [...],
+  "pagination": {
+    "total": 100,
+    "offset": 0,
+    "limit": 20,
+    "has_more": true
+  }
+}
 ```
 
-## Using Database Models
+## Configuration
 
-When the DB package is enabled, database models are created in the DB package. See the [DB package README](../../db/README.md) for details on creating models and migrations.
-
-### Using Models in API Routes
-
-To use database models in your API routes, use FastAPI's dependency injection:
-
-```python
-# src/routes/users.py
-from fastapi import APIRouter, Depends
-from db import DatabaseService, get_db_service
-from ..schemas.users import UserResponse
-
-router = APIRouter()
-
-@router.get("/{user_id}", response_model=UserResponse)
-async def get_user(
-    user_id: int,
-    db_service: DatabaseService = Depends(get_db_service)
-) -> UserResponse:
-    # Use db_service to query the database
-    user = await db_service.get_user(user_id)
-    return UserResponse(id=user.id, email=user.email, name=user.name)
-```
-
-The `get_db_service` dependency provides a database session with connection pooling and proper lifecycle management.
-
-## Testing Patterns
-
-### Test Structure
-
-Tests use `pytest` with `pytest-asyncio` for async support. The test structure mirrors the source code:
-
-```python
-# tests/test_users.py
-import pytest
-from httpx import AsyncClient
-from src.main import app
-
-@pytest.mark.asyncio
-async def test_endpoint_name():
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.get("/endpoint")
-        assert response.status_code == 200
-```
-
-### Common Test Patterns
-
-**Testing async endpoints:**
-```python
-@pytest.mark.asyncio
-async def test_async_endpoint():
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.get("/async-endpoint")
-        assert response.status_code == 200
-```
-
-**Testing with request bodies:**
-```python
-@pytest.mark.asyncio
-async def test_post_endpoint():
-    async with AsyncClient(app=app, base_url="http://test") as client:
-        response = await client.post("/endpoint", json={"key": "value"})
-        assert response.status_code == 200
-```
-
-**Testing with database (transaction rollback):**
-```python
-@pytest.mark.asyncio
-async def test_with_db(db_session):
-    # db_session is automatically rolled back after test
-    # Use it to test database operations
-    pass
-```
-
-### Running Tests
-
-```bash
-pnpm test                        # Run all tests (recommended)
-uv run pytest                    # Direct pytest command
-uv run pytest tests/test_users.py # Run specific test file
-uv run pytest -v                 # Verbose output
-uv run pytest --cov=src         # With coverage
-uv run pytest -k "health"       # Run tests matching pattern
-```
-
-## Configuration Architecture
-
-Configuration is managed through Pydantic Settings in `src/core/config.py`:
-
-```python
-# src/core/config.py
-from pydantic_settings import BaseSettings
-
-class Settings(BaseSettings):
-    APP_NAME: str = "summit-cap"
-    DEBUG: bool = False
-    ALLOWED_HOSTS: list[str] = ["http://localhost:5173"]
-    DATABASE_URL: str = "postgresql+asyncpg://..."
-
-    class Config:
-        env_file = ".env"
-
-settings = Settings()
-```
-
-### Environment Variables
-
-Settings are loaded from:
-1. Default values in the `Settings` class
-2. `.env` file in the project root
-3. Environment variables (override `.env`)
-
-Key environment variables:
-- `ALLOWED_HOSTS` - Comma-separated list of allowed CORS origins
+Environment variables loaded via Pydantic Settings (`src/core/config.py`):
 - `DATABASE_URL` - PostgreSQL connection string
-- `DB_ECHO` - Enable SQL query logging (for debugging)
+- `KEYCLOAK_*` - Keycloak OIDC configuration
+- `AUTH_DISABLED` - Bypass authentication for local dev
+- `S3_*` - MinIO/S3 object storage configuration
+- `LLM_*` - LLM provider configuration (base URL, API key, model names)
+- `LANGFUSE_*` - LangFuse observability (optional)
+- `ALLOWED_HOSTS` - CORS allowed origins
 
-Access settings in your code:
-```python
-from ..core.config import settings
-
-# Use settings.ALLOWED_HOSTS, settings.DEBUG, etc.
-```
-
-## Essential Scripts
+## Running Locally
 
 ```bash
-# Development
-uv run uvicorn src.main:app --reload  # Start dev server
+# Start dev server
+uv run uvicorn src.main:app --reload
 
-# Testing
-uv run pytest                          # Run tests
-uv run pytest --cov=src               # With coverage
+# Run tests
+AUTH_DISABLED=true uv run pytest -v
 
-# Code Quality
-uv run ruff check .                    # Lint
-uv run ruff format .                  # Format
-uv run mypy src/                       # Type check
+# Run tests with coverage
+AUTH_DISABLED=true uv run pytest --cov=src
+
+# Linting and formatting
+uv run ruff check src/
+uv run ruff format src/
 ```
 
-For database-related scripts, see the [DB package README](../../db/README.md).
-
----
-
-Generated with [AI QuickStart CLI](https://github.com/TheiaSurette/quickstart-cli)
+For database setup and migrations, see the [DB package README](../db/README.md).

@@ -10,9 +10,9 @@
 
 # -- Tool detection ----------------------------------------------------------
 
-# Auto-detect compose: docker compose v2 > podman-compose
-# Override with: make run COMPOSE="podman-compose"
-COMPOSE ?= $(shell docker compose version >/dev/null 2>&1 && echo "docker compose" || echo "podman-compose")
+# Auto-detect compose: podman-compose > docker compose v2
+# Override with: make run COMPOSE="docker compose"
+COMPOSE ?= $(shell command -v podman-compose >/dev/null 2>&1 && echo "podman-compose" || echo "docker compose")
 
 # Auto-detect container CLI: podman > docker (used by build-images / push-images)
 # Override with: make build-images CONTAINER_CLI="docker"

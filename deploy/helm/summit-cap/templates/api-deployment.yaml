@@ -46,6 +46,81 @@ spec:
                 secretKeyRef:
                   name: {{ include "summit-cap.fullname" . }}-secret
                   key: ALLOWED_HOSTS
+            - name: COMPLIANCE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: COMPLIANCE_DATABASE_URL
+            - name: AUTH_DISABLED
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: AUTH_DISABLED
+            - name: KEYCLOAK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: KEYCLOAK_URL
+            - name: KEYCLOAK_REALM
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: KEYCLOAK_REALM
+            - name: S3_ENDPOINT
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: S3_ENDPOINT
+            - name: S3_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: S3_ACCESS_KEY
+            - name: S3_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: S3_SECRET_KEY
+            - name: S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: S3_BUCKET
+            - name: LLM_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: LLM_API_KEY
+            - name: LLM_BASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: LLM_BASE_URL
+            - name: LLM_MODEL_FAST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: LLM_MODEL_FAST
+            - name: LLM_MODEL_CAPABLE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: LLM_MODEL_CAPABLE
+            - name: LANGFUSE_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: LANGFUSE_PUBLIC_KEY
+            - name: LANGFUSE_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: LANGFUSE_SECRET_KEY
+            - name: LANGFUSE_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: LANGFUSE_HOST
           {{- if .Values.api.healthCheck.enabled }}
           livenessProbe:
             httpGet:
