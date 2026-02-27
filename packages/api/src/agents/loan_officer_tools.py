@@ -27,8 +27,40 @@ from ..schemas.auth import UserContext
 from ..services.application import get_application, transition_stage
 from ..services.audit import write_audit_event
 from ..services.completeness import check_completeness, check_underwriting_readiness
+from ..services.condition import get_conditions
 from ..services.document import get_document, list_documents, update_document_status
+from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
+
+_COMMUNICATION_TYPES = {
+    "document_request",
+    "condition_explanation",
+    "status_update",
+    "resubmission_notice",
+}
+
+_LOAN_TYPE_LABELS: dict[str, str] = {
+    "conventional_30": "Conventional 30-Year Fixed",
+    "conventional_15": "Conventional 15-Year Fixed",
+    "fha": "FHA Loan",
+    "va": "VA Loan",
+    "jumbo": "Jumbo Loan",
+    "usda": "USDA Loan",
+}
+
+_SEVERITY_LABELS: dict[str, str] = {
+    "prior_to_approval": "Prior to Approval",
+    "prior_to_docs": "Prior to Docs",
+    "prior_to_closing": "Prior to Closing",
+    "prior_to_funding": "Prior to Funding",
+}
+
+_COMM_TYPE_LABELS: dict[str, str] = {
+    "document_request": "Document Request",
+    "condition_explanation": "Condition Explanation",
+    "status_update": "Status Update",
+    "resubmission_notice": "Resubmission Notice",
+}
 
 
 def _user_context_from_state(state: dict) -> UserContext:
@@ -395,4 +427,174 @@ async def lo_submit_to_underwriting(
         f"Application {application_id} has been submitted to underwriting. "
         "Stage: UNDERWRITING. The underwriting team will review and may "
         "issue conditions."
+    )
+
+
+@tool
+async def lo_draft_communication(
+    application_id: int,
+    communication_type: str,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Gather comprehensive application context for drafting a borrower communication.
+
+    Collects borrower info, loan details, document completeness, open conditions,
+    and rate lock status in a single call. The LLM uses this context to compose
+    the actual communication draft.
+
+    Args:
+        application_id: The loan application ID.
+        communication_type: One of: document_request, condition_explanation,
+            status_update, resubmission_notice.
+    """
+    if communication_type not in _COMMUNICATION_TYPES:
+        valid = ", ".join(sorted(_COMMUNICATION_TYPES))
+        return f"Invalid communication type '{communication_type}'. Must be one of: {valid}"
+
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        app = await get_application(session, user, application_id)
+        if app is None:
+            return "Application not found or you don't have access to it."
+
+        completeness = await check_completeness(session, user, application_id)
+        conditions = await get_conditions(session, user, application_id, open_only=True)
+        rate_lock = await get_rate_lock_status(session, user, application_id)
+
+    # --- Header ---
+    type_label = _COMM_TYPE_LABELS.get(communication_type, communication_type)
+    lines = [
+        f"Communication context for application #{application_id}",
+        f"Type: {type_label}",
+        "",
+    ]
+
+    # --- Borrower ---
+    lines.append("BORROWER:")
+    for ab in app.application_borrowers or []:
+        if ab.borrower:
+            b = ab.borrower
+            role_label = "Primary" if ab.is_primary else "Co-borrower"
+            lines.append(f"  {role_label}: {b.first_name} {b.last_name} ({b.email})")
+
+    # --- Loan details ---
+    lines.append("")
+    lines.append("LOAN DETAILS:")
+    if app.property_address:
+        lines.append(f"  Property: {app.property_address}")
+    if app.loan_type:
+        lt_val = app.loan_type.value if hasattr(app.loan_type, "value") else str(app.loan_type)
+        lt_label = _LOAN_TYPE_LABELS.get(lt_val, lt_val)
+        lines.append(f"  Loan type: {lt_label}")
+    if app.loan_amount:
+        lines.append(f"  Loan amount: ${app.loan_amount:,.2f}")
+    stage = app.stage.value if app.stage else "inquiry"
+    lines.append(f"  Stage: {stage.replace('_', ' ').title()}")
+
+    # --- Documents ---
+    if completeness:
+        provided = completeness.provided_count
+        required = completeness.required_count
+        lines.append("")
+        lines.append(f"DOCUMENTS ({provided}/{required} provided):")
+        for req in completeness.requirements:
+            if req.is_provided:
+                status_val = req.status.value if req.status else "provided"
+                line = f"  - {req.label}: Provided ({status_val})"
+                if req.quality_flags:
+                    line += f" (quality issues: {', '.join(req.quality_flags)})"
+            else:
+                line = f"  - {req.label}: MISSING"
+            lines.append(line)
+
+    # --- Conditions ---
+    if conditions:
+        lines.append("")
+        lines.append(f"OPEN CONDITIONS ({len(conditions)}):")
+        for c in conditions:
+            sev = c.get("severity", "")
+            sev_label = _SEVERITY_LABELS.get(sev, sev) if sev else ""
+            desc = c.get("description", "")
+            if sev_label:
+                lines.append(f"  - [{sev_label}] {desc}")
+            else:
+                lines.append(f"  - {desc}")
+    elif conditions is not None:
+        lines.append("")
+        lines.append("OPEN CONDITIONS (0):")
+        lines.append("  None")
+
+    # --- Rate lock ---
+    if rate_lock:
+        lines.append("")
+        lines.append("RATE LOCK:")
+        rl_status = rate_lock.get("status", "none")
+        if rl_status == "none":
+            lines.append("  No rate lock on file")
+        else:
+            lines.append(f"  Status: {rl_status.title()}")
+            if rate_lock.get("locked_rate") is not None:
+                lines.append(f"  Rate: {rate_lock['locked_rate']:.3f}%")
+            if rate_lock.get("expiration_date"):
+                days = rate_lock.get("days_remaining", 0)
+                lines.append(
+                    f"  Expires: {rate_lock['expiration_date'][:10]} ({days} days remaining)"
+                )
+            if rate_lock.get("is_urgent"):
+                lines.append("  *** URGENT: Rate lock expiring within 7 days ***")
+
+    # HMDA exclusion reminder
+    lines.append("")
+    lines.append(
+        "NOTE: Do not include any demographic information "
+        "(race, ethnicity, sex) in the communication."
+    )
+
+    return "\n".join(lines)
+
+
+@tool
+async def lo_send_communication(
+    application_id: int,
+    communication_type: str,
+    subject: str,
+    recipient_name: str,
+    state: Annotated[dict, InjectedState],
+) -> str:
+    """Record that a borrower communication was sent (audit only -- no actual email delivery at MVP).
+
+    Call this only after the loan officer has reviewed and approved the draft.
+
+    Args:
+        application_id: The loan application ID.
+        communication_type: One of: document_request, condition_explanation,
+            status_update, resubmission_notice.
+        subject: The subject line of the communication.
+        recipient_name: The borrower's name.
+    """
+    user = _user_context_from_state(state)
+    async with SessionLocal() as session:
+        app = await get_application(session, user, application_id)
+        if app is None:
+            return "Application not found or you don't have access to it."
+
+        await write_audit_event(
+            session,
+            event_type="communication_sent",
+            user_id=user.user_id,
+            user_role=user.role.value,
+            application_id=application_id,
+            event_data={
+                "communication_type": communication_type,
+                "subject": subject,
+                "recipient_name": recipient_name,
+                "delivery_method": "audit_only",
+            },
+        )
+        await session.commit()
+
+    return (
+        f"Communication recorded: '{subject}' to {recipient_name} "
+        f"for application #{application_id}. "
+        "(MVP: audit log only -- no email delivery.)"
     )
