@@ -8,6 +8,7 @@ from db.enums import ApplicationStage, EmploymentStatus, LoanType
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import Pagination
+from .urgency import UrgencyIndicator
 
 
 class ApplicationCreate(BaseModel):
@@ -60,6 +61,7 @@ class ApplicationResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     borrowers: list[BorrowerSummary] = []
+    urgency: UrgencyIndicator | None = None
 
 
 class ApplicationListResponse(BaseModel):

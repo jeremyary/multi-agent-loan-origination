@@ -7,6 +7,7 @@ and CEO/underwriter/admin see all.
 """
 
 import logging
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 from db import Application, ApplicationBorrower, Borrower
@@ -22,34 +23,68 @@ from ..services.scope import apply_data_scope
 logger = logging.getLogger(__name__)
 
 
+_TERMINAL_STAGES = ApplicationStage.terminal_stages()
+
+_SORT_COLUMNS = {
+    "updated_at": Application.updated_at.desc(),
+    "loan_amount": Application.loan_amount.desc().nulls_last(),
+}
+
+
 async def list_applications(
     session: AsyncSession,
     user: UserContext,
     *,
     offset: int = 0,
     limit: int = 20,
+    filter_stage: ApplicationStage | None = None,
+    filter_stalled: bool = False,
+    sort_by: str | None = None,
 ) -> tuple[list[Application], int]:
-    """Return applications visible to the current user."""
+    """Return applications visible to the current user.
+
+    Args:
+        filter_stage: Only return applications in this stage.
+        filter_stalled: Only return non-terminal apps with no activity for 7+ days.
+        sort_by: Sort key -- "updated_at", "loan_amount", or "urgency".
+            "urgency" is handled post-query by the route layer.
+    """
     # Count query -- use DISTINCT to prevent inflation from junction join
     count_stmt = select(func.count(func.distinct(Application.id)))
     count_stmt = apply_data_scope(count_stmt, user.data_scope, user)
+    count_stmt = _apply_filters(count_stmt, filter_stage, filter_stalled)
     total = (await session.execute(count_stmt)).scalar() or 0
 
     # Data query
+    order = _SORT_COLUMNS.get(sort_by, Application.updated_at.desc())
     stmt = (
         select(Application)
         .options(
             selectinload(Application.application_borrowers).joinedload(ApplicationBorrower.borrower)
         )
-        .order_by(Application.updated_at.desc())
+        .order_by(order)
         .offset(offset)
         .limit(limit)
     )
     stmt = apply_data_scope(stmt, user.data_scope, user)
+    stmt = _apply_filters(stmt, filter_stage, filter_stalled)
     result = await session.execute(stmt)
     applications = result.unique().scalars().all()
 
     return applications, total
+
+
+def _apply_filters(stmt, filter_stage, filter_stalled):
+    """Apply optional WHERE clauses for stage and stalled filters."""
+    if filter_stage is not None:
+        stmt = stmt.where(Application.stage == filter_stage)
+    if filter_stalled:
+        cutoff = datetime.now(UTC) - timedelta(days=7)
+        stmt = stmt.where(
+            Application.updated_at < cutoff,
+            Application.stage.notin_([s.value for s in _TERMINAL_STAGES]),
+        )
+    return stmt
 
 
 async def get_application(

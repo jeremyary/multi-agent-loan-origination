@@ -71,52 +71,66 @@ def _make_app_borrower(borrower, *, is_primary=True) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
+def _make_application(**fields) -> MagicMock:
+    """Build a mock Application with defaults for schema-required attributes.
+
+    Ensures Pydantic ``from_attributes`` validation succeeds by setting
+    attributes that don't exist on the real ORM model to ``None``.
+    """
+    app = MagicMock()
+    for key, value in fields.items():
+        setattr(app, key, value)
+    # Schema-only fields that the ORM model doesn't carry
+    app.urgency = None
+    return app
+
+
 def make_app_sarah_1() -> MagicMock:
     """App 101: Sarah, APPLICATION stage, assigned to LO."""
-    app = MagicMock()
-    app.id = 101
-    app.stage = ApplicationStage.APPLICATION
-    app.loan_type = LoanType.CONVENTIONAL_30
-    app.property_address = "123 Oak Street"
-    app.loan_amount = Decimal("350000.00")
-    app.property_value = Decimal("450000.00")
-    app.assigned_to = LO_USER_ID
-    app.created_at = datetime(2026, 1, 10, tzinfo=UTC)
-    app.updated_at = datetime(2026, 1, 15, tzinfo=UTC)
-    app.application_borrowers = [_make_app_borrower(make_borrower_sarah())]
-    return app
+    return _make_application(
+        id=101,
+        stage=ApplicationStage.APPLICATION,
+        loan_type=LoanType.CONVENTIONAL_30,
+        property_address="123 Oak Street",
+        loan_amount=Decimal("350000.00"),
+        property_value=Decimal("450000.00"),
+        assigned_to=LO_USER_ID,
+        created_at=datetime(2026, 1, 10, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 15, tzinfo=UTC),
+        application_borrowers=[_make_app_borrower(make_borrower_sarah())],
+    )
 
 
 def make_app_sarah_2() -> MagicMock:
     """App 102: Sarah, INQUIRY stage, unassigned."""
-    app = MagicMock()
-    app.id = 102
-    app.stage = ApplicationStage.INQUIRY
-    app.loan_type = None
-    app.property_address = None
-    app.loan_amount = None
-    app.property_value = None
-    app.assigned_to = None
-    app.created_at = datetime(2026, 2, 1, tzinfo=UTC)
-    app.updated_at = datetime(2026, 2, 1, tzinfo=UTC)
-    app.application_borrowers = [_make_app_borrower(make_borrower_sarah())]
-    return app
+    return _make_application(
+        id=102,
+        stage=ApplicationStage.INQUIRY,
+        loan_type=None,
+        property_address=None,
+        loan_amount=None,
+        property_value=None,
+        assigned_to=None,
+        created_at=datetime(2026, 2, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 2, 1, tzinfo=UTC),
+        application_borrowers=[_make_app_borrower(make_borrower_sarah())],
+    )
 
 
 def make_app_michael() -> MagicMock:
     """App 103: Michael, UNDERWRITING stage, assigned to LO."""
-    app = MagicMock()
-    app.id = 103
-    app.stage = ApplicationStage.UNDERWRITING
-    app.loan_type = LoanType.FHA
-    app.property_address = "456 Maple Avenue"
-    app.loan_amount = Decimal("275000.00")
-    app.property_value = Decimal("320000.00")
-    app.assigned_to = LO_USER_ID
-    app.created_at = datetime(2026, 1, 20, tzinfo=UTC)
-    app.updated_at = datetime(2026, 2, 10, tzinfo=UTC)
-    app.application_borrowers = [_make_app_borrower(make_borrower_michael())]
-    return app
+    return _make_application(
+        id=103,
+        stage=ApplicationStage.UNDERWRITING,
+        loan_type=LoanType.FHA,
+        property_address="456 Maple Avenue",
+        loan_amount=Decimal("275000.00"),
+        property_value=Decimal("320000.00"),
+        assigned_to=LO_USER_ID,
+        created_at=datetime(2026, 1, 20, tzinfo=UTC),
+        updated_at=datetime(2026, 2, 10, tzinfo=UTC),
+        application_borrowers=[_make_app_borrower(make_borrower_michael())],
+    )
 
 
 # ---------------------------------------------------------------------------
