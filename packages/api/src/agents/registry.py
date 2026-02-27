@@ -35,6 +35,7 @@ def load_agent_config(agent_name: str) -> dict[str, Any]:
 _AGENT_MODULES: dict[str, str] = {
     "public-assistant": ".public_assistant",
     "borrower-assistant": ".borrower_assistant",
+    "loan-officer-assistant": ".loan_officer_assistant",
 }
 
 
