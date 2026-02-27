@@ -24,7 +24,7 @@ class TestUnderwriterVisibility:
         resp = client.get("/api/applications/")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 3
+        assert data["pagination"]["total"] == 3
 
     def test_get_application_with_pii(self, make_client):
         app = make_app_michael()

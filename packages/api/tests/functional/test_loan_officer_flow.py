@@ -24,7 +24,7 @@ class TestLoanOfficerVisibility:
         resp = client.get("/api/applications/")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 2
+        assert data["pagination"]["total"] == 2
 
     def test_get_assigned_application(self, make_client):
         app = make_app_sarah_1()

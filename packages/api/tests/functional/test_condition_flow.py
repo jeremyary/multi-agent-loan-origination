@@ -104,7 +104,7 @@ class TestBorrowerListConditions:
         resp = client.get(f"/api/applications/{sarah_app.id}/conditions")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 2
+        assert data["pagination"]["total"] == 2
         assert data["data"][0]["description"] == "Verify employment"
         assert data["data"][0]["status"] == "open"
         assert data["data"][1]["response_text"] == "Uploaded both months"
@@ -117,7 +117,7 @@ class TestBorrowerListConditions:
         resp = client.get(f"/api/applications/{sarah_app.id}/conditions")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 0
+        assert data["pagination"]["total"] == 0
         assert data["data"] == []
 
     def test_borrower_cannot_see_other_app(self, app, make_client):
@@ -174,7 +174,7 @@ class TestLoanOfficerConditions:
 
         resp = client.get(f"/api/applications/{sarah_app.id}/conditions")
         assert resp.status_code == 200
-        assert resp.json()["count"] == 1
+        assert resp.json()["pagination"]["total"] == 1
 
 
 class TestUnderwriterConditions:

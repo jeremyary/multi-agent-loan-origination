@@ -51,7 +51,7 @@ class TestListConditions:
         resp = await client.get(f"/api/applications/{seed_data.sarah_app1.id}/conditions")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 3
+        assert data["pagination"]["total"] == 3
         statuses = {c["status"] for c in data["data"]}
         assert "open" in statuses
         assert "cleared" in statuses
@@ -69,7 +69,7 @@ class TestListConditions:
         assert resp.status_code == 200
         data = resp.json()
         # Only OPEN and RESPONDED statuses, not CLEARED
-        assert data["count"] == 2
+        assert data["pagination"]["total"] == 2
         statuses = {c["status"] for c in data["data"]}
         assert "cleared" not in statuses
         await client.aclose()
@@ -92,7 +92,7 @@ class TestListConditions:
         client = await client_factory(loan_officer())
         resp = await client.get(f"/api/applications/{seed_data.sarah_app1.id}/conditions")
         assert resp.status_code == 200
-        assert resp.json()["count"] == 3
+        assert resp.json()["pagination"]["total"] == 3
         await client.aclose()
 
 

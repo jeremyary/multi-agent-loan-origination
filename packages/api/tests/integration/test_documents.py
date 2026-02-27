@@ -112,7 +112,7 @@ async def test_list_documents_for_application(client_factory, seed_data):
     resp = await client.get(f"/api/applications/{seed_data.sarah_app1.id}/documents")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 2
+    assert data["pagination"]["total"] == 2
     assert len(data["data"]) == 2
     await client.aclose()
 
@@ -184,6 +184,8 @@ async def test_ceo_blocked_from_document_content(client_factory, seed_data):
     from tests.functional.personas import ceo
 
     client = await client_factory(ceo())
-    resp = await client.get(f"/api/documents/{seed_data.doc1.id}/content")
+    resp = await client.get(
+        f"/api/applications/{seed_data.sarah_app1.id}/documents/{seed_data.doc1.id}/content"
+    )
     assert resp.status_code == 403
     await client.aclose()

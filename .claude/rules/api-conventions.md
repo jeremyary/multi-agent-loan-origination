@@ -9,7 +9,7 @@ paths:
 
 - URLs represent resources (nouns), not actions (verbs): `/users`, not `/getUsers`
 - Use kebab-case for URL paths: `/user-profiles`, not `/userProfiles`
-- Use camelCase for JSON field names: `firstName`, not `first_name`
+- Use snake_case for JSON field names: `first_name`, not `firstName` (Pydantic default; avoids alias boilerplate across 50+ fields)
 - Use plural nouns for collections: `/users`, `/orders`
 - Nest sub-resources under parents: `/users/:id/orders`
 - Keep URLs shallow — max 2 levels of nesting before introducing a top-level resource

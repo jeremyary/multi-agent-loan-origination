@@ -68,14 +68,16 @@ def test_condition_item_schema():
 
 
 def test_condition_list_response_schema():
+    from src.schemas import Pagination
+
     resp = ConditionListResponse(
         data=[
             ConditionItem(id=1, description="Verify employment"),
             ConditionItem(id=2, description="Bank statements"),
         ],
-        count=2,
+        pagination=Pagination(total=2, offset=0, limit=20, has_more=False),
     )
-    assert resp.count == 2
+    assert resp.pagination.total == 2
     assert len(resp.data) == 2
 
 

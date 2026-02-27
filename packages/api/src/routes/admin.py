@@ -75,7 +75,7 @@ async def get_audit_events(
         events=[
             AuditEventItem(
                 id=e.id,
-                timestamp=str(e.timestamp),
+                timestamp=e.timestamp,
                 event_type=e.event_type,
                 user_id=e.user_id,
                 user_role=e.user_role,

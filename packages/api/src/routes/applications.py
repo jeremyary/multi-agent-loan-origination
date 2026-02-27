@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import CurrentUser, require_roles
+from ..schemas import Pagination
 from ..schemas.application import (
     AddBorrowerRequest,
     ApplicationCreate,
@@ -82,7 +83,15 @@ async def list_applications(
         limit=limit,
     )
     items = [_build_app_response(app) for app in applications]
-    return ApplicationListResponse(data=items, count=total)
+    return ApplicationListResponse(
+        data=items,
+        pagination=Pagination(
+            total=total,
+            offset=offset,
+            limit=limit,
+            has_more=(offset + limit < total),
+        ),
+    )
 
 
 @router.get(
@@ -202,7 +211,15 @@ async def list_conditions(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         )
-    return ConditionListResponse(data=result, count=len(result))
+    return ConditionListResponse(
+        data=result,
+        pagination=Pagination(
+            total=len(result),
+            offset=0,
+            limit=len(result),
+            has_more=False,
+        ),
+    )
 
 
 @router.post(

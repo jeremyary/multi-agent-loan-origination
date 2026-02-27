@@ -17,7 +17,7 @@ async def test_borrower_sees_only_own_apps(client_factory, seed_data):
     resp = await client.get("/api/applications/")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 2
+    assert data["pagination"]["total"] == 2
     assert len(data["data"]) == 2
     await client.aclose()
 
@@ -40,7 +40,7 @@ async def test_lo_sees_only_assigned(client_factory, seed_data):
     resp = await client.get("/api/applications/")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 2
+    assert data["pagination"]["total"] == 2
     app_ids = {app["id"] for app in data["data"]}
     assert seed_data.sarah_app1.id in app_ids
     assert seed_data.michael_app.id in app_ids
@@ -55,7 +55,7 @@ async def test_underwriter_sees_all(client_factory, seed_data):
     client = await client_factory(underwriter())
     resp = await client.get("/api/applications/")
     assert resp.status_code == 200
-    assert resp.json()["count"] == 3
+    assert resp.json()["pagination"]["total"] == 3
     await client.aclose()
 
 
@@ -66,7 +66,7 @@ async def test_ceo_sees_all(client_factory, seed_data):
     client = await client_factory(ceo())
     resp = await client.get("/api/applications/")
     assert resp.status_code == 200
-    assert resp.json()["count"] == 3
+    assert resp.json()["pagination"]["total"] == 3
     await client.aclose()
 
 
@@ -77,7 +77,7 @@ async def test_admin_sees_all(client_factory, seed_data):
     client = await client_factory(admin())
     resp = await client.get("/api/applications/")
     assert resp.status_code == 200
-    assert resp.json()["count"] == 3
+    assert resp.json()["pagination"]["total"] == 3
     await client.aclose()
 
 
@@ -99,7 +99,7 @@ async def test_borrower_list_documents_own_app(client_factory, seed_data):
     resp = await client.get(f"/api/applications/{seed_data.sarah_app1.id}/documents")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 2
+    assert data["pagination"]["total"] == 2
     assert len(data["data"]) == 2
     await client.aclose()
 
@@ -114,7 +114,7 @@ async def test_borrower_cannot_list_other_documents(client_factory, seed_data):
     # Data scope filtering on Documents joins to Application; michael_app is not in
     # Sarah's scope so the query returns 0 docs for that app_id, count=0
     data = resp.json()
-    assert data["count"] == 0
+    assert data["pagination"]["total"] == 0
     await client.aclose()
 
 
@@ -126,5 +126,5 @@ async def test_lo_sees_assigned_app_documents(client_factory, seed_data):
     resp = await client.get(f"/api/applications/{seed_data.sarah_app1.id}/documents")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 2
+    assert data["pagination"]["total"] == 2
     await client.aclose()
