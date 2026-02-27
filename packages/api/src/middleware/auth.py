@@ -169,6 +169,7 @@ async def get_current_user(request: Request) -> UserContext:
     When AUTH_DISABLED=true, returns a dev admin user without token validation.
     """
     if settings.AUTH_DISABLED:
+        request.state.pii_mask = _DISABLED_USER.data_scope.pii_mask
         return _DISABLED_USER
 
     token = _extract_token(request)
@@ -197,13 +198,15 @@ async def get_current_user(request: Request) -> UserContext:
     role = _resolve_role(payload)
     data_scope = build_data_scope(role, payload.sub)
 
-    return UserContext(
+    user = UserContext(
         user_id=payload.sub,
         role=role,
         email=payload.email,
         name=payload.name or payload.preferred_username,
         data_scope=data_scope,
     )
+    request.state.pii_mask = user.data_scope.pii_mask
+    return user
 
 
 # Type alias for use in route signatures

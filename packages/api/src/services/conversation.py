@@ -2,7 +2,9 @@
 """Conversation persistence service -- manages LangGraph checkpoint storage.
 
 Uses langgraph-checkpoint-postgres (AsyncPostgresSaver) to persist conversation
-state per thread_id. Thread IDs are deterministic: ``user:{user_id}:agent:{agent_name}``,
+state per thread_id. Thread IDs are deterministic:
+``user:{user_id}:agent:{agent_name}`` (user-scoped) or
+``user:{user_id}:agent:{agent_name}:app:{app_id}`` (application-scoped),
 ensuring authenticated users resume where they left off across sessions.
 
 Prospects get ephemeral (random UUID) thread IDs that are never resumed.
@@ -11,8 +13,8 @@ Prospects get ephemeral (random UUID) thread IDs that are never resumed.
 import logging
 from typing import Any
 
-from psycopg import AsyncConnection
 from psycopg.rows import dict_row
+from psycopg_pool import AsyncConnectionPool
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +39,7 @@ class ConversationService:
 
     def __init__(self) -> None:
         self._checkpointer: Any | None = None
-        self._conn: AsyncConnection | None = None
+        self._pool: AsyncConnectionPool | None = None
         self._initialized: bool = False
 
     @property
@@ -70,11 +72,15 @@ class ConversationService:
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
             psycopg_url = derive_psycopg_url(db_url)
-            conn = await AsyncConnection.connect(
-                psycopg_url, autocommit=True, prepare_threshold=0, row_factory=dict_row
+            pool = AsyncConnectionPool(
+                psycopg_url,
+                min_size=1,
+                max_size=5,
+                kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row},
             )
-            self._conn = conn
-            self._checkpointer = AsyncPostgresSaver(conn=conn)
+            await pool.open()
+            self._pool = pool
+            self._checkpointer = AsyncPostgresSaver(conn=pool)
             await self._checkpointer.setup()
             self._initialized = True
             logger.info("ConversationService initialized (checkpoint persistence active)")
@@ -87,30 +93,42 @@ class ConversationService:
             self._initialized = False
 
     async def shutdown(self) -> None:
-        """Close the checkpointer's underlying psycopg connection."""
-        if self._conn is not None:
+        """Close the checkpointer's underlying connection pool."""
+        if self._pool is not None:
             try:
-                await self._conn.close()
+                await self._pool.close()
             except Exception:
-                logger.debug("Error closing checkpointer connection", exc_info=True)
-        self._conn = None
+                logger.debug("Error closing checkpointer pool", exc_info=True)
+        self._pool = None
         self._checkpointer = None
         self._initialized = False
 
     @staticmethod
-    def get_thread_id(user_id: str, agent_name: str = "public-assistant") -> str:
+    def get_thread_id(
+        user_id: str,
+        agent_name: str = "public-assistant",
+        application_id: int | None = None,
+    ) -> str:
         """Build a deterministic thread ID for checkpoint persistence.
 
-        Format: ``user:{user_id}:agent:{agent_name}``
+        Format without application:
+            ``user:{user_id}:agent:{agent_name}``
+
+        Format with application (for role-agents managing multiple apps):
+            ``user:{user_id}:agent:{agent_name}:app:{application_id}``
 
         Args:
             user_id: The authenticated user's ID.
             agent_name: The agent name (supports multiple agents per user).
+            application_id: Optional application ID for app-scoped conversations.
 
         Returns:
             A deterministic thread_id string.
         """
-        return f"user:{user_id}:agent:{agent_name}"
+        base = f"user:{user_id}:agent:{agent_name}"
+        if application_id is not None:
+            return f"{base}:app:{application_id}"
+        return base
 
     @staticmethod
     def verify_thread_ownership(thread_id: str, user_id: str) -> None:

@@ -8,7 +8,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import CurrentUser, require_roles
-from ..middleware.pii import mask_application_pii
 from ..schemas.application import (
     AddBorrowerRequest,
     ApplicationCreate,
@@ -83,13 +82,6 @@ async def list_applications(
         limit=limit,
     )
     items = [_build_app_response(app) for app in applications]
-    if user.data_scope.pii_mask:
-        items = [
-            ApplicationResponse.model_construct(
-                **mask_application_pii(item.model_dump(mode="json"))
-            )
-            for item in items
-        ]
     return ApplicationListResponse(data=items, count=total)
 
 
@@ -120,12 +112,7 @@ async def get_application(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         )
-    item = _build_app_response(app)
-    if user.data_scope.pii_mask:
-        item = ApplicationResponse.model_construct(
-            **mask_application_pii(item.model_dump(mode="json"))
-        )
-    return item
+    return _build_app_response(app)
 
 
 @router.get(

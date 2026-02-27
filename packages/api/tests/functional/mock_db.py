@@ -11,6 +11,7 @@ the service layer:
 from unittest.mock import AsyncMock, MagicMock
 
 from db import get_compliance_db, get_db
+from fastapi import Request
 
 from src.middleware.auth import get_current_user
 from src.schemas.auth import UserContext
@@ -81,7 +82,8 @@ def make_upload_session(application: object | None = None) -> AsyncMock:
 def configure_app_for_persona(app, user: UserContext, session: AsyncMock) -> None:
     """Override get_current_user, get_db, and get_compliance_db on the real app."""
 
-    async def fake_user():
+    async def fake_user(request: Request):
+        request.state.pii_mask = user.data_scope.pii_mask
         return user
 
     async def fake_db():
