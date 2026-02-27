@@ -41,6 +41,9 @@ secrets:
   LANGFUSE_SECRET_KEY: ""
   LANGFUSE_HOST: ""
 
+  # Admin panel
+  SQLADMIN_SECRET_KEY: "change-me-in-production"
+
   # UI secrets
   VITE_API_BASE_URL: "http://localhost:8000"
   VITE_ENVIRONMENT: "production"
@@ -85,6 +88,19 @@ api:
     path: /health/
     initialDelaySeconds: 30
     periodSeconds: 10
+  config:
+    modelsYaml: |
+      routing:
+        default_tier: capable_large
+        classification:
+          strategy: rule_based
+      tiers:
+        fast:
+          endpoint: "${LLM_BASE_URL:-http://localhost:11434/v1}"
+          model_name: "${LLM_MODEL_FAST:-gpt-4o-mini}"
+        capable_large:
+          endpoint: "${LLM_BASE_URL:-http://localhost:11434/v1}"
+          model_name: "${LLM_MODEL_CAPABLE:-gpt-4o-mini}"
 # UI configuration
 ui:
   enabled: true

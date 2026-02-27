@@ -7,7 +7,9 @@ HMDA filter routes demographic fields to the compliance schema via
 ``services.compliance.hmda`` (the sole permitted HMDA accessor).
 """
 
+import asyncio
 import base64
+import functools
 import json
 import logging
 import re
@@ -156,7 +158,7 @@ class ExtractionService:
 
     async def _process_pdf(self, file_data: bytes, doc_type: str) -> dict | None:
         """Process a PDF: try text extraction, fall back to image if scanned."""
-        text = self._extract_text_from_pdf(file_data)
+        text = await self._extract_text_from_pdf(file_data)
         if text is None:
             # Corrupted / unopenable PDF
             return None
@@ -166,18 +168,27 @@ class ExtractionService:
             return await self._extract_via_llm(text, doc_type)
 
         # Scanned PDF -- render first page and use vision
-        image = self._pdf_first_page_to_image(file_data)
+        image = await self._pdf_first_page_to_image(file_data)
         if image is None:
             return None
 
         return await self._extract_image_via_llm(image, "image/png", doc_type)
 
-    def _extract_text_from_pdf(self, file_data: bytes) -> str | None:
+    async def _extract_text_from_pdf(self, file_data: bytes) -> str | None:
         """Use pymupdf to extract text from all pages.
 
         Returns None if PDF is corrupted/unopenable.
         Returns empty string if no text layer (scanned doc).
+        Runs in executor to avoid blocking the async event loop.
         """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(self._extract_text_from_pdf_sync, file_data)
+        )
+
+    @staticmethod
+    def _extract_text_from_pdf_sync(file_data: bytes) -> str | None:
+        """Synchronous PDF text extraction (runs in thread pool)."""
         try:
             pdf = fitz.open(stream=file_data, filetype="pdf")
             text_parts = []
@@ -189,8 +200,19 @@ class ExtractionService:
             logger.exception("Failed to open PDF with pymupdf")
             return None
 
-    def _pdf_first_page_to_image(self, file_data: bytes) -> bytes | None:
-        """Render only the first page of a PDF as a PNG image."""
+    async def _pdf_first_page_to_image(self, file_data: bytes) -> bytes | None:
+        """Render only the first page of a PDF as a PNG image.
+
+        Runs in executor to avoid blocking the async event loop.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, functools.partial(self._pdf_first_page_to_image_sync, file_data)
+        )
+
+    @staticmethod
+    def _pdf_first_page_to_image_sync(file_data: bytes) -> bytes | None:
+        """Synchronous PDF-to-image rendering (runs in thread pool)."""
         try:
             pdf = fitz.open(stream=file_data, filetype="pdf")
             if len(pdf) == 0:

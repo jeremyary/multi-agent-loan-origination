@@ -1,0 +1,11 @@
+{{- if .Values.api.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.api.name }}-config
+  labels:
+    {{- include "summit-cap.api.labels" . | nindent 4 }}
+data:
+  models.yaml: |
+    {{- .Values.api.config.modelsYaml | nindent 4 }}
+{{- end }}

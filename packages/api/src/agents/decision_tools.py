@@ -70,8 +70,10 @@ async def _compliance_gate(session, application_id: int) -> str | None:
             f"check found for application #{application_id}."
         )
 
-    if comp_event.event_data and comp_event.event_data.get("status") == "FAIL":
-        failed_checks = comp_event.event_data.get("failed_checks", [])
+    event_data = comp_event.event_data or {}
+    overall = event_data.get("overall_status") or event_data.get("status")
+    if overall == "FAIL" or not event_data.get("can_proceed", True):
+        failed_checks = event_data.get("failed_checks", [])
         failed_str = ", ".join(failed_checks) if failed_checks else "one or more checks"
         return (
             f"Cannot approve application #{application_id} -- compliance check "

@@ -17,15 +17,28 @@ src/
     health.py          # GET /health/
     public.py          # Public endpoints (products, affordability)
     applications.py    # Application CRUD + status + conditions
+    decisions.py       # Decision list + detail (read-only)
     documents.py       # Document upload, list, completeness
     chat.py            # Public WebSocket chat (unauthenticated)
     borrower_chat.py   # Borrower WebSocket chat (authenticated) + history
+    loan_officer_chat.py  # Loan officer WebSocket chat + history
+    underwriter_chat.py   # Underwriter WebSocket chat + history
     admin.py           # Admin endpoints (seed, audit, verification)
-    hmda.py            # HMDA demographics endpoint
+    hmda.py            # HMDA demographics collection (isolated schema)
     _chat_handler.py   # Shared WebSocket streaming logic
   schemas/             # Pydantic request/response models
   services/            # Business logic layer
-  agents/              # LangGraph agent definitions
+    compliance/        # HMDA, compliance checks, knowledge base
+    seed/              # Demo data seeding
+  agents/              # LangGraph agent definitions + tool modules
+    base.py            # Base agent graph (input/output shields, RBAC, routing)
+    registry.py        # Agent config loading from config/agents/*.yaml
+    public_tools.py    # Public assistant tools (products, affordability)
+    borrower_tools.py  # Borrower tools (intake, docs, disclosures, status)
+    loan_officer_tools.py  # LO tools (pipeline, workflow, communication)
+    underwriter_tools.py   # UW tools (queue, risk, conditions, application detail)
+    decision_tools.py  # Decision tools (propose, confirm, LE/CD, adverse action)
+    compliance_check_tool.py  # Compliance check tool (ECOA, ATR/QM, TRID)
   inference/           # LLM client, model routing, safety shields
 tests/
   test_*.py            # Unit tests
@@ -36,23 +49,27 @@ tests/
 ## REST API Routes
 
 ### Health
-- `GET /health/` - Service health check
+- `GET /health/` - Service health check (includes DB, S3, LLM status)
 
 ### Public (no authentication)
 - `GET /api/public/products` - List mortgage product catalog
 - `POST /api/public/calculate-affordability` - Calculate affordability based on income and debts
 
 ### Applications (authenticated)
-- `GET /api/applications/` - List applications (paginated, role-scoped)
+- `GET /api/applications/` - List applications (paginated, role-scoped, sortable by urgency)
 - `POST /api/applications/` - Create new application (borrower, admin)
 - `GET /api/applications/{id}` - Get single application
 - `PATCH /api/applications/{id}` - Update application (loan officer, underwriter, admin)
 - `GET /api/applications/{id}/status` - Get aggregated application status summary
 - `GET /api/applications/{id}/rate-lock` - Get rate lock status
-- `GET /api/applications/{id}/conditions` - List conditions for application
-- `POST /api/applications/{id}/conditions/{cid}/respond` - Respond to a condition
+- `GET /api/applications/{id}/conditions` - List conditions (filterable by `open_only`)
+- `POST /api/applications/{id}/conditions/{cid}/respond` - Respond to a condition (borrower)
 - `POST /api/applications/{id}/borrowers` - Add borrower to application
 - `DELETE /api/applications/{id}/borrowers/{bid}` - Remove borrower from application
+
+### Decisions (authenticated, read-only)
+- `GET /api/applications/{id}/decisions` - List all decisions for an application
+- `GET /api/applications/{id}/decisions/{did}` - Get single decision detail
 
 ### Documents (authenticated)
 - `POST /api/applications/{id}/documents` - Upload document (multipart form)
@@ -62,16 +79,19 @@ tests/
 - `GET /api/applications/{id}/completeness` - Check document completeness
 
 ### HMDA (authenticated)
-- `POST /api/hmda/demographics` - Upsert borrower demographics (isolated schema)
+- `POST /api/hmda/collect` - Collect borrower demographics (isolated compliance schema)
 
 ### Admin (admin role only)
 - `POST /api/admin/seed` - Seed demo data
 - `GET /api/admin/seed/status` - Check seed status
-- `GET /api/admin/audit` - Query audit log
+- `GET /api/admin/audit` - Query audit log (filterable by `application_id`, `event_type`)
+- `GET /api/admin/audit/application/{id}` - Audit events for a specific application
 - `GET /api/admin/audit/verify` - Verify hash chain integrity
 
 ### Conversation History (authenticated)
-- `GET /api/borrower/conversations/history` - Get conversation history for authenticated borrower
+- `GET /api/borrower/conversations/history` - Borrower conversation history
+- `GET /api/loan-officer/conversations/history` - Loan officer conversation history
+- `GET /api/underwriter/conversations/history` - Underwriter conversation history
 
 ## WebSocket Protocol
 
@@ -87,7 +107,18 @@ No authentication required. Session ID is ephemeral (UUID). Conversations do not
 ```
 ws://host/api/borrower/chat?token=<jwt>
 ```
-JWT passed via query parameter. Thread ID is deterministic (`user:{userId}:agent:borrower-assistant`). Conversations persist via PostgreSQL checkpoint.
+
+**Loan Officer Chat (authenticated):**
+```
+ws://host/api/loan-officer/chat?token=<jwt>
+```
+
+**Underwriter Chat (authenticated):**
+```
+ws://host/api/underwriter/chat?token=<jwt>
+```
+
+JWT passed via query parameter for all authenticated endpoints. Thread ID is deterministic (`user:{userId}:agent:{agent-name}`). Conversations persist via PostgreSQL checkpoint.
 
 When `AUTH_DISABLED=true`, returns a development user.
 
@@ -101,12 +132,27 @@ When `AUTH_DISABLED=true`, returns a development user.
 **Server sends (streaming):**
 ```json
 {"type": "token", "content": "partial"}
+{"type": "tool_start", "content": "tool_name"}
+{"type": "tool_end", "content": "tool result summary"}
 {"type": "safety_override", "content": "reason for safety intervention"}
 {"type": "done"}
 {"type": "error", "content": "error message"}
 ```
 
-Tokens stream incrementally as the LLM generates responses. `done` signals end of response. `safety_override` indicates the safety shield triggered and overrode the LLM output.
+Tokens stream incrementally as the LLM generates responses. `done` signals end of response. `safety_override` indicates the safety shield triggered and overrode the LLM output. `tool_start`/`tool_end` bracket agent tool invocations.
+
+## Agents
+
+Four LangGraph agents, each with role-scoped tools and YAML config (`config/agents/`):
+
+| Agent | Role | Tools |
+|-------|------|-------|
+| `public-assistant` | (none) | Products, affordability calculator |
+| `borrower-assistant` | borrower | Application intake, doc upload, status, disclosures |
+| `loan-officer-assistant` | loan_officer | Pipeline, workflow actions, communication drafting |
+| `underwriter-assistant` | underwriter | Queue, risk assessment, conditions, decisions, compliance checks |
+
+All agents share a common base graph (`agents/base.py`) with input/output safety shields, rule-based model routing (fast/capable tiers), and tool-level RBAC enforcement.
 
 ## Authentication & RBAC
 
@@ -150,12 +196,15 @@ List endpoints return paginated responses:
 ## Configuration
 
 Environment variables loaded via Pydantic Settings (`src/core/config.py`):
-- `DATABASE_URL` - PostgreSQL connection string
-- `KEYCLOAK_*` - Keycloak OIDC configuration
+- `DATABASE_URL` - PostgreSQL connection string (host port 5433 for local dev)
+- `COMPLIANCE_DATABASE_URL` - Separate connection for HMDA isolated schema
+- `KEYCLOAK_URL`, `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID` - Keycloak OIDC configuration
 - `AUTH_DISABLED` - Bypass authentication for local dev
-- `S3_*` - MinIO/S3 object storage configuration
-- `LLM_*` - LLM provider configuration (base URL, API key, model names)
-- `LANGFUSE_*` - LangFuse observability (optional)
+- `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET` - MinIO/S3 object storage
+- `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL_FAST`, `LLM_MODEL_CAPABLE` - LLM provider
+- `SAFETY_MODEL`, `SAFETY_ENDPOINT` - Llama Guard safety shields (optional)
+- `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` - LangFuse observability (optional)
+- `SQLADMIN_USER`, `SQLADMIN_PASSWORD`, `SQLADMIN_SECRET_KEY` - Admin panel credentials
 - `ALLOWED_HOSTS` - CORS allowed origins
 
 ## Running Locally
@@ -174,5 +223,7 @@ AUTH_DISABLED=true uv run pytest --cov=src
 uv run ruff check src/
 uv run ruff format src/
 ```
+
+Database is available at `localhost:5433` when using `podman-compose` (maps host 5433 to container 5432).
 
 For database setup and migrations, see the [DB package README](../db/README.md).
