@@ -13,9 +13,15 @@ from src.agents.borrower_tools import (
 from src.schemas.condition import ConditionItem, ConditionListResponse, ConditionRespondRequest
 from src.services.condition import (
     check_condition_documents,
+    clear_condition,
+    get_condition_summary,
     get_conditions,
+    issue_condition,
     link_document_to_condition,
     respond_to_condition,
+    return_condition,
+    review_condition,
+    waive_condition,
 )
 
 # ---------------------------------------------------------------------------
@@ -708,3 +714,603 @@ async def test_tool_check_satisfaction_not_found(mock_service, mock_session_cls)
     )
 
     assert "not found" in result
+
+
+# ---------------------------------------------------------------------------
+# Service: issue_condition
+# ---------------------------------------------------------------------------
+
+
+def _mock_app(stage="underwriting"):
+    """Create a mock application with the given stage."""
+    from db.enums import ApplicationStage
+
+    app = MagicMock()
+    app.stage = ApplicationStage(stage)
+    app.id = 100
+    return app
+
+
+def _mock_condition_obj(
+    id=1,
+    description="Verify employment",
+    severity="prior_to_approval",
+    status="open",
+    response_text=None,
+    issued_by="uw-maria",
+    cleared_by=None,
+    due_date=None,
+    iteration_count=0,
+    waiver_rationale=None,
+):
+    """Create a mock Condition ORM object for lifecycle tests."""
+    from db.enums import ConditionSeverity, ConditionStatus
+
+    c = MagicMock()
+    c.id = id
+    c.description = description
+    c.severity = ConditionSeverity(severity)
+    c.status = ConditionStatus(status)
+    c.response_text = response_text
+    c.issued_by = issued_by
+    c.cleared_by = cleared_by
+    c.due_date = due_date
+    c.iteration_count = iteration_count
+    c.waiver_rationale = waiver_rationale
+    c.application_id = 100
+    return c
+
+
+def _uw_user():
+    """Create a mock underwriter UserContext."""
+    user = MagicMock()
+    user.user_id = "uw-maria"
+    user.role = MagicMock()
+    user.role.value = "underwriter"
+    user.data_scope = MagicMock()
+    return user
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition.get_application", new_callable=AsyncMock)
+async def test_issue_condition_out_of_scope(mock_get_app, mock_audit):
+    """issue_condition returns None when application not found."""
+    mock_get_app.return_value = None
+    session = AsyncMock()
+
+    result = await issue_condition(
+        session,
+        _uw_user(),
+        999,
+        "Need pay stubs",
+        MagicMock(),
+        None,
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition.get_application", new_callable=AsyncMock)
+async def test_issue_condition_wrong_stage(mock_get_app, mock_audit):
+    """issue_condition returns error when app is in wrong stage."""
+    mock_get_app.return_value = _mock_app(stage="application")
+    session = AsyncMock()
+
+    from db.enums import ConditionSeverity
+
+    result = await issue_condition(
+        session,
+        _uw_user(),
+        100,
+        "Need pay stubs",
+        ConditionSeverity.PRIOR_TO_DOCS,
+        None,
+    )
+    assert result is not None
+    assert "error" in result
+    assert "underwriting" in result["error"].lower() or "conditional" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition.get_application", new_callable=AsyncMock)
+async def test_issue_condition_happy_path(mock_get_app, mock_audit):
+    """issue_condition creates a condition in UNDERWRITING stage."""
+    mock_get_app.return_value = _mock_app(stage="underwriting")
+    session = AsyncMock()
+
+    from db.enums import ConditionSeverity
+
+    # After commit+refresh, the mock condition should have an id
+    async def fake_refresh(obj):
+        obj.id = 42
+        obj.description = "Need pay stubs"
+        obj.severity = ConditionSeverity.PRIOR_TO_DOCS
+        obj.status = MagicMock()
+        obj.status.value = "open"
+        obj.due_date = None
+
+    session.refresh = fake_refresh
+
+    result = await issue_condition(
+        session,
+        _uw_user(),
+        100,
+        "Need pay stubs",
+        ConditionSeverity.PRIOR_TO_DOCS,
+        None,
+    )
+    assert result is not None
+    assert "error" not in result
+    assert result["id"] == 42
+    assert result["severity"] == "prior_to_docs"
+    assert result["status"] == "open"
+    session.add.assert_called_once()
+    session.commit.assert_awaited_once()
+    mock_audit.assert_awaited_once()
+    assert mock_audit.call_args.kwargs["event_type"] == "condition_issued"
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition.get_application", new_callable=AsyncMock)
+async def test_issue_condition_with_due_date(mock_get_app, mock_audit):
+    """issue_condition records due_date when provided."""
+    mock_get_app.return_value = _mock_app(stage="conditional_approval")
+    session = AsyncMock()
+
+    from datetime import UTC, datetime
+
+    from db.enums import ConditionSeverity
+
+    due = datetime(2026, 3, 15, tzinfo=UTC)
+
+    async def fake_refresh(obj):
+        obj.id = 43
+        obj.description = "Updated bank statements"
+        obj.severity = ConditionSeverity.PRIOR_TO_CLOSING
+        obj.status = MagicMock()
+        obj.status.value = "open"
+        obj.due_date = due
+
+    session.refresh = fake_refresh
+
+    result = await issue_condition(
+        session,
+        _uw_user(),
+        100,
+        "Updated bank statements",
+        ConditionSeverity.PRIOR_TO_CLOSING,
+        due,
+    )
+    assert result is not None
+    assert result["due_date"] is not None
+    assert "2026-03-15" in result["due_date"]
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition.get_application", new_callable=AsyncMock)
+async def test_issue_condition_audit_event(mock_get_app, mock_audit):
+    """issue_condition writes audit with severity and description."""
+    mock_get_app.return_value = _mock_app(stage="underwriting")
+    session = AsyncMock()
+
+    from db.enums import ConditionSeverity
+
+    async def fake_refresh(obj):
+        obj.id = 44
+        obj.description = "Verify income"
+        obj.severity = ConditionSeverity.PRIOR_TO_APPROVAL
+        obj.status = MagicMock()
+        obj.status.value = "open"
+        obj.due_date = None
+
+    session.refresh = fake_refresh
+
+    await issue_condition(
+        session,
+        _uw_user(),
+        100,
+        "Verify income",
+        ConditionSeverity.PRIOR_TO_APPROVAL,
+        None,
+    )
+    mock_audit.assert_awaited_once()
+    event_data = mock_audit.call_args.kwargs["event_data"]
+    assert event_data["severity"] == "prior_to_approval"
+    assert event_data["description"] == "Verify income"
+
+
+# ---------------------------------------------------------------------------
+# Service: review_condition
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_review_condition_not_found(mock_fetch, mock_audit):
+    """review_condition returns None when condition not found."""
+    mock_fetch.return_value = (_mock_app(), None)
+    session = AsyncMock()
+
+    result = await review_condition(session, _uw_user(), 100, 999)
+    assert result is None
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_review_condition_wrong_status(mock_fetch, mock_audit):
+    """review_condition returns error when condition is OPEN (not RESPONDED)."""
+    cond = _mock_condition_obj(status="open")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    result = await review_condition(session, _uw_user(), 100, 1)
+    assert result is not None
+    assert "error" in result
+    assert "RESPONDED" in result["error"]
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_review_condition_happy_path(mock_fetch, mock_audit):
+    """review_condition transitions RESPONDED -> UNDER_REVIEW."""
+    from db.enums import ConditionStatus
+
+    cond = _mock_condition_obj(status="responded")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    async def fake_refresh(obj):
+        obj.status = ConditionStatus.UNDER_REVIEW
+
+    session.refresh = fake_refresh
+
+    result = await review_condition(session, _uw_user(), 100, 1)
+    assert result is not None
+    assert "error" not in result
+    assert cond.status == ConditionStatus.UNDER_REVIEW
+    mock_audit.assert_awaited_once()
+    assert mock_audit.call_args.kwargs["event_type"] == "condition_review_started"
+
+
+# ---------------------------------------------------------------------------
+# Service: clear_condition
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_clear_condition_not_found(mock_fetch, mock_audit):
+    """clear_condition returns None when condition not found."""
+    mock_fetch.return_value = (_mock_app(), None)
+    session = AsyncMock()
+
+    result = await clear_condition(session, _uw_user(), 100, 999)
+    assert result is None
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_clear_condition_wrong_status(mock_fetch, mock_audit):
+    """clear_condition returns error when condition is OPEN."""
+    cond = _mock_condition_obj(status="open")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    result = await clear_condition(session, _uw_user(), 100, 1)
+    assert result is not None
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_clear_condition_from_responded(mock_fetch, mock_audit):
+    """clear_condition transitions RESPONDED -> CLEARED."""
+    from db.enums import ConditionStatus
+
+    cond = _mock_condition_obj(status="responded")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    async def fake_refresh(obj):
+        obj.status = ConditionStatus.CLEARED
+        obj.cleared_by = "uw-maria"
+
+    session.refresh = fake_refresh
+
+    result = await clear_condition(session, _uw_user(), 100, 1)
+    assert result is not None
+    assert "error" not in result
+    assert result["cleared_by"] == "uw-maria"
+    mock_audit.assert_awaited_once()
+    assert mock_audit.call_args.kwargs["event_type"] == "condition_cleared"
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_clear_condition_from_under_review(mock_fetch, mock_audit):
+    """clear_condition transitions UNDER_REVIEW -> CLEARED."""
+    from db.enums import ConditionStatus
+
+    cond = _mock_condition_obj(status="under_review")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    async def fake_refresh(obj):
+        obj.status = ConditionStatus.CLEARED
+        obj.cleared_by = "uw-maria"
+
+    session.refresh = fake_refresh
+
+    result = await clear_condition(session, _uw_user(), 100, 1)
+    assert result is not None
+    assert "error" not in result
+    assert cond.status == ConditionStatus.CLEARED
+    assert cond.cleared_by == "uw-maria"
+
+
+# ---------------------------------------------------------------------------
+# Service: waive_condition
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_waive_condition_not_found(mock_fetch, mock_audit):
+    """waive_condition returns None when condition not found."""
+    mock_fetch.return_value = (_mock_app(), None)
+    session = AsyncMock()
+
+    result = await waive_condition(session, _uw_user(), 100, 999, "Not needed")
+    assert result is None
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_waive_condition_blocked_prior_to_approval(mock_fetch, mock_audit):
+    """waive_condition rejects PRIOR_TO_APPROVAL severity."""
+    cond = _mock_condition_obj(severity="prior_to_approval", status="open")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    result = await waive_condition(session, _uw_user(), 100, 1, "Not needed")
+    assert result is not None
+    assert "error" in result
+    assert "PRIOR_TO_CLOSING" in result["error"]
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_waive_condition_blocked_prior_to_docs(mock_fetch, mock_audit):
+    """waive_condition rejects PRIOR_TO_DOCS severity."""
+    cond = _mock_condition_obj(severity="prior_to_docs", status="open")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    result = await waive_condition(session, _uw_user(), 100, 1, "Not needed")
+    assert result is not None
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_waive_condition_succeeds_prior_to_closing(mock_fetch, mock_audit):
+    """waive_condition succeeds for PRIOR_TO_CLOSING severity."""
+    from db.enums import ConditionStatus
+
+    cond = _mock_condition_obj(severity="prior_to_closing", status="open")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    async def fake_refresh(obj):
+        obj.status = ConditionStatus.WAIVED
+        obj.waiver_rationale = "Seller credit covers this"
+        obj.cleared_by = "uw-maria"
+
+    session.refresh = fake_refresh
+
+    result = await waive_condition(session, _uw_user(), 100, 1, "Seller credit covers this")
+    assert result is not None
+    assert "error" not in result
+    assert result["waiver_rationale"] == "Seller credit covers this"
+    mock_audit.assert_awaited_once()
+    assert mock_audit.call_args.kwargs["event_type"] == "condition_waived"
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_waive_condition_blocked_terminal(mock_fetch, mock_audit):
+    """waive_condition rejects already-cleared conditions."""
+    cond = _mock_condition_obj(severity="prior_to_closing", status="cleared")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    result = await waive_condition(session, _uw_user(), 100, 1, "Not needed")
+    assert result is not None
+    assert "error" in result
+    assert "terminal" in result["error"].lower()
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_waive_condition_records_rationale(mock_fetch, mock_audit):
+    """waive_condition stores rationale and cleared_by."""
+    from db.enums import ConditionStatus
+
+    cond = _mock_condition_obj(severity="prior_to_funding", status="responded")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    async def fake_refresh(obj):
+        obj.status = ConditionStatus.WAIVED
+        obj.waiver_rationale = "Immaterial amount"
+        obj.cleared_by = "uw-maria"
+
+    session.refresh = fake_refresh
+
+    result = await waive_condition(session, _uw_user(), 100, 1, "Immaterial amount")
+    assert result is not None
+    assert result["cleared_by"] == "uw-maria"
+    audit_data = mock_audit.call_args.kwargs["event_data"]
+    assert audit_data["rationale"] == "Immaterial amount"
+    assert audit_data["severity"] == "prior_to_funding"
+
+
+# ---------------------------------------------------------------------------
+# Service: return_condition
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_return_condition_not_found(mock_fetch, mock_audit):
+    """return_condition returns None when condition not found."""
+    mock_fetch.return_value = (_mock_app(), None)
+    session = AsyncMock()
+
+    result = await return_condition(session, _uw_user(), 100, 999, "Incomplete docs")
+    assert result is None
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_return_condition_wrong_status(mock_fetch, mock_audit):
+    """return_condition returns error when condition is OPEN."""
+    cond = _mock_condition_obj(status="open")
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    result = await return_condition(session, _uw_user(), 100, 1, "Incomplete docs")
+    assert result is not None
+    assert "error" in result
+    assert "UNDER_REVIEW" in result["error"]
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_return_condition_increments_iteration(mock_fetch, mock_audit):
+    """return_condition increments iteration_count and returns to OPEN."""
+    from db.enums import ConditionStatus
+
+    cond = _mock_condition_obj(
+        status="under_review", iteration_count=1, response_text="First attempt"
+    )
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    async def fake_refresh(obj):
+        obj.status = ConditionStatus.OPEN
+        obj.iteration_count = 2
+
+    session.refresh = fake_refresh
+
+    result = await return_condition(session, _uw_user(), 100, 1, "Missing page 2")
+    assert result is not None
+    assert "error" not in result
+    assert cond.iteration_count == 2
+    assert cond.status == ConditionStatus.OPEN
+    mock_audit.assert_awaited_once()
+    assert mock_audit.call_args.kwargs["event_type"] == "condition_returned"
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.write_audit_event", new_callable=AsyncMock)
+@patch("src.services.condition._fetch_condition", new_callable=AsyncMock)
+async def test_return_condition_appends_note(mock_fetch, mock_audit):
+    """return_condition appends note to response_text."""
+    from db.enums import ConditionStatus
+
+    cond = _mock_condition_obj(
+        status="under_review", iteration_count=0, response_text="Original response"
+    )
+    mock_fetch.return_value = (_mock_app(), cond)
+    session = AsyncMock()
+
+    async def fake_refresh(obj):
+        obj.status = ConditionStatus.OPEN
+
+    session.refresh = fake_refresh
+
+    await return_condition(session, _uw_user(), 100, 1, "Need signed copy")
+    assert "[Return #1]" in cond.response_text
+    assert "Need signed copy" in cond.response_text
+    assert "Original response" in cond.response_text
+
+
+# ---------------------------------------------------------------------------
+# Service: get_condition_summary
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.get_application", new_callable=AsyncMock)
+async def test_get_condition_summary_out_of_scope(mock_get_app):
+    """get_condition_summary returns None when application not found."""
+    mock_get_app.return_value = None
+    session = AsyncMock()
+
+    result = await get_condition_summary(session, _uw_user(), 999)
+    assert result is None
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.get_application", new_callable=AsyncMock)
+async def test_get_condition_summary_mixed_counts(mock_get_app):
+    """get_condition_summary returns correct counts by status."""
+    from db.enums import ConditionStatus
+
+    mock_get_app.return_value = _mock_app()
+    session = AsyncMock()
+
+    mock_result = MagicMock()
+    mock_result.all.return_value = [
+        (ConditionStatus.OPEN, 2),
+        (ConditionStatus.CLEARED, 3),
+        (ConditionStatus.WAIVED, 1),
+    ]
+    session.execute = AsyncMock(return_value=mock_result)
+
+    result = await get_condition_summary(session, _uw_user(), 100)
+    assert result is not None
+    assert result["total"] == 6
+    assert result["counts"]["open"] == 2
+    assert result["counts"]["cleared"] == 3
+    assert result["counts"]["waived"] == 1
+    assert result["counts"]["responded"] == 0
+
+
+@pytest.mark.asyncio
+@patch("src.services.condition.get_application", new_callable=AsyncMock)
+async def test_get_condition_summary_empty(mock_get_app):
+    """get_condition_summary returns zero counts when no conditions."""
+    mock_get_app.return_value = _mock_app()
+    session = AsyncMock()
+
+    mock_result = MagicMock()
+    mock_result.all.return_value = []
+    session.execute = AsyncMock(return_value=mock_result)
+
+    result = await get_condition_summary(session, _uw_user(), 100)
+    assert result is not None
+    assert result["total"] == 0
+    assert result["counts"]["open"] == 0

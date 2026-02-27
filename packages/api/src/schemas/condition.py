@@ -17,6 +17,10 @@ class ConditionItem(BaseModel):
     status: str | None = None
     response_text: str | None = None
     issued_by: str | None = None
+    cleared_by: str | None = None
+    due_date: datetime | None = None
+    iteration_count: int = 0
+    waiver_rationale: str | None = None
     created_at: datetime | None = None
 
 

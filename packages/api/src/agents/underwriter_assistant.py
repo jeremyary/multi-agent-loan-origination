@@ -3,7 +3,9 @@
 
 Tools: uw_queue_view, uw_application_detail, uw_risk_assessment,
 uw_preliminary_recommendation, compliance_check, product_info,
-affordability_calc, kb_search.
+affordability_calc, kb_search, uw_issue_condition, uw_review_condition,
+uw_clear_condition, uw_waive_condition, uw_return_condition,
+uw_condition_summary.
 """
 
 from typing import Any
@@ -11,6 +13,14 @@ from typing import Any
 from .base import build_agent_graph
 from .compliance_check_tool import compliance_check
 from .compliance_tools import kb_search
+from .condition_tools import (
+    uw_clear_condition,
+    uw_condition_summary,
+    uw_issue_condition,
+    uw_return_condition,
+    uw_review_condition,
+    uw_waive_condition,
+)
 from .tools import affordability_calc, product_info
 from .underwriter_tools import (
     uw_application_detail,
@@ -33,6 +43,12 @@ def build_graph(config: dict[str, Any], checkpointer=None):
             uw_preliminary_recommendation,
             compliance_check,
             kb_search,
+            uw_issue_condition,
+            uw_review_condition,
+            uw_clear_condition,
+            uw_waive_condition,
+            uw_return_condition,
+            uw_condition_summary,
         ],
         checkpointer=checkpointer,
     )
