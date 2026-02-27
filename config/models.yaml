@@ -11,10 +11,51 @@ routing:
     rules:
       simple:
         max_query_words: 10
-        requires_tools: false
-        patterns: ["status", "when", "what is", "show me", "how much", "my application"]
+        patterns:
+          - "status"
+          - "when"
+          - "what is"
+          - "show me"
+          - "how much"
+          - "my application"
+          - "hello"
+          - "hi"
+          - "thanks"
+          - "thank you"
       complex:
         default: true
+        keywords:
+          - "compliance"
+          - "regulation"
+          - "regulatory"
+          - "dti"
+          - "debt-to-income"
+          - "calculate"
+          - "affordability"
+          - "document"
+          - "resubmit"
+          - "underwriting"
+          - "submit"
+          - "review"
+          - "application"
+          - "condition"
+          - "rate lock"
+          - "compare"
+          - "analyze"
+          - "draft"
+          - "communication"
+          - "knowledge base"
+          - "ecoa"
+          - "trid"
+          - "hmda"
+          - "fcra"
+          - "fha"
+          - "fannie"
+          - "freddie"
+          - "atr"
+          - "qualified mortgage"
+          - "appraisal"
+          - "fair lending"
 
 models:
   fast_small:
@@ -33,6 +74,6 @@ models:
     provider: openai_compatible
     model_name: "${EMBEDDING_MODEL:-nomic-embed-text-v1.5}"
     description: "Embedding model for compliance KB vector search"
-    endpoint: "${EMBEDDING_BASE_URL:-${LLM_BASE_URL:-https://api.openai.com/v1}}"
-    api_key: "${EMBEDDING_API_KEY:-${LLM_API_KEY:-not-needed}}"
+    endpoint: "${LLM_BASE_URL:-https://api.openai.com/v1}"
+    api_key: "${LLM_API_KEY:-not-needed}"
     dimensions: 768

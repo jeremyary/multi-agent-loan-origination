@@ -10,6 +10,7 @@ Idempotent: clear_kb_content() removes all KB data before re-ingestion.
 
 import logging
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 from db import KBChunk, KBDocument
@@ -175,12 +176,24 @@ async def ingest_kb_content(
             content = md_file.read_text()
             metadata, body = _parse_frontmatter(content)
 
+            effective_date_str = metadata.get("effective_date")
+            effective_date = None
+            if effective_date_str:
+                try:
+                    effective_date = datetime.strptime(effective_date_str, "%Y-%m-%d").replace(
+                        tzinfo=UTC
+                    )
+                except ValueError:
+                    logger.warning(
+                        "Invalid date format in %s: %s", md_file.name, effective_date_str
+                    )
+
             doc = KBDocument(
                 title=metadata.get("title", md_file.stem),
                 tier=tier,
                 source_file=str(md_file.relative_to(root)),
                 description=metadata.get("description"),
-                effective_date=metadata.get("effective_date"),
+                effective_date=effective_date,
             )
             session.add(doc)
             await session.flush()  # Get doc.id
@@ -197,6 +210,7 @@ async def ingest_kb_content(
                     logger.warning(
                         "Embedding failed for %s, storing chunks without embeddings",
                         md_file.name,
+                        exc_info=True,
                     )
 
             for i, chunk_data in enumerate(chunks):

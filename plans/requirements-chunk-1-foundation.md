@@ -854,18 +854,19 @@ This is **Chunk 1** of the requirements document for the AI Banking Quickstart (
 **When** the model router evaluates the query
 **Then** the default classification is "simple" (per REQ-OQ-01 suggested heuristic in the hub document)
 
-**Given** a user query requires tool orchestration (multiple tool calls)
+**Given** a user query contains a complex keyword (e.g., "compliance", "dti", "underwriting")
 **When** the model router evaluates the query
 **Then** the classification is "complex" regardless of query length
 
-**Given** the model router fails to classify a query (edge case)
-**When** the failure occurs
-**Then** the router defaults to "complex" (fail-safe: use the more capable model) and logs the failure
+**Given** a user query matches no complex keywords and no simple patterns
+**When** the model router evaluates the query
+**Then** the router defaults to "complex" (fail-safe: use the more capable model)
 
 #### Notes
 
-- Per REQ-OQ-01 (hub document), the product plan defines "simple" as factual lookup/status check and "complex" as multi-step reasoning/compliance analysis. The suggested heuristic (< 10 words + no tool orchestration = simple) is a starting point for PoC implementation.
-- The router can be rule-based at PoC maturity; LLM-based classification is a production upgrade.
+- The router uses rule-based classification: complex keywords (first priority) > word count threshold > simple patterns > default to complex. No LLM call is made during classification.
+- The fast model has no tools bound. If the fast model's response indicates low confidence (via logprobs or hedging phrases), the graph escalates to the capable model.
+- Complex keywords are defined in `config/models.yaml` under `routing.classification.rules.complex.keywords`.
 
 ---
 
@@ -955,9 +956,9 @@ This is **Chunk 1** of the requirements document for the AI Banking Quickstart (
 **When** the router evaluates a simple query
 **Then** the router uses the LlamaStack provider and model name specified in the configuration
 
-**Given** `config/models.yaml` defines routing criteria (e.g., `max_query_length: 10`, `requires_tools: false`)
+**Given** `config/models.yaml` defines routing rules (e.g., `max_query_words: 10`, complex `keywords`, simple `patterns`)
 **When** the router classifies a query
-**Then** the classification logic uses these criteria
+**Then** the classification logic uses these rules
 
 **Given** `config/models.yaml` is updated (e.g., to change the fast/small model from Ollama to OpenShift AI)
 **When** a new conversation starts (without application restart)
@@ -989,18 +990,26 @@ This is **Chunk 1** of the requirements document for the AI Banking Quickstart (
 - Configuration hot-reload uses mtime-based staleness detection at conversation boundaries. No filesystem watchers or polling. See architecture Section 9.3.
 - Example configuration structure:
   ```yaml
+  routing:
+    default_tier: capable_large
+    classification:
+      strategy: rule_based
+      rules:
+        simple:
+          max_query_words: 10
+          patterns: ["status", "when", "hello", "hi", ...]
+        complex:
+          default: true
+          keywords: ["compliance", "dti", "underwriting", ...]
   models:
     fast_small:
-      provider: llamastack
-      model_name: llama-3.2-7b
-      routing_criteria:
-        max_query_length: 10
-        requires_tools: false
+      provider: openai_compatible
+      model_name: "${LLM_MODEL_FAST:-gpt-4o-mini}"
+      endpoint: "${LLM_BASE_URL:-https://api.openai.com/v1}"
     capable_large:
-      provider: llamastack
-      model_name: llama-3.1-70b
-      routing_criteria:
-        default: true
+      provider: openai_compatible
+      model_name: "${LLM_MODEL_CAPABLE:-gpt-4o-mini}"
+      endpoint: "${LLM_BASE_URL:-https://api.openai.com/v1}"
   ```
 
 ---

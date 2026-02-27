@@ -52,6 +52,8 @@ class SeedResponse(BaseModel):
     active_applications: int | None = None
     historical_loans: int | None = None
     hmda_demographics: int | None = None
+    kb_documents: int | None = None
+    kb_chunks: int | None = None
 
 
 class SeedStatusResponse(BaseModel):
