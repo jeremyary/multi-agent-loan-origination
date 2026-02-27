@@ -26,6 +26,14 @@ class AuditEventsResponse(BaseModel):
     events: list[AuditEventItem]
 
 
+class AuditEventsByApplicationResponse(BaseModel):
+    """Response for GET /api/admin/audit/application/{application_id}."""
+
+    application_id: int
+    count: int
+    events: list[AuditEventItem]
+
+
 class AuditChainVerifyResponse(BaseModel):
     """Response for GET /api/admin/audit/verify."""
 

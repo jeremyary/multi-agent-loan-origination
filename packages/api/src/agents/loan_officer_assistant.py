@@ -3,7 +3,8 @@
 
 Tools: lo_application_detail, lo_document_review, lo_document_quality,
 lo_completeness_check, lo_mark_resubmission, lo_underwriting_readiness,
-lo_submit_to_underwriting, product_info, affordability_calc.
+lo_submit_to_underwriting, lo_draft_communication, lo_send_communication,
+product_info, affordability_calc.
 """
 
 from typing import Any
@@ -14,7 +15,9 @@ from .loan_officer_tools import (
     lo_completeness_check,
     lo_document_quality,
     lo_document_review,
+    lo_draft_communication,
     lo_mark_resubmission,
+    lo_send_communication,
     lo_submit_to_underwriting,
     lo_underwriting_readiness,
 )
@@ -35,6 +38,8 @@ def build_graph(config: dict[str, Any], checkpointer=None):
             lo_mark_resubmission,
             lo_underwriting_readiness,
             lo_submit_to_underwriting,
+            lo_draft_communication,
+            lo_send_communication,
         ],
         checkpointer=checkpointer,
     )

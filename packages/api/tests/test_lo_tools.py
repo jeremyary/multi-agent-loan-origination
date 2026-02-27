@@ -14,7 +14,9 @@ from db.enums import ApplicationStage, UserRole
 from src.agents.loan_officer_tools import (
     _user_context_from_state,
     lo_application_detail,
+    lo_draft_communication,
     lo_mark_resubmission,
+    lo_send_communication,
     lo_submit_to_underwriting,
 )
 
@@ -280,3 +282,249 @@ class TestLoSubmitToUnderwriting:
             )
 
         assert "not found" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# lo_draft_communication
+# ---------------------------------------------------------------------------
+
+
+class TestLoDraftCommunication:
+    """Context-gathering tool for borrower communication drafts."""
+
+    @pytest.mark.asyncio
+    async def test_gathers_all_context_sections(self):
+        """Mocks 4 services; output contains BORROWER, LOAN DETAILS, DOCUMENTS,
+        CONDITIONS, RATE LOCK sections with correct data."""
+        mock_borrower = MagicMock()
+        mock_borrower.first_name = "Sarah"
+        mock_borrower.last_name = "Johnson"
+        mock_borrower.email = "sarah@test.com"
+
+        mock_ab = MagicMock()
+        mock_ab.is_primary = True
+        mock_ab.borrower = mock_borrower
+
+        mock_app = MagicMock()
+        mock_app.stage = ApplicationStage.APPLICATION
+        mock_app.loan_type = MagicMock(value="fha")
+        mock_app.property_address = "456 Elm St, Denver, CO"
+        mock_app.loan_amount = 425000
+        mock_app.application_borrowers = [mock_ab]
+
+        mock_completeness = MagicMock()
+        mock_completeness.provided_count = 2
+        mock_completeness.required_count = 4
+        mock_req_provided = MagicMock()
+        mock_req_provided.label = "W-2 Form"
+        mock_req_provided.is_provided = True
+        mock_req_provided.status = MagicMock(value="processing_complete")
+        mock_req_provided.quality_flags = []
+        mock_req_missing = MagicMock()
+        mock_req_missing.label = "Bank Statement"
+        mock_req_missing.is_provided = False
+        mock_req_missing.status = None
+        mock_req_missing.quality_flags = []
+        mock_completeness.requirements = [mock_req_provided, mock_req_missing]
+
+        mock_conditions = [
+            {
+                "id": 1,
+                "description": "Verify employment dates with employer letter",
+                "severity": "prior_to_approval",
+                "status": "open",
+            }
+        ]
+
+        mock_rate_lock = {
+            "application_id": 101,
+            "status": "active",
+            "locked_rate": 6.75,
+            "lock_date": "2025-04-01",
+            "expiration_date": "2025-04-15",
+            "days_remaining": 4,
+            "is_urgent": True,
+        }
+
+        state = {"user_id": "lo-james", "user_role": "loan_officer"}
+
+        with (
+            patch(
+                "src.agents.loan_officer_tools.get_application",
+                new_callable=AsyncMock,
+                return_value=mock_app,
+            ),
+            patch(
+                "src.agents.loan_officer_tools.check_completeness",
+                new_callable=AsyncMock,
+                return_value=mock_completeness,
+            ),
+            patch(
+                "src.agents.loan_officer_tools.get_conditions",
+                new_callable=AsyncMock,
+                return_value=mock_conditions,
+            ),
+            patch(
+                "src.agents.loan_officer_tools.get_rate_lock_status",
+                new_callable=AsyncMock,
+                return_value=mock_rate_lock,
+            ),
+            patch("src.agents.loan_officer_tools.SessionLocal") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await lo_draft_communication.ainvoke(
+                {
+                    "application_id": 101,
+                    "communication_type": "document_request",
+                    "state": state,
+                }
+            )
+
+        assert "BORROWER:" in result
+        assert "Sarah Johnson" in result
+        assert "LOAN DETAILS:" in result
+        assert "FHA Loan" in result
+        assert "$425,000.00" in result
+        assert "DOCUMENTS (2/4 provided):" in result
+        assert "W-2 Form: Provided" in result
+        assert "Bank Statement: MISSING" in result
+        assert "OPEN CONDITIONS (1):" in result
+        assert "Prior to Approval" in result
+        assert "Verify employment" in result
+        assert "RATE LOCK:" in result
+        assert "6.750%" in result
+        assert "URGENT" in result
+        assert "demographic" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_invalid_communication_type(self):
+        """Invalid type returns error without calling services."""
+        state = {"user_id": "lo-james", "user_role": "loan_officer"}
+
+        result = await lo_draft_communication.ainvoke(
+            {
+                "application_id": 101,
+                "communication_type": "invalid_type",
+                "state": state,
+            }
+        )
+
+        assert "Invalid communication type" in result
+        assert "invalid_type" in result
+
+    @pytest.mark.asyncio
+    async def test_app_not_found(self):
+        """Out-of-scope app returns 'not found'."""
+        state = {"user_id": "lo-james", "user_role": "loan_officer"}
+
+        with (
+            patch(
+                "src.agents.loan_officer_tools.get_application",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("src.agents.loan_officer_tools.SessionLocal") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await lo_draft_communication.ainvoke(
+                {
+                    "application_id": 999,
+                    "communication_type": "status_update",
+                    "state": state,
+                }
+            )
+
+        assert "not found" in result.lower()
+
+
+# ---------------------------------------------------------------------------
+# lo_send_communication
+# ---------------------------------------------------------------------------
+
+
+class TestLoSendCommunication:
+    """Audit-only communication send tool."""
+
+    @pytest.mark.asyncio
+    async def test_writes_audit_event(self):
+        """Verifies write_audit_event called with correct event_type and data shape."""
+        mock_app = MagicMock()
+
+        state = {"user_id": "lo-james", "user_role": "loan_officer"}
+
+        with (
+            patch(
+                "src.agents.loan_officer_tools.get_application",
+                new_callable=AsyncMock,
+                return_value=mock_app,
+            ),
+            patch(
+                "src.agents.loan_officer_tools.write_audit_event",
+                new_callable=AsyncMock,
+            ) as mock_audit,
+            patch("src.agents.loan_officer_tools.SessionLocal") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await lo_send_communication.ainvoke(
+                {
+                    "application_id": 101,
+                    "communication_type": "document_request",
+                    "subject": "Missing documents needed",
+                    "recipient_name": "Sarah Johnson",
+                    "state": state,
+                }
+            )
+
+        assert "recorded" in result.lower()
+        mock_audit.assert_awaited_once()
+        audit_call = mock_audit.call_args
+        assert audit_call.kwargs["event_type"] == "communication_sent"
+        event_data = audit_call.kwargs["event_data"]
+        assert event_data["communication_type"] == "document_request"
+        assert event_data["subject"] == "Missing documents needed"
+        assert event_data["recipient_name"] == "Sarah Johnson"
+        assert event_data["delivery_method"] == "audit_only"
+        mock_session.commit.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_app_not_found(self):
+        """Out-of-scope app returns 'not found', no audit written."""
+        state = {"user_id": "lo-james", "user_role": "loan_officer"}
+
+        with (
+            patch(
+                "src.agents.loan_officer_tools.get_application",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "src.agents.loan_officer_tools.write_audit_event",
+                new_callable=AsyncMock,
+            ) as mock_audit,
+            patch("src.agents.loan_officer_tools.SessionLocal") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await lo_send_communication.ainvoke(
+                {
+                    "application_id": 999,
+                    "communication_type": "status_update",
+                    "subject": "Test",
+                    "recipient_name": "Nobody",
+                    "state": state,
+                }
+            )
+
+        assert "not found" in result.lower()
+        mock_audit.assert_not_awaited()
