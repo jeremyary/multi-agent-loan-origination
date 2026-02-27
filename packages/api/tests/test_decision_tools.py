@@ -62,30 +62,33 @@ def _mock_decision(
 
 
 # ---------------------------------------------------------------------------
-# uw_render_decision
+# uw_render_decision -- Phase 1 (propose, confirmed=false)
 # ---------------------------------------------------------------------------
 
 
-@patch("src.agents.decision_tools.render_decision", new_callable=AsyncMock)
+@patch("src.agents.decision_tools.propose_decision", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
-async def test_render_decision_approve_success(mock_session_cls, mock_render):
-    """uw_render_decision formats approval output."""
-    mock_render.return_value = {
-        "id": 1,
+async def test_render_decision_propose_approve(mock_session_cls, mock_propose):
+    """Phase 1: uw_render_decision returns a proposal without persisting."""
+    mock_propose.return_value = {
+        "proposal": True,
+        "application_id": 100,
         "decision_type": "approved",
-        "rationale": "Strong financials",
         "new_stage": "clear_to_close",
+        "current_stage": "underwriting",
+        "rationale": "Strong financials",
         "ai_recommendation": "Approve",
         "ai_agreement": True,
-        "override_rationale": None,
         "denial_reasons": None,
+        "outstanding_conditions": 0,
+        "override_rationale": None,
     }
 
     session = AsyncMock()
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-    # Mock compliance check audit event
+    # Mock compliance gate pass
     comp_event = MagicMock()
     comp_event.event_data = {"status": "PASS"}
     comp_result = MagicMock()
@@ -101,17 +104,104 @@ async def test_render_decision_approve_success(mock_session_cls, mock_render):
         }
     )
 
+    assert "PROPOSED DECISION" in result
     assert "Approved" in result
-    assert "Clear To Close" in result
-    assert "concurrence" in result
+    assert "NOT been recorded" in result
+    assert "confirm" in result.lower()
+    mock_propose.assert_awaited_once()
+
+
+@patch("src.agents.decision_tools.propose_decision", new_callable=AsyncMock)
+@patch("src.agents.decision_tools.SessionLocal")
+async def test_render_decision_propose_deny(mock_session_cls, mock_propose):
+    """Phase 1: denial proposal shows reasons."""
+    mock_propose.return_value = {
+        "proposal": True,
+        "application_id": 100,
+        "decision_type": "denied",
+        "new_stage": "denied",
+        "current_stage": "underwriting",
+        "rationale": "Insufficient income",
+        "ai_recommendation": "Deny",
+        "ai_agreement": True,
+        "denial_reasons": ["Insufficient income", "High DTI"],
+        "outstanding_conditions": 0,
+        "override_rationale": None,
+    }
+
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    result = await uw_render_decision.ainvoke(
+        {
+            "application_id": 100,
+            "decision": "deny",
+            "rationale": "Insufficient income",
+            "denial_reasons": ["Insufficient income", "High DTI"],
+            "state": _state(),
+        }
+    )
+
+    assert "PROPOSED DECISION" in result
+    assert "Insufficient income" in result
+    assert "High DTI" in result
+
+
+# ---------------------------------------------------------------------------
+# uw_render_decision -- Phase 2 (confirmed=true)
+# ---------------------------------------------------------------------------
 
 
 @patch("src.agents.decision_tools.render_decision", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
-async def test_render_decision_deny_success(mock_session_cls, mock_render):
-    """uw_render_decision formats denial with reasons."""
+async def test_render_decision_confirmed_approve(mock_session_cls, mock_render):
+    """Phase 2: confirmed=true executes the decision."""
+    mock_render.return_value = {
+        "id": 1,
+        "application_id": 100,
+        "decision_type": "approved",
+        "rationale": "Strong financials",
+        "new_stage": "clear_to_close",
+        "ai_recommendation": "Approve",
+        "ai_agreement": True,
+        "override_rationale": None,
+        "denial_reasons": None,
+    }
+
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    comp_event = MagicMock()
+    comp_event.event_data = {"status": "PASS"}
+    comp_result = MagicMock()
+    comp_result.scalar_one_or_none.return_value = comp_event
+    session.execute.return_value = comp_result
+
+    result = await uw_render_decision.ainvoke(
+        {
+            "application_id": 100,
+            "decision": "approve",
+            "rationale": "Strong financials",
+            "confirmed": True,
+            "state": _state(),
+        }
+    )
+
+    assert "Decision rendered" in result
+    assert "Approved" in result
+    assert "Clear To Close" in result
+    mock_render.assert_awaited_once()
+
+
+@patch("src.agents.decision_tools.render_decision", new_callable=AsyncMock)
+@patch("src.agents.decision_tools.SessionLocal")
+async def test_render_decision_confirmed_deny(mock_session_cls, mock_render):
+    """Phase 2: confirmed denial with reasons."""
     mock_render.return_value = {
         "id": 2,
+        "application_id": 100,
         "decision_type": "denied",
         "rationale": "Insufficient income",
         "new_stage": "denied",
@@ -131,26 +221,30 @@ async def test_render_decision_deny_success(mock_session_cls, mock_render):
             "decision": "deny",
             "rationale": "Insufficient income",
             "denial_reasons": ["Insufficient income", "High DTI"],
+            "confirmed": True,
             "state": _state(),
         }
     )
 
+    assert "Decision rendered" in result
     assert "Denied" in result
-    assert "Insufficient income" in result
-    assert "High DTI" in result
 
 
-@patch("src.agents.decision_tools.render_decision", new_callable=AsyncMock)
+# ---------------------------------------------------------------------------
+# uw_render_decision -- edge cases (both phases)
+# ---------------------------------------------------------------------------
+
+
+@patch("src.agents.decision_tools.propose_decision", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
-async def test_render_decision_not_found(mock_session_cls, mock_render):
+async def test_render_decision_not_found(mock_session_cls, mock_propose):
     """uw_render_decision returns not-found message."""
-    mock_render.return_value = None
+    mock_propose.return_value = None
 
     session = AsyncMock()
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
-    # No compliance check needed for deny
     result = await uw_render_decision.ainvoke(
         {
             "application_id": 999,
@@ -215,8 +309,8 @@ async def test_render_decision_compliance_gate_failed(mock_session_cls):
 
 @patch("src.agents.decision_tools.render_decision", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
-async def test_render_decision_service_error(mock_session_cls, mock_render):
-    """uw_render_decision returns service error message."""
+async def test_render_decision_confirmed_service_error(mock_session_cls, mock_render):
+    """Phase 2: returns service error message."""
     mock_render.return_value = {"error": "Wrong stage for this operation"}
 
     session = AsyncMock()
@@ -229,6 +323,7 @@ async def test_render_decision_service_error(mock_session_cls, mock_render):
             "decision": "deny",
             "rationale": "test",
             "denial_reasons": ["test"],
+            "confirmed": True,
             "state": _state(),
         }
     )
@@ -236,19 +331,22 @@ async def test_render_decision_service_error(mock_session_cls, mock_render):
     assert "Wrong stage" in result
 
 
-@patch("src.agents.decision_tools.render_decision", new_callable=AsyncMock)
+@patch("src.agents.decision_tools.propose_decision", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
-async def test_render_decision_override_info(mock_session_cls, mock_render):
-    """uw_render_decision shows override information."""
-    mock_render.return_value = {
-        "id": 3,
+async def test_render_decision_propose_override_warning(mock_session_cls, mock_propose):
+    """Phase 1: proposal shows override warning when AI disagrees."""
+    mock_propose.return_value = {
+        "proposal": True,
+        "application_id": 100,
         "decision_type": "approved",
-        "rationale": "Compensating factors",
         "new_stage": "clear_to_close",
+        "current_stage": "underwriting",
+        "rationale": "Compensating factors",
         "ai_recommendation": "Deny",
         "ai_agreement": False,
-        "override_rationale": "Strong reserves",
         "denial_reasons": None,
+        "outstanding_conditions": 0,
+        "override_rationale": "Strong reserves",
     }
 
     session = AsyncMock()
@@ -271,8 +369,9 @@ async def test_render_decision_override_info(mock_session_cls, mock_render):
         }
     )
 
-    assert "override" in result.lower()
+    assert "OVERRIDE" in result
     assert "Strong reserves" in result
+    assert "NOT been recorded" in result
 
 
 # ---------------------------------------------------------------------------

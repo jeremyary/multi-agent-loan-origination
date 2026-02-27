@@ -27,7 +27,7 @@ from ..schemas.auth import UserContext
 from ..services.application import get_application
 from ..services.audit import write_audit_event
 from ..services.condition import get_condition_summary
-from ..services.decision import render_decision
+from ..services.decision import propose_decision, render_decision
 from ..services.rate_lock import get_rate_lock_status
 
 logger = logging.getLogger(__name__)
@@ -47,92 +47,92 @@ def _user_context_from_state(state: dict) -> UserContext:
     )
 
 
-@tool
-async def uw_render_decision(
-    application_id: int,
-    decision: str,
-    rationale: str,
-    denial_reasons: list[str] | None = None,
-    credit_score_used: int | None = None,
-    credit_score_source: str | None = None,
-    contributing_factors: str | None = None,
-    override_rationale: str | None = None,
-    state: Annotated[dict, InjectedState] = None,
-) -> str:
-    """Render an underwriting decision on a loan application.
+async def _compliance_gate(session, application_id: int) -> str | None:
+    """Check that a passing compliance check exists for the application.
 
-    Creates a formal decision record (approve, deny, or suspend).
-    Approvals auto-detect conditions: APPROVED if none outstanding,
-    CONDITIONAL_APPROVAL if conditions remain. Denials require specific
-    denial_reasons for ECOA compliance.
-
-    A compliance gate checks that compliance_check has been run and
-    passed before allowing an approval decision.
-
-    Args:
-        application_id: The loan application ID.
-        decision: One of "approve", "deny", or "suspend".
-        rationale: Explanation for the decision.
-        denial_reasons: Required for denials. List of specific reasons.
-        credit_score_used: Credit score at time of decision (for denials).
-        credit_score_source: Credit bureau source (for denials).
-        contributing_factors: Factors that contributed to the decision.
-        override_rationale: Explanation when overriding AI recommendation.
+    Returns an error message string if the gate fails, or None if it passes.
     """
-    user = _user_context_from_state(state)
-    decision_lower = decision.strip().lower()
+    comp_stmt = (
+        select(AuditEvent)
+        .where(
+            AuditEvent.application_id == application_id,
+            AuditEvent.event_type == "compliance_check",
+        )
+        .order_by(AuditEvent.timestamp.desc())
+        .limit(1)
+    )
+    comp_result = await session.execute(comp_stmt)
+    comp_event = comp_result.scalar_one_or_none()
 
-    async with SessionLocal() as session:
-        # Compliance gate for approvals
-        if decision_lower == "approve":
-            comp_stmt = (
-                select(AuditEvent)
-                .where(
-                    AuditEvent.application_id == application_id,
-                    AuditEvent.event_type == "compliance_check",
-                )
-                .order_by(AuditEvent.timestamp.desc())
-                .limit(1)
-            )
-            comp_result = await session.execute(comp_stmt)
-            comp_event = comp_result.scalar_one_or_none()
-
-            if comp_event is None:
-                return (
-                    "Run compliance_check before rendering a decision. No compliance "
-                    f"check found for application #{application_id}."
-                )
-
-            if comp_event.event_data and comp_event.event_data.get("status") == "FAIL":
-                failed_checks = comp_event.event_data.get("failed_checks", [])
-                failed_str = ", ".join(failed_checks) if failed_checks else "one or more checks"
-                return (
-                    f"Cannot approve application #{application_id} -- compliance check "
-                    f"FAILED ({failed_str}). Resolve compliance issues before approval."
-                )
-
-        result = await render_decision(
-            session,
-            user,
-            application_id,
-            decision_lower,
-            rationale,
-            denial_reasons=denial_reasons,
-            credit_score_used=credit_score_used,
-            credit_score_source=credit_score_source,
-            contributing_factors=contributing_factors,
-            override_rationale=override_rationale,
+    if comp_event is None:
+        return (
+            "Run compliance_check before rendering a decision. No compliance "
+            f"check found for application #{application_id}."
         )
 
-    if result is None:
-        return f"Application #{application_id} not found or you don't have access to it."
-    if "error" in result:
-        return result["error"]
+    if comp_event.event_data and comp_event.event_data.get("status") == "FAIL":
+        failed_checks = comp_event.event_data.get("failed_checks", [])
+        failed_str = ", ".join(failed_checks) if failed_checks else "one or more checks"
+        return (
+            f"Cannot approve application #{application_id} -- compliance check "
+            f"FAILED ({failed_str}). Resolve compliance issues before approval."
+        )
 
-    # Format output
+    return None
+
+
+def _format_proposal(result: dict) -> str:
+    """Format a proposal dict into a human-readable preview for the underwriter."""
     dt = result["decision_type"].replace("_", " ").title()
     lines = [
-        f"Decision rendered for application #{application_id}:",
+        "PROPOSED DECISION -- awaiting underwriter confirmation",
+        "=====================================================",
+        f"  Application: #{result['application_id']}",
+        f"  Decision: {dt}",
+        f"  Rationale: {result['rationale']}",
+    ]
+
+    if result.get("new_stage"):
+        stage_label = result["new_stage"].replace("_", " ").title()
+        lines.append(
+            f"  Stage transition: {result['current_stage'].replace('_', ' ').title()}"
+            f" -> {stage_label}"
+        )
+
+    if result.get("outstanding_conditions", 0) > 0:
+        lines.append(f"  Outstanding conditions: {result['outstanding_conditions']}")
+
+    if result.get("ai_recommendation"):
+        lines.append(f"  AI recommendation: {result['ai_recommendation']}")
+        if result.get("ai_agreement") is True:
+            lines.append("  AI agreement: Yes (concurrence)")
+        elif result.get("ai_agreement") is False:
+            lines.append("  AI agreement: No (OVERRIDE -- provide override_rationale)")
+            if result.get("override_rationale"):
+                lines.append(f"  Override rationale: {result['override_rationale']}")
+
+    if result.get("denial_reasons"):
+        lines.append("  Denial reasons:")
+        for i, reason in enumerate(result["denial_reasons"], 1):
+            lines.append(f"    {i}. {reason}")
+
+    lines.extend(
+        [
+            "",
+            "This decision has NOT been recorded yet.",
+            "Present this proposal to the underwriter and ask them to confirm",
+            "before calling this tool again with confirmed=true.",
+        ]
+    )
+
+    return "\n".join(lines)
+
+
+def _format_confirmed(result: dict, rationale: str) -> str:
+    """Format a confirmed decision dict into output text."""
+    dt = result["decision_type"].replace("_", " ").title()
+    lines = [
+        f"Decision rendered for application #{result['application_id']}:",
         f"  Type: {dt}",
         f"  Rationale: {rationale}",
     ]
@@ -156,6 +156,98 @@ async def uw_render_decision(
             lines.append(f"    {i}. {reason}")
 
     return "\n".join(lines)
+
+
+@tool
+async def uw_render_decision(
+    application_id: int,
+    decision: str,
+    rationale: str,
+    confirmed: bool = False,
+    denial_reasons: list[str] | None = None,
+    credit_score_used: int | None = None,
+    credit_score_source: str | None = None,
+    contributing_factors: str | None = None,
+    override_rationale: str | None = None,
+    state: Annotated[dict, InjectedState] = None,
+) -> str:
+    """Render an underwriting decision on a loan application.
+
+    This tool uses a two-phase flow to ensure human confirmation:
+
+    Phase 1 (confirmed=false, the default): Returns a PROPOSAL showing
+    what the decision would do (decision type, stage transition, AI
+    agreement). No records are created. You MUST present this proposal
+    to the underwriter and wait for their explicit confirmation.
+
+    Phase 2 (confirmed=true): After the underwriter confirms, call
+    again with confirmed=true and the same parameters to execute
+    the decision. This creates the decision record, transitions the
+    application stage, and writes audit events.
+
+    IMPORTANT: Never set confirmed=true without first showing the
+    proposal to the underwriter and receiving their explicit approval.
+
+    Args:
+        application_id: The loan application ID.
+        decision: One of "approve", "deny", or "suspend".
+        rationale: Explanation for the decision.
+        confirmed: Set to true only after the underwriter confirms the proposal.
+        denial_reasons: Required for denials. List of specific reasons.
+        credit_score_used: Credit score at time of decision (for denials).
+        credit_score_source: Credit bureau source (for denials).
+        contributing_factors: Factors that contributed to the decision.
+        override_rationale: Explanation when overriding AI recommendation.
+    """
+    user = _user_context_from_state(state)
+    decision_lower = decision.strip().lower()
+
+    async with SessionLocal() as session:
+        # Compliance gate for approvals (both phases)
+        if decision_lower == "approve":
+            gate_error = await _compliance_gate(session, application_id)
+            if gate_error:
+                return gate_error
+
+        if not confirmed:
+            # Phase 1: propose only
+            result = await propose_decision(
+                session,
+                user,
+                application_id,
+                decision_lower,
+                rationale,
+                denial_reasons=denial_reasons,
+                override_rationale=override_rationale,
+            )
+
+            if result is None:
+                return f"Application #{application_id} not found or you don't have access to it."
+            if "error" in result:
+                return result["error"]
+
+            return _format_proposal(result)
+
+        # Phase 2: confirmed -- persist the decision
+        result = await render_decision(
+            session,
+            user,
+            application_id,
+            decision_lower,
+            rationale,
+            denial_reasons=denial_reasons,
+            credit_score_used=credit_score_used,
+            credit_score_source=credit_score_source,
+            contributing_factors=contributing_factors,
+            override_rationale=override_rationale,
+        )
+
+    if result is None:
+        return f"Application #{application_id} not found or you don't have access to it."
+    if "error" in result:
+        return result["error"]
+
+    return _format_confirmed(result, rationale)
 
 
 @tool

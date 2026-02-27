@@ -13,6 +13,7 @@ from src.services.decision import (
     _get_ai_recommendation,
     get_decisions,
     get_latest_decision,
+    propose_decision,
     render_decision,
 )
 
@@ -678,6 +679,120 @@ async def test_render_decision_invalid_decision_type(mock_get_app, mock_ai, mock
     assert result is not None
     assert "error" in result
     assert "Invalid decision" in result["error"]
+
+
+# ---------------------------------------------------------------------------
+# propose_decision
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
+@patch("src.services.decision.get_application", new_callable=AsyncMock)
+async def test_propose_decision_returns_preview(mock_get_app, mock_ai, mock_cond):
+    """propose_decision returns a proposal without persisting."""
+    app = _mock_app(stage="underwriting")
+    mock_get_app.return_value = app
+    mock_ai.return_value = ("Approve", "Approve")
+    mock_cond.return_value = {
+        "total": 0,
+        "counts": {
+            "open": 0,
+            "responded": 0,
+            "under_review": 0,
+            "escalated": 0,
+            "cleared": 0,
+            "waived": 0,
+        },
+    }
+    session = AsyncMock()
+
+    result = await propose_decision(session, _uw_user(), 100, "approve", "Strong financials")
+    assert result is not None
+    assert "error" not in result
+    assert result["proposal"] is True
+    assert result["decision_type"] == "approved"
+    assert result["new_stage"] == "clear_to_close"
+    assert result["ai_agreement"] is True
+    # Session should NOT have commit or add called
+    session.add.assert_not_called()
+    session.commit.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
+@patch("src.services.decision.get_application", new_callable=AsyncMock)
+async def test_propose_decision_shows_conditions(mock_get_app, mock_ai, mock_cond):
+    """propose_decision includes outstanding condition count."""
+    app = _mock_app(stage="underwriting")
+    mock_get_app.return_value = app
+    mock_ai.return_value = (None, None)
+    mock_cond.return_value = {
+        "total": 3,
+        "counts": {
+            "open": 2,
+            "responded": 1,
+            "under_review": 0,
+            "escalated": 0,
+            "cleared": 0,
+            "waived": 0,
+        },
+    }
+    session = AsyncMock()
+
+    result = await propose_decision(session, _uw_user(), 100, "approve", "Looks good")
+    assert result["proposal"] is True
+    assert result["decision_type"] == "conditional_approval"
+    assert result["outstanding_conditions"] == 3
+
+
+@pytest.mark.asyncio
+@patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
+@patch("src.services.decision.get_application", new_callable=AsyncMock)
+async def test_propose_decision_deny_preview(mock_get_app, mock_ai):
+    """propose_decision previews denial with reasons."""
+    mock_get_app.return_value = _mock_app(stage="underwriting")
+    mock_ai.return_value = ("Deny", "Deny")
+    session = AsyncMock()
+
+    result = await propose_decision(
+        session,
+        _uw_user(),
+        100,
+        "deny",
+        "High risk",
+        denial_reasons=["Low credit", "High DTI"],
+    )
+    assert result["proposal"] is True
+    assert result["decision_type"] == "denied"
+    assert result["ai_agreement"] is True
+    assert result["denial_reasons"] == ["Low credit", "High DTI"]
+
+
+@pytest.mark.asyncio
+@patch("src.services.decision.get_application", new_callable=AsyncMock)
+async def test_propose_decision_not_found(mock_get_app):
+    """propose_decision returns None for unknown app."""
+    mock_get_app.return_value = None
+    session = AsyncMock()
+
+    result = await propose_decision(session, _uw_user(), 999, "approve", "test")
+    assert result is None
+
+
+@pytest.mark.asyncio
+@patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
+@patch("src.services.decision.get_application", new_callable=AsyncMock)
+async def test_propose_decision_wrong_stage(mock_get_app, mock_ai):
+    """propose_decision returns error for wrong stage."""
+    mock_get_app.return_value = _mock_app(stage="application")
+    mock_ai.return_value = (None, None)
+    session = AsyncMock()
+
+    result = await propose_decision(session, _uw_user(), 100, "approve", "test")
+    assert "error" in result
 
 
 # ---------------------------------------------------------------------------

@@ -47,12 +47,16 @@ S13: Elections"""
 #   Input:  Users asking for mortgage advice is the application's purpose.
 #   Output: The agent provides mortgage guidance (rates, products, affordability)
 #           as its primary function. Disclaimers are handled in the system prompt.
+#
+# S2 -- Non-Violent Crimes:
+#   Input:  Underwriting decisions (approve/deny/suspend), adverse action notices,
+#           debt-to-income analysis, and credit score discussions are core business
+#           operations. Llama Guard consistently flags these as S2 despite added
+#           context clarifying they are legitimate mortgage lending activities.
+#   Output: The agent must communicate denial reasons, financial risk assessments,
+#           and regulatory compliance details as part of its primary function.
 LLAMA_GUARD_CATEGORIES = """\
 S1: Violent Crimes
-S2: Non-Violent Crimes. \
-Note: This is a mortgage lending application. Discussions about loan applications, \
-financial transactions, debt, credit scores, income verification, and property \
-purchases are legitimate business activities, not non-violent crimes.
 S3: Sex-Related Crimes
 S4: Child Sexual Exploitation
 S5: Defamation

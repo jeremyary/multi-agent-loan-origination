@@ -76,7 +76,7 @@ def _ai_category(rec: str | None) -> str | None:
     return None
 
 
-async def render_decision(
+async def _resolve_decision(
     session: AsyncSession,
     user: UserContext,
     application_id: int,
@@ -84,16 +84,15 @@ async def render_decision(
     rationale: str,
     *,
     denial_reasons: list[str] | None = None,
-    credit_score_used: int | None = None,
-    credit_score_source: str | None = None,
-    contributing_factors: str | None = None,
     override_rationale: str | None = None,
 ) -> dict | None:
-    """Render an underwriting decision on an application.
+    """Validate inputs and compute the decision outcome without persisting.
 
     Returns None if application not found / out of scope.
     Returns dict with "error" key on business rule violations.
-    Returns dict with decision details on success.
+    Returns dict with resolved decision details on success:
+        app, decision_type, new_stage, ai_rec_text, ai_rec_category,
+        ai_agreement, current_stage, outstanding_conditions.
     """
     app = await get_application(session, user, application_id)
     if app is None:
@@ -113,22 +112,21 @@ async def render_decision(
     ai_rec_text, ai_rec_category = await _get_ai_recommendation(session, application_id)
 
     decision_lower = decision.strip().lower()
+    outstanding_conditions = 0
 
     # Determine decision type and new stage
     if decision_lower == "approve":
         cond_summary = await get_condition_summary(session, user, application_id)
-        has_outstanding = False
         if cond_summary and cond_summary["total"] > 0:
-            outstanding = (
+            outstanding_conditions = (
                 cond_summary["counts"].get("open", 0)
                 + cond_summary["counts"].get("responded", 0)
                 + cond_summary["counts"].get("under_review", 0)
                 + cond_summary["counts"].get("escalated", 0)
             )
-            has_outstanding = outstanding > 0
 
         if current_stage == ApplicationStage.CONDITIONAL_APPROVAL:
-            if has_outstanding:
+            if outstanding_conditions > 0:
                 return {
                     "error": (
                         f"Cannot approve application #{application_id} from Conditional "
@@ -140,7 +138,7 @@ async def render_decision(
             new_stage = ApplicationStage.CLEAR_TO_CLOSE
         else:
             # From UNDERWRITING
-            if has_outstanding:
+            if outstanding_conditions > 0:
                 decision_type = DecisionType.CONDITIONAL_APPROVAL
                 new_stage = ApplicationStage.CONDITIONAL_APPROVAL
             else:
@@ -174,6 +172,104 @@ async def render_decision(
         ai_cat = _ai_category(ai_rec_category)
         if ai_cat is not None:
             ai_agreement = uw_cat == ai_cat
+
+    return {
+        "app": app,
+        "decision_type": decision_type,
+        "new_stage": new_stage,
+        "ai_rec_text": ai_rec_text,
+        "ai_rec_category": ai_rec_category,
+        "ai_agreement": ai_agreement,
+        "current_stage": current_stage,
+        "outstanding_conditions": outstanding_conditions,
+    }
+
+
+async def propose_decision(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    decision: str,
+    rationale: str,
+    *,
+    denial_reasons: list[str] | None = None,
+    override_rationale: str | None = None,
+) -> dict | None:
+    """Preview what a decision would do without persisting anything.
+
+    Returns the same error/None semantics as render_decision, but on
+    success returns a preview dict instead of creating records.
+    """
+    resolved = await _resolve_decision(
+        session,
+        user,
+        application_id,
+        decision,
+        rationale,
+        denial_reasons=denial_reasons,
+        override_rationale=override_rationale,
+    )
+
+    if resolved is None or "error" in resolved:
+        return resolved
+
+    dt = resolved["decision_type"]
+    new_stage = resolved["new_stage"]
+    ai_agreement = resolved["ai_agreement"]
+
+    return {
+        "proposal": True,
+        "application_id": application_id,
+        "decision_type": dt.value,
+        "new_stage": new_stage.value if new_stage else None,
+        "current_stage": resolved["current_stage"].value,
+        "rationale": rationale,
+        "ai_recommendation": resolved["ai_rec_text"],
+        "ai_agreement": ai_agreement,
+        "denial_reasons": denial_reasons,
+        "outstanding_conditions": resolved["outstanding_conditions"],
+        "override_rationale": override_rationale if ai_agreement is False else None,
+    }
+
+
+async def render_decision(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    decision: str,
+    rationale: str,
+    *,
+    denial_reasons: list[str] | None = None,
+    credit_score_used: int | None = None,
+    credit_score_source: str | None = None,
+    contributing_factors: str | None = None,
+    override_rationale: str | None = None,
+) -> dict | None:
+    """Render an underwriting decision on an application.
+
+    Returns None if application not found / out of scope.
+    Returns dict with "error" key on business rule violations.
+    Returns dict with decision details on success.
+    """
+    resolved = await _resolve_decision(
+        session,
+        user,
+        application_id,
+        decision,
+        rationale,
+        denial_reasons=denial_reasons,
+        override_rationale=override_rationale,
+    )
+
+    if resolved is None or "error" in resolved:
+        return resolved
+
+    app = resolved["app"]
+    decision_type = resolved["decision_type"]
+    new_stage = resolved["new_stage"]
+    ai_rec_text = resolved["ai_rec_text"]
+    ai_rec_category = resolved["ai_rec_category"]
+    ai_agreement = resolved["ai_agreement"]
 
     # Create Decision record
     decision_record = Decision(
