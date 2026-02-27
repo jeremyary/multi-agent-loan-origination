@@ -133,6 +133,52 @@ class TestCheckAtrQm:
         )
         assert result.status == ComplianceStatus.CONDITIONAL_PASS
 
+    def test_atr_qm_elevated_dti_with_missing_docs(self):
+        """DTI in rebuttable-presumption range + missing docs -> CONDITIONAL_PASS.
+
+        Documents the design choice: DTI 0.43-0.50 drives CONDITIONAL_PASS
+        regardless of doc completeness. Missing-doc details are still appended
+        but don't override the DTI-driven status.
+        """
+        result = check_atr_qm(
+            dti=0.46,
+            has_income_docs=False,
+            has_asset_docs=True,
+            has_employment_docs=True,
+        )
+        assert result.status == ComplianceStatus.CONDITIONAL_PASS
+        assert any("income" in d.lower() for d in result.details)
+        assert any("rebuttable" in d.lower() for d in result.details)
+
+    def test_atr_qm_no_dti_no_docs(self):
+        """No DTI + no docs -> FAIL with missing-doc details (not fallback msg)."""
+        result = check_atr_qm(
+            dti=None,
+            has_income_docs=False,
+            has_asset_docs=False,
+            has_employment_docs=False,
+        )
+        assert result.status == ComplianceStatus.FAIL
+        assert any("income" in d.lower() for d in result.details)
+        assert any("asset" in d.lower() for d in result.details)
+        assert any("employment" in d.lower() for d in result.details)
+
+    def test_atr_qm_warning_missing_employment_docs_only(self):
+        """Good DTI + only employment docs missing -> WARNING.
+
+        Exercises the case where W2 counts as income but a borrower who
+        submitted only TAX_RETURN (income) + BANK_STATEMENT (asset) has
+        no employment verification.
+        """
+        result = check_atr_qm(
+            dti=0.35,
+            has_income_docs=True,
+            has_asset_docs=True,
+            has_employment_docs=False,
+        )
+        assert result.status == ComplianceStatus.WARNING
+        assert any("employment" in d.lower() for d in result.details)
+
 
 # ---------------------------------------------------------------------------
 # TRID
@@ -240,6 +286,34 @@ class TestCheckTrid:
         )
         assert result.status == ComplianceStatus.PASS
 
+    def test_trid_pass_le_at_exactly_3_business_days(self):
+        """LE delivered at exactly the 3-business-day boundary -> PASS."""
+        # Mon -> Thu = exactly 3 business days
+        app_created = datetime(2026, 3, 2, 10, 0, tzinfo=UTC)  # Mon
+        le_delivered = datetime(2026, 3, 5, 10, 0, tzinfo=UTC)  # Thu
+        result = check_trid(
+            le_delivery_date=le_delivered,
+            app_created_at=app_created,
+            cd_delivery_date=None,
+            closing_date=None,
+        )
+        assert result.status == ComplianceStatus.PASS
+
+    def test_trid_pass_cd_at_exactly_3_business_days(self):
+        """CD delivered exactly 3 business days before closing -> PASS."""
+        # Mon -> Thu = 3 business days
+        cd_delivered = datetime(2026, 3, 2, 10, 0, tzinfo=UTC)  # Mon
+        closing = datetime(2026, 3, 5, 10, 0, tzinfo=UTC)  # Thu
+        app_created = datetime(2026, 2, 20, 10, 0, tzinfo=UTC)
+        le_delivered = datetime(2026, 2, 22, 10, 0, tzinfo=UTC)
+        result = check_trid(
+            le_delivery_date=le_delivered,
+            app_created_at=app_created,
+            cd_delivery_date=cd_delivered,
+            closing_date=closing,
+        )
+        assert result.status == ComplianceStatus.PASS
+
 
 # ---------------------------------------------------------------------------
 # Combined runner
@@ -298,6 +372,22 @@ class TestRunAllChecks:
         assert combined["overall_status"] == ComplianceStatus.WARNING
         assert combined["can_proceed"] is True
 
+    def test_run_all_overall_conditional_pass(self):
+        """CONDITIONAL_PASS as worst status -> overall CONDITIONAL_PASS, can_proceed=True."""
+        ecoa = check_ecoa()  # PASS
+        atr = check_atr_qm(
+            dti=0.46, has_income_docs=True, has_asset_docs=True, has_employment_docs=True
+        )  # CONDITIONAL_PASS
+        trid_result = check_trid(
+            le_delivery_date=datetime(2026, 2, 22, 10, 0, tzinfo=UTC),
+            app_created_at=datetime(2026, 2, 20, 10, 0, tzinfo=UTC),
+            cd_delivery_date=None,
+            closing_date=None,
+        )  # PASS
+        combined = run_all_checks(ecoa, atr, trid_result)
+        assert combined["overall_status"] == ComplianceStatus.CONDITIONAL_PASS
+        assert combined["can_proceed"] is True
+
 
 # ---------------------------------------------------------------------------
 # Business days helper
@@ -329,3 +419,9 @@ class TestBusinessDaysBetween:
         start = datetime(2026, 3, 2, 10, 0, tzinfo=UTC)  # Mon
         end = datetime(2026, 3, 9, 10, 0, tzinfo=UTC)  # Mon
         assert _business_days_between(start, end) == 5
+
+    def test_business_days_end_before_start(self):
+        """End before start -> 0 (handles data entry errors gracefully)."""
+        start = datetime(2026, 3, 9, 10, 0, tzinfo=UTC)
+        end = datetime(2026, 3, 2, 10, 0, tzinfo=UTC)
+        assert _business_days_between(start, end) == 0

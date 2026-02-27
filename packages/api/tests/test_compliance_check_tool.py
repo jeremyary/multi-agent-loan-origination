@@ -375,3 +375,232 @@ class TestComplianceCheckAudit:
         assert event_data["regulation_type"] == "ALL"
         assert "overall_status" in event_data
         assert "can_proceed" in event_data
+
+    @pytest.mark.asyncio
+    async def test_compliance_check_stage_guard_audits_error(self):
+        """Stage guard writes audit event with wrong_stage error."""
+        mock_app = MagicMock()
+        mock_app.stage = ApplicationStage.APPLICATION
+
+        state = {"user_id": "uw-maria", "user_role": "underwriter"}
+
+        with (
+            patch(
+                "src.agents.compliance_check_tool.get_application",
+                new_callable=AsyncMock,
+                return_value=mock_app,
+            ),
+            patch(
+                "src.agents.compliance_check_tool.write_audit_event",
+                new_callable=AsyncMock,
+            ) as mock_audit,
+            patch("src.agents.compliance_check_tool.SessionLocal") as mock_session_cls,
+        ):
+            mock_session = AsyncMock()
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            await compliance_check.ainvoke(
+                {"application_id": 100, "regulation_type": "ALL", "state": state}
+            )
+
+        mock_audit.assert_awaited_once()
+        assert "wrong_stage" in mock_audit.call_args.kwargs["event_data"]["error"]
+
+
+# ---------------------------------------------------------------------------
+# DTI aggregation and edge cases
+# ---------------------------------------------------------------------------
+
+
+class TestComplianceCheckDtiAggregation:
+    """Tests for DTI computation from financials rows in the tool."""
+
+    @pytest.mark.asyncio
+    async def test_multi_borrower_financials_aggregation(self):
+        """Two financials rows aggregate income/debts for combined DTI."""
+        mock_app = MagicMock()
+        mock_app.stage = ApplicationStage.UNDERWRITING
+        mock_app.created_at = None
+        mock_app.le_delivery_date = None
+        mock_app.cd_delivery_date = None
+        mock_app.closing_date = None
+
+        docs = [_make_doc(DocumentType.W2), _make_doc(DocumentType.BANK_STATEMENT)]
+        state = {"user_id": "uw-maria", "user_role": "underwriter"}
+
+        with (
+            patch(
+                "src.agents.compliance_check_tool.get_application",
+                new_callable=AsyncMock,
+                return_value=mock_app,
+            ),
+            patch(
+                "src.agents.compliance_check_tool.list_documents",
+                new_callable=AsyncMock,
+                return_value=(docs, 2),
+            ),
+            patch(
+                "src.agents.compliance_check_tool.write_audit_event",
+                new_callable=AsyncMock,
+            ),
+            patch("src.agents.compliance_check_tool.SessionLocal") as mock_session_cls,
+        ):
+            # Primary: income=8000, debts=2000; Co-borrower: income=4000, debts=1500
+            # Combined DTI = 3500/12000 = 0.2917 -> PASS
+            mock_session = _mock_session_with_fins(
+                [
+                    _make_fin(income=8000, debts=2000),
+                    _make_fin(income=4000, debts=1500),
+                ]
+            )
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await compliance_check.ainvoke(
+                {"application_id": 100, "regulation_type": "ATR_QM", "state": state}
+            )
+
+        assert "PASS" in result
+        assert "29." in result  # DTI ~29.2%
+
+    @pytest.mark.asyncio
+    async def test_zero_income_produces_fail_not_crash(self):
+        """Financials with zero income -> DTI=None -> ATR/QM FAIL, no ZeroDivisionError."""
+        mock_app = MagicMock()
+        mock_app.stage = ApplicationStage.UNDERWRITING
+        mock_app.created_at = None
+        mock_app.le_delivery_date = None
+        mock_app.cd_delivery_date = None
+        mock_app.closing_date = None
+
+        state = {"user_id": "uw-maria", "user_role": "underwriter"}
+
+        with (
+            patch(
+                "src.agents.compliance_check_tool.get_application",
+                new_callable=AsyncMock,
+                return_value=mock_app,
+            ),
+            patch(
+                "src.agents.compliance_check_tool.list_documents",
+                new_callable=AsyncMock,
+                return_value=([], 0),
+            ),
+            patch(
+                "src.agents.compliance_check_tool.write_audit_event",
+                new_callable=AsyncMock,
+            ),
+            patch("src.agents.compliance_check_tool.SessionLocal") as mock_session_cls,
+        ):
+            mock_session = _mock_session_with_fins([_make_fin(income=0, debts=2000)])
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await compliance_check.ainvoke(
+                {"application_id": 100, "regulation_type": "ATR_QM", "state": state}
+            )
+
+        assert "FAIL" in result
+        assert "cannot be computed" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_none_income_and_debts_handled(self):
+        """Financials with None income/debts -> DTI=None, no TypeError."""
+        mock_app = MagicMock()
+        mock_app.stage = ApplicationStage.UNDERWRITING
+        mock_app.created_at = None
+        mock_app.le_delivery_date = None
+        mock_app.cd_delivery_date = None
+        mock_app.closing_date = None
+
+        state = {"user_id": "uw-maria", "user_role": "underwriter"}
+
+        with (
+            patch(
+                "src.agents.compliance_check_tool.get_application",
+                new_callable=AsyncMock,
+                return_value=mock_app,
+            ),
+            patch(
+                "src.agents.compliance_check_tool.list_documents",
+                new_callable=AsyncMock,
+                return_value=([], 0),
+            ),
+            patch(
+                "src.agents.compliance_check_tool.write_audit_event",
+                new_callable=AsyncMock,
+            ),
+            patch("src.agents.compliance_check_tool.SessionLocal") as mock_session_cls,
+        ):
+            mock_session = _mock_session_with_fins([_make_fin(income=None, debts=None)])
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await compliance_check.ainvoke(
+                {"application_id": 100, "regulation_type": "ATR_QM", "state": state}
+            )
+
+        assert "FAIL" in result
+
+
+# ---------------------------------------------------------------------------
+# Validation and output format
+# ---------------------------------------------------------------------------
+
+
+class TestComplianceCheckValidation:
+    """Input validation and output format tests."""
+
+    @pytest.mark.asyncio
+    async def test_invalid_regulation_type(self):
+        """Invalid regulation_type returns error without touching DB."""
+        state = {"user_id": "uw-maria", "user_role": "underwriter"}
+
+        result = await compliance_check.ainvoke(
+            {"application_id": 100, "regulation_type": "HMDA", "state": state}
+        )
+
+        assert "invalid" in result.lower()
+        assert "HMDA" in result
+
+    @pytest.mark.asyncio
+    async def test_single_regulation_omits_overall_section(self):
+        """Single-regulation check should NOT include OVERALL STATUS."""
+        mock_app = MagicMock()
+        mock_app.stage = ApplicationStage.UNDERWRITING
+        mock_app.created_at = None
+        mock_app.le_delivery_date = None
+        mock_app.cd_delivery_date = None
+        mock_app.closing_date = None
+
+        state = {"user_id": "uw-maria", "user_role": "underwriter"}
+
+        with (
+            patch(
+                "src.agents.compliance_check_tool.get_application",
+                new_callable=AsyncMock,
+                return_value=mock_app,
+            ),
+            patch(
+                "src.agents.compliance_check_tool.list_documents",
+                new_callable=AsyncMock,
+                return_value=([], 0),
+            ),
+            patch(
+                "src.agents.compliance_check_tool.write_audit_event",
+                new_callable=AsyncMock,
+            ),
+            patch("src.agents.compliance_check_tool.SessionLocal") as mock_session_cls,
+        ):
+            mock_session = _mock_session_with_fins([_make_fin()])
+            mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=mock_session)
+            mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+            result = await compliance_check.ainvoke(
+                {"application_id": 100, "regulation_type": "ECOA", "state": state}
+            )
+
+        assert "ECOA:" in result
+        assert "OVERALL STATUS:" not in result
+        assert "CAN PROCEED:" not in result
