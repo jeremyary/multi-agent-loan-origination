@@ -6,7 +6,7 @@ import enum
 from pydantic import BaseModel
 
 
-class UrgencyLevel(str, enum.Enum):
+class UrgencyLevel(enum.StrEnum):
     CRITICAL = "critical"
     HIGH = "high"
     MEDIUM = "medium"

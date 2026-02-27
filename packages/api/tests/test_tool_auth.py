@@ -26,9 +26,6 @@ def fake_tool() -> str:
     return "fake result"
 
 
-TOOL_DESCRIPTIONS = f"- {fake_tool.name}: {fake_tool.description}"
-
-
 @pytest.fixture
 def real_tools():
     """Return a list with the real fake_tool for graph compilation."""
@@ -55,7 +52,6 @@ def _build_graph_with_auth(real_tools, mock_llms, tool_allowed_roles):
         system_prompt=SYSTEM_PROMPT,
         tools=real_tools,
         llms=mock_llms,
-        tool_descriptions=TOOL_DESCRIPTIONS,
         tool_allowed_roles=tool_allowed_roles,
     )
 

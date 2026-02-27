@@ -18,12 +18,17 @@ from .config import get_routing_config
 logger = logging.getLogger(__name__)
 
 
-def classify_query(query: str, requires_tools: bool = False) -> str:
+def classify_query(query: str) -> str:
     """Classify a query and return the model tier name.
+
+    Uses a three-rule cascade:
+      1. Complex keywords (tool-requiring terms) -> capable tier
+      2. Word count exceeds threshold -> capable tier
+      3. Simple pattern match -> fast tier
+      4. Default -> capable tier (safe fallback)
 
     Args:
         query: The user's message text.
-        requires_tools: Whether the agent needs tool-calling for this query.
 
     Returns:
         Model tier key (e.g. 'fast_small' or 'capable_large').
@@ -32,23 +37,25 @@ def classify_query(query: str, requires_tools: bool = False) -> str:
     classification = routing.get("classification", {})
     rules = classification.get("rules", {})
     simple_rules = rules.get("simple", {})
+    complex_rules = rules.get("complex", {})
+    query_lower = query.lower()
 
-    # If tools are required, always use complex tier
-    if requires_tools:
+    # Rule 1: Complex keywords always route to capable
+    complex_keywords = complex_rules.get("keywords", [])
+    if any(kw in query_lower for kw in complex_keywords):
         return _complex_tier(routing)
 
-    # Word count check
+    # Rule 2: Word count exceeds threshold -> capable
     max_words = simple_rules.get("max_query_words", 10)
     if len(query.split()) > max_words:
         return _complex_tier(routing)
 
-    # Pattern matching -- if query contains any simple pattern, route to fast tier
+    # Rule 3: Simple pattern match -> fast tier
     patterns = simple_rules.get("patterns", [])
-    query_lower = query.lower()
     if any(pattern in query_lower for pattern in patterns):
         return "fast_small"
 
-    # Default to complex
+    # Default to complex (safe fallback)
     return _complex_tier(routing)
 
 

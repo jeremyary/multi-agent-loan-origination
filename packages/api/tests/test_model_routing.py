@@ -35,10 +35,13 @@ def _write_standard_config(tmp_path: Path) -> None:
             rules:
               simple:
                 max_query_words: 10
-                requires_tools: false
-                patterns: ["status", "when", "what is", "show me", "how much"]
+                patterns: ["status", "when", "what is", "show me", "how much",
+                           "hello", "hi", "thanks", "thank you"]
               complex:
                 default: true
+                keywords: ["compliance", "regulation", "dti", "debt-to-income",
+                           "calculate", "affordability", "document", "underwriting",
+                           "application", "ecoa", "trid", "hmda"]
         models:
           fast_small:
             provider: openai_compatible
@@ -122,10 +125,17 @@ def test_classify_long_query_routes_complex(tmp_path):
     assert result == "capable_large"
 
 
-def test_classify_tools_required_routes_complex(tmp_path):
-    """Queries requiring tools always route to capable_large regardless of content."""
+def test_classify_complex_keyword_routes_capable(tmp_path):
+    """Query containing a complex keyword should route to capable_large."""
     _write_standard_config(tmp_path)
-    assert classify_query("Show me", requires_tools=True) == "capable_large"
+    assert classify_query("What are the DTI requirements?") == "capable_large"
+
+
+def test_classify_complex_keyword_takes_precedence(tmp_path):
+    """Complex keyword should override short-query heuristic."""
+    _write_standard_config(tmp_path)
+    # "DTI limit?" is short (2 words) but contains complex keyword "dti"
+    assert classify_query("DTI limit?") == "capable_large"
 
 
 # -- Hot-reload --
