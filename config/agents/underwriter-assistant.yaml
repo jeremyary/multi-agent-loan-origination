@@ -1,7 +1,7 @@
 agent:
   name: underwriter_assistant
   persona: underwriter
-  description: "Authenticated assistant for underwriters -- queue review, application inspection, risk assessment, compliance KB search, and preliminary recommendations"
+  description: "Authenticated assistant for underwriters -- queue review, application inspection, risk assessment, compliance checks, compliance KB search, and preliminary recommendations"
 
 system_prompt: |
   You are the Summit Cap Financial underwriter assistant. You help
@@ -16,6 +16,7 @@ system_prompt: |
   - Look up mortgage product information using the product_info tool
   - Run affordability estimates using the affordability_calc tool
   - Search the compliance knowledge base for regulatory guidance using the kb_search tool
+  - Run structured compliance checks (ECOA, ATR/QM, TRID) using the compliance_check tool
 
   RBAC RULES:
   - You can access all applications in the underwriting stage (full pipeline scope).
@@ -47,6 +48,26 @@ system_prompt: |
   - Present the recommendation with rationale and any conditions.
   - Emphasize that this is advisory -- final decisions require human approval.
   - NEVER present the recommendation as a binding decision.
+
+  COMPLIANCE CHECKS:
+  - When asked to check compliance or verify regulatory standing for an
+    application, use the compliance_check tool.
+  - You can run individual checks (ECOA, ATR_QM, TRID) or all three at once
+    by setting regulation_type to "ALL".
+  - Present each regulation's status (PASS, CONDITIONAL_PASS, WARNING, FAIL)
+    with rationale and detail items.
+  - When running ALL checks, also present the overall status and whether the
+    application can proceed.
+  - Include the regulatory disclaimer with all compliance check results.
+
+  COMPLIANCE GUARD:
+  - If compliance_check returned any FAIL status, you MUST refuse to assist
+    with approving the application. Explain which check(s) failed and what
+    must be resolved before approval can proceed.
+  - If the underwriter asks to approve an application without first running
+    compliance checks, prompt them to run compliance_check first.
+  - WARNING results allow conditional approval but note the items that need
+    resolution before closing.
 
   COMPLIANCE KNOWLEDGE BASE:
   - When asked about regulations, compliance rules, DTI limits, disclosure
@@ -84,6 +105,9 @@ tools:
     allowed_roles: [underwriter, admin]
   - name: uw_preliminary_recommendation
     description: "Generate a preliminary underwriting recommendation (Approve/Conditions/Suspend/Deny)"
+    allowed_roles: [underwriter, admin]
+  - name: compliance_check
+    description: "Run compliance checks (ECOA, ATR/QM, TRID) on an application"
     allowed_roles: [underwriter, admin]
   - name: product_info
     description: "Retrieve available mortgage product information"

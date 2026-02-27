@@ -1,0 +1,212 @@
+# This project was developed with assistance from AI tools.
+"""LangGraph tool for running compliance checks (ECOA, ATR/QM, TRID).
+
+Wraps the pure compliance check functions with DB access to gather
+application data, then formats results for the underwriter agent.
+
+Design note -- session-per-tool-call:
+    Each tool opens its own ``SessionLocal()`` context rather than sharing
+    a single session across the agent turn.  See underwriter_tools.py
+    for rationale.
+"""
+
+import logging
+from typing import Annotated
+
+from db.database import SessionLocal
+from db.enums import ApplicationStage, DocumentType, UserRole
+from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
+from sqlalchemy import select
+
+from ..middleware.auth import build_data_scope
+from ..schemas.auth import UserContext
+from ..services.application import get_application
+from ..services.audit import write_audit_event
+from ..services.compliance.checks import (
+    check_atr_qm,
+    check_ecoa,
+    check_trid,
+    run_all_checks,
+)
+from ..services.document import list_documents
+
+logger = logging.getLogger(__name__)
+
+_DISCLAIMER = (
+    "\nDISCLAIMER: All regulatory information is simulated for demonstration "
+    "purposes and does not constitute legal or regulatory advice."
+)
+
+_INCOME_DOC_TYPES = frozenset({DocumentType.W2, DocumentType.PAY_STUB, DocumentType.TAX_RETURN})
+_ASSET_DOC_TYPES = frozenset({DocumentType.BANK_STATEMENT})
+_EMPLOYMENT_DOC_TYPES = frozenset({DocumentType.W2, DocumentType.PAY_STUB})
+
+
+def _user_context_from_state(state: dict) -> UserContext:
+    """Build a UserContext from the agent's graph state."""
+    user_id = state.get("user_id", "anonymous")
+    role_str = state.get("user_role", "underwriter")
+    role = UserRole(role_str)
+    return UserContext(
+        user_id=user_id,
+        role=role,
+        email=state.get("user_email") or f"{user_id}@summit-cap.local",
+        name=state.get("user_name") or user_id,
+        data_scope=build_data_scope(role, user_id),
+    )
+
+
+def _format_check_result(check) -> list[str]:
+    """Format a single ComplianceCheckResult into output lines."""
+    lines = [
+        f"  Status: {check.status.value}",
+        f"  Rationale: {check.rationale}",
+    ]
+    if check.details:
+        lines.append("  Details:")
+        for d in check.details:
+            lines.append(f"    - {d}")
+    return lines
+
+
+@tool
+async def compliance_check(
+    application_id: int,
+    regulation_type: str = "ALL",
+    state: Annotated[dict, InjectedState] = None,
+) -> str:
+    """Run compliance checks (ECOA, ATR/QM, TRID) on a loan application.
+
+    Validates regulatory compliance for applications in the underwriting
+    stage. Can run individual checks or all three combined.
+
+    Args:
+        application_id: The loan application ID to check.
+        regulation_type: Which check to run -- "ECOA", "ATR_QM", "TRID", or "ALL".
+    """
+    user = _user_context_from_state(state)
+    regulation_type = regulation_type.upper().strip()
+
+    valid_types = {"ECOA", "ATR_QM", "TRID", "ALL"}
+    if regulation_type not in valid_types:
+        return (
+            f"Invalid regulation_type '{regulation_type}'. "
+            f"Must be one of: {', '.join(sorted(valid_types))}"
+        )
+
+    async with SessionLocal() as session:
+        app = await get_application(session, user, application_id)
+        if app is None:
+            return f"Application #{application_id} not found or you don't have access to it."
+
+        if app.stage != ApplicationStage.UNDERWRITING:
+            stage_val = app.stage.value if app.stage else "unknown"
+            await write_audit_event(
+                session,
+                event_type="tool_call",
+                user_id=user.user_id,
+                user_role=user.role.value,
+                application_id=application_id,
+                event_data={
+                    "tool": "compliance_check",
+                    "error": f"wrong_stage:{stage_val}",
+                },
+            )
+            await session.commit()
+            return (
+                f"Compliance checks are only available for applications in the "
+                f"UNDERWRITING stage. Application #{application_id} is in "
+                f"{stage_val.replace('_', ' ').title()}."
+            )
+
+        # Gather data for checks
+        from db import ApplicationFinancials
+
+        fin_stmt = select(ApplicationFinancials).where(
+            ApplicationFinancials.application_id == application_id
+        )
+        fin_result = await session.execute(fin_stmt)
+        financials = fin_result.scalars().all()
+
+        documents, _ = await list_documents(session, user, application_id, limit=100)
+
+        # Compute ATR/QM inputs
+        total_income = sum(float(f.gross_monthly_income or 0) for f in financials)
+        total_debts = sum(float(f.monthly_debts or 0) for f in financials)
+        dti = total_debts / total_income if total_income > 0 else None
+
+        doc_types = set()
+        for doc in documents:
+            dt = doc.doc_type if hasattr(doc.doc_type, "value") else None
+            if dt:
+                doc_types.add(dt)
+
+        has_income_docs = bool(doc_types & _INCOME_DOC_TYPES)
+        has_asset_docs = bool(doc_types & _ASSET_DOC_TYPES)
+        has_employment_docs = bool(doc_types & _EMPLOYMENT_DOC_TYPES)
+
+        # Run requested checks
+        results = {}
+
+        if regulation_type in ("ECOA", "ALL"):
+            results["ECOA"] = check_ecoa(has_demographic_query=False)
+
+        if regulation_type in ("ATR_QM", "ALL"):
+            results["ATR_QM"] = check_atr_qm(
+                dti=dti,
+                has_income_docs=has_income_docs,
+                has_asset_docs=has_asset_docs,
+                has_employment_docs=has_employment_docs,
+            )
+
+        if regulation_type in ("TRID", "ALL"):
+            results["TRID"] = check_trid(
+                le_delivery_date=app.le_delivery_date,
+                app_created_at=app.created_at,
+                cd_delivery_date=app.cd_delivery_date,
+                closing_date=app.closing_date,
+            )
+
+        # Run combined if ALL
+        combined = None
+        if regulation_type == "ALL" and len(results) == 3:
+            combined = run_all_checks(results["ECOA"], results["ATR_QM"], results["TRID"])
+
+        # Audit
+        audit_data = {
+            "tool": "compliance_check",
+            "regulation_type": regulation_type,
+            "results": {k: v.status.value for k, v in results.items()},
+        }
+        if combined:
+            audit_data["overall_status"] = combined["overall_status"].value
+            audit_data["can_proceed"] = combined["can_proceed"]
+
+        await write_audit_event(
+            session,
+            event_type="compliance_check",
+            user_id=user.user_id,
+            user_role=user.role.value,
+            application_id=application_id,
+            event_data=audit_data,
+        )
+        await session.commit()
+
+    # Format output
+    lines = [f"Compliance Check -- Application #{application_id}", ""]
+
+    for check_result in results.values():
+        lines.append(f"{check_result.regulation}:")
+        lines.extend(_format_check_result(check_result))
+        lines.append("")
+
+    if combined:
+        lines.append(f"OVERALL STATUS: {combined['overall_status'].value}")
+        can_proceed_text = "Yes" if combined["can_proceed"] else "No -- FAIL detected"
+        lines.append(f"CAN PROCEED: {can_proceed_text}")
+        lines.append("")
+
+    lines.append(_DISCLAIMER)
+
+    return "\n".join(lines)
