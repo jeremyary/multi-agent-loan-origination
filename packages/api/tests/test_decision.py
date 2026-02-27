@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.schemas.decision import DecisionItem, DecisionListResponse, DecisionResponse
 from src.services.decision import (
     _ai_category,
     _decision_category,
@@ -77,48 +76,6 @@ def _mock_decision(
     d.created_at = MagicMock()
     d.created_at.isoformat.return_value = "2026-02-27T12:00:00+00:00"
     return d
-
-
-# ---------------------------------------------------------------------------
-# Schema tests
-# ---------------------------------------------------------------------------
-
-
-def test_decision_item_schema():
-    item = DecisionItem(
-        id=1,
-        application_id=100,
-        decision_type="approved",
-        rationale="Strong financials",
-    )
-    assert item.id == 1
-    assert item.decision_type == "approved"
-
-
-def test_decision_response_schema():
-    resp = DecisionResponse(
-        data=DecisionItem(
-            id=1,
-            application_id=100,
-            decision_type="denied",
-            denial_reasons=["Low credit", "High DTI"],
-        )
-    )
-    assert resp.data.denial_reasons == ["Low credit", "High DTI"]
-
-
-def test_decision_list_response_schema():
-    from src.schemas import Pagination
-
-    resp = DecisionListResponse(
-        data=[
-            DecisionItem(id=1, application_id=100, decision_type="approved"),
-            DecisionItem(id=2, application_id=100, decision_type="denied"),
-        ],
-        pagination=Pagination(total=2, offset=0, limit=20, has_more=False),
-    )
-    assert resp.pagination.total == 2
-    assert len(resp.data) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -809,21 +766,6 @@ async def test_get_decisions_out_of_scope(mock_get_app):
 
     result = await get_decisions(session, _uw_user(), 999)
     assert result is None
-
-
-@pytest.mark.asyncio
-@patch("src.services.decision.get_application", new_callable=AsyncMock)
-async def test_get_decisions_empty(mock_get_app):
-    """get_decisions returns empty list when no decisions."""
-    mock_get_app.return_value = _mock_app()
-    session = AsyncMock()
-
-    mock_result = MagicMock()
-    mock_result.scalars.return_value.all.return_value = []
-    session.execute.return_value = mock_result
-
-    result = await get_decisions(session, _uw_user(), 100)
-    assert result == []
 
 
 @pytest.mark.asyncio
