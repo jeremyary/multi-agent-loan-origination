@@ -270,27 +270,31 @@ This is the pipeline that sits between auth and route handlers. Anyone building 
 routing:
   default_tier: capable_large
   classification:
-    strategy: rule_based  # "rule_based" | "llm_based" | "cascade"
+    strategy: rule_based
     rules:
       simple:
         max_query_words: 10
-        requires_tools: false
-        patterns: ["status", "when", "what is", "show me"]
+        patterns: ["status", "when", "what is", "show me", "how much",
+                   "my application", "hello", "hi", "thanks", "thank you"]
       complex:
         default: true
+        keywords: ["compliance", "regulation", "dti", "calculate",
+                   "affordability", "document", "underwriting", ...]
 
 models:
   fast_small:
     provider: openai_compatible
-    model_name: "meta-llama/Llama-3.2-3B-Instruct"
+    model_name: "${LLM_MODEL_FAST:-gpt-4o-mini}"
     description: "Fast model for simple factual queries"
-    endpoint: "${LLAMASTACK_URL:-http://llamastack:8321}/v1"
+    endpoint: "${LLM_BASE_URL:-https://api.openai.com/v1}"
   capable_large:
     provider: openai_compatible
-    model_name: "meta-llama/Llama-3.1-70B-Instruct"
+    model_name: "${LLM_MODEL_CAPABLE:-gpt-4o-mini}"
     description: "Capable model for complex reasoning and tool use"
-    endpoint: "${LLAMASTACK_URL:-http://llamastack:8321}/v1"
+    endpoint: "${LLM_BASE_URL:-https://api.openai.com/v1}"
 ```
+
+**Routing strategy:** Rule-based classification with confidence escalation. The classify node (no LLM call) checks complex keywords first, then word count, then simple patterns. Default fallback is the capable tier. The fast model has NO tools bound; if its response indicates low confidence (via logprobs or hedging phrases), the graph escalates to the capable model.
 
 Required fields per model: `provider`, `model_name`, `endpoint`. Config is validated at startup (missing = fail to start) and hot-reloaded per-conversation via mtime check.
 
@@ -309,10 +313,6 @@ tools:
   - name: <tool_name>
     description: "..."
     allowed_roles: [<role>, ...]
-
-model_routing:
-  default_tier: fast_small | capable_large
-  override_to_complex: ["keyword", ...]
 
 data_access:
   scope: public_only | own_data | assigned | full | compliance

@@ -389,10 +389,7 @@ Adding a new persona requires adding a configuration file and registering it, no
 
 **REQ-CC-22: Model routing configuration**
 
-Model routing rules are defined in `config/models.yaml`. Each model entry specifies:
-- LlamaStack provider
-- Model name
-- Routing criteria (complexity thresholds, query characteristics)
+Model routing rules are defined in `config/models.yaml`. Model entries specify provider, model name, and endpoint. Routing rules (complex keywords, simple patterns, word count threshold) are in a separate `routing:` section -- not per-model.
 
 ## Inter-Feature Dependency Map
 
@@ -456,7 +453,7 @@ Dependencies where one feature cannot function without another.
 
 | ID | Question | Impact | Blocker For | Notes |
 |----|----------|--------|-------------|-------|
-| REQ-OQ-01 | What is the exact definition of "simple" vs "complex" queries for model routing (F21)? | Medium | Chunk 1 (F21 acceptance criteria) | Product plan defines simple as "factual lookup, status check" and complex as "multi-step reasoning, compliance analysis". Need concrete examples for test cases. Suggest: < 10 words + no tool orchestration = simple; else complex. |
+| REQ-OQ-01 | What is the exact definition of "simple" vs "complex" queries for model routing (F21)? | Medium | Chunk 1 (F21 acceptance criteria) | Resolved: rule-based classification uses complex keywords (first priority) > word count > simple patterns > default to complex. Keywords and patterns are in `config/models.yaml`. |
 | REQ-OQ-02 | What is the threshold for rate lock "nearing expiration" (F27)? | Low | Chunk 2 (F27 acceptance criteria) | Suggested: alert when < 7 days remaining, escalate when < 3 days. Defer to stakeholder or use suggested default. |
 | REQ-OQ-03 | What fields constitute "application context" for LO communication drafts (F24)? | Low | Chunk 3 (F24 acceptance criteria) | Suggested: borrower name, application ID, loan type, property address, current stage. Defer to stakeholder or use suggested default. |
 | REQ-OQ-04 | What are the severity levels for underwriting conditions (F16)? | Medium | Chunk 4 (F16 acceptance criteria) | Suggested: Critical (blocks approval), Standard (must clear), Optional (nice-to-have). Defer to stakeholder or use suggested default. |

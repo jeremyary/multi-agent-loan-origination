@@ -554,7 +554,7 @@ Model Endpoint (vLLM, Ollama, OpenShift AI, OpenAI-compatible)
 
 ### 6.2 Model Routing (F21)
 
-Model routing selects different models based on query complexity. The router is a LangGraph node that runs before the main agent graph.
+Model routing selects different models based on query complexity. The classify node is a rule-based function within the agent's LangGraph graph (no LLM call).
 
 **Routing strategy:**
 
@@ -563,9 +563,9 @@ Model routing selects different models based on query complexity. The router is 
 | Simple | Factual lookup, status check, simple calculation | Fast/Small | "What is my application status?", "When does my rate lock expire?" |
 | Complex | Multi-step reasoning, tool orchestration, compliance analysis, document extraction | Capable/Large | "Give me a risk assessment", "Draft conditions for this application", "Are there disparate impact concerns?" |
 
-**Implementation:** The router is a lightweight classifier (could be rule-based at PoC, LLM-based for production) that examines the user query and conversation context, then sets the model parameter for the downstream agent invocation.
+**Implementation:** The router is a rule-based classifier (complex keywords > word count > simple patterns) that examines the user query and sets the model tier for the downstream agent invocation. The fast model has no tools bound; if its response indicates low confidence (via logprobs or hedging phrases), the graph escalates to the capable model.
 
-**Configuration:** Model endpoints and routing rules are defined in configuration (`config/models.yaml`). Each model entry specifies the LlamaStack provider, model name, and routing criteria. This makes the routing transparent in the observability dashboard (F18) and configurable by Quickstart users. Changes to `config/models.yaml` are hot-reloaded per-conversation without restart (see Section 9.3).
+**Configuration:** Model endpoints and routing rules are defined in `config/models.yaml`. Each model entry specifies the provider, model name, and endpoint. Routing rules (complex keywords, simple patterns, word count threshold) are in a separate `routing:` section. This makes the routing transparent and configurable by Quickstart users. Changes to `config/models.yaml` are hot-reloaded per-conversation without restart (see Section 9.3).
 
 ### 6.3 Model Health Monitoring (F39)
 
