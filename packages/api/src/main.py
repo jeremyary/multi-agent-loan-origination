@@ -16,7 +16,17 @@ from .core.config import settings
 from .inference.safety import log_safety_status
 from .middleware.pii import PIIMaskingMiddleware
 from .observability import log_observability_status
-from .routes import admin, applications, borrower_chat, chat, documents, health, hmda, public
+from .routes import (
+    admin,
+    applications,
+    borrower_chat,
+    chat,
+    documents,
+    health,
+    hmda,
+    loan_officer_chat,
+    public,
+)
 from .schemas.error import ErrorResponse
 
 logger = logging.getLogger(__name__)
@@ -114,6 +124,7 @@ app.include_router(public.router, prefix="/api/public", tags=["public"])
 app.include_router(applications.router, prefix="/api/applications", tags=["applications"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(borrower_chat.router, prefix="/api", tags=["chat"])
+app.include_router(loan_officer_chat.router, prefix="/api", tags=["chat"])
 app.include_router(documents.router, prefix="/api", tags=["documents"])
 app.include_router(hmda.router, prefix="/api/hmda", tags=["hmda"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
