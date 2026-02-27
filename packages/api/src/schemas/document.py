@@ -6,6 +6,8 @@ from datetime import datetime
 from db.enums import DocumentStatus, DocumentType
 from pydantic import BaseModel, ConfigDict
 
+from . import Pagination
+
 
 class DocumentResponse(BaseModel):
     """Document metadata response (safe for all roles including CEO)."""
@@ -53,4 +55,4 @@ class DocumentListResponse(BaseModel):
     """Paginated list of documents."""
 
     data: list[DocumentResponse]
-    count: int
+    pagination: Pagination

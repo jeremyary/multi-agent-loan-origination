@@ -99,10 +99,10 @@ def test_ceo_get_document_excludes_file_path():
     app = _make_app(ceo, documents=[doc])
     client = TestClient(app)
 
-    response = client.get("/api/documents/1")
+    response = client.get("/api/applications/100/documents/1")
     assert response.status_code == 200
     data = response.json()
-    assert "file_path" not in data
+    assert data["file_path"] is None
     assert data["doc_type"] == DocumentType.W2.value
     assert data["status"] == DocumentStatus.UPLOADED.value
 
@@ -118,7 +118,7 @@ def test_ceo_content_endpoint_returns_403(monkeypatch):
     app = _make_app(ceo, documents=[doc])
     client = TestClient(app)
 
-    response = client.get("/api/documents/1/content")
+    response = client.get("/api/applications/100/documents/1/content")
     assert response.status_code == 403
 
 
@@ -146,7 +146,7 @@ def test_loan_officer_gets_full_document():
     app = _make_app(lo, documents=[doc])
     client = TestClient(app)
 
-    response = client.get("/api/documents/1")
+    response = client.get("/api/applications/100/documents/1")
     assert response.status_code == 200
     data = response.json()
     assert data["file_path"] == "/uploads/paystub.pdf"
@@ -159,7 +159,7 @@ def test_loan_officer_content_endpoint_succeeds():
     app = _make_app(lo, documents=[doc])
     client = TestClient(app)
 
-    response = client.get("/api/documents/1/content")
+    response = client.get("/api/applications/100/documents/1/content")
     assert response.status_code == 200
     assert response.json()["file_path"] == "/uploads/paystub.pdf"
 
@@ -187,7 +187,7 @@ def test_list_documents_returns_metadata_only():
     response = client.get("/api/applications/100/documents")
     assert response.status_code == 200
     data = response.json()
-    assert data["count"] == 3
+    assert data["pagination"]["total"] == 3
     assert len(data["data"]) == 3
     for item in data["data"]:
         assert "file_path" not in item
@@ -204,7 +204,7 @@ def test_get_nonexistent_document_returns_404():
     app = _make_app(admin, documents=[])
     client = TestClient(app)
 
-    response = client.get("/api/documents/999")
+    response = client.get("/api/applications/100/documents/999")
     assert response.status_code == 404
 
 
@@ -214,5 +214,5 @@ def test_content_nonexistent_document_returns_404():
     app = _make_app(admin, documents=[])
     client = TestClient(app)
 
-    response = client.get("/api/documents/999/content")
+    response = client.get("/api/applications/100/documents/999/content")
     assert response.status_code == 404

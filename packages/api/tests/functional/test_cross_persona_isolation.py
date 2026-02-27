@@ -40,32 +40,32 @@ class TestVisibilityCounts:
     def test_borrower_sarah_sees_2(self, make_client):
         client = make_client(borrower_sarah(), make_mock_session(items=sarah_applications()))
         resp = client.get("/api/applications/")
-        assert resp.json()["count"] == 2
+        assert resp.json()["pagination"]["total"] == 2
 
     def test_borrower_michael_sees_1(self, make_client):
         client = make_client(borrower_michael(), make_mock_session(items=michael_applications()))
         resp = client.get("/api/applications/")
-        assert resp.json()["count"] == 1
+        assert resp.json()["pagination"]["total"] == 1
 
     def test_loan_officer_sees_2_assigned(self, make_client):
         client = make_client(loan_officer(), make_mock_session(items=lo_assigned_applications()))
         resp = client.get("/api/applications/")
-        assert resp.json()["count"] == 2
+        assert resp.json()["pagination"]["total"] == 2
 
     def test_underwriter_sees_all_3(self, make_client):
         client = make_client(underwriter(), make_mock_session(items=all_applications()))
         resp = client.get("/api/applications/")
-        assert resp.json()["count"] == 3
+        assert resp.json()["pagination"]["total"] == 3
 
     def test_ceo_sees_all_3(self, make_client):
         client = make_client(ceo(), make_mock_session(items=all_applications()))
         resp = client.get("/api/applications/")
-        assert resp.json()["count"] == 3
+        assert resp.json()["pagination"]["total"] == 3
 
     def test_admin_sees_all_3(self, make_client):
         client = make_client(admin(), make_mock_session(items=all_applications()))
         resp = client.get("/api/applications/")
-        assert resp.json()["count"] == 3
+        assert resp.json()["pagination"]["total"] == 3
 
 
 # ---------------------------------------------------------------------------
@@ -124,20 +124,20 @@ class TestDocumentContentByRole:
     def test_loan_officer_sees_file_path(self, make_client):
         doc = make_document(file_path="/uploads/w2.pdf")
         client = make_client(loan_officer(), make_mock_session(single=doc))
-        data = client.get("/api/documents/1").json()
+        data = client.get("/api/applications/101/documents/1").json()
         assert data["file_path"] == "/uploads/w2.pdf"
 
     def test_underwriter_sees_file_path(self, make_client):
         doc = make_document(file_path="/uploads/w2.pdf")
         client = make_client(underwriter(), make_mock_session(single=doc))
-        data = client.get("/api/documents/1").json()
+        data = client.get("/api/applications/101/documents/1").json()
         assert data["file_path"] == "/uploads/w2.pdf"
 
     def test_ceo_does_not_see_file_path(self, make_client):
         doc = make_document(file_path="/uploads/w2.pdf")
         client = make_client(ceo(), make_mock_session(single=doc))
-        data = client.get("/api/documents/1").json()
-        assert "file_path" not in data
+        data = client.get("/api/applications/101/documents/1").json()
+        assert data["file_path"] is None
 
 
 # ---------------------------------------------------------------------------

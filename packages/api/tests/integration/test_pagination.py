@@ -15,7 +15,7 @@ async def test_count_matches_data_length(client_factory, seed_data):
         resp = await client.get("/api/applications/")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == len(data["data"]), (
+        assert data["pagination"]["total"] == len(data["data"]), (
             f"Mismatch for {persona_fn.__name__}: count={data['count']} len={len(data['data'])}"
         )
         await client.aclose()
@@ -30,7 +30,7 @@ async def test_offset_limit(client_factory, seed_data):
     assert resp.status_code == 200
     data = resp.json()
     assert len(data["data"]) == 1
-    assert data["count"] == 3  # Total count is still 3
+    assert data["pagination"]["total"] == 3  # Total count is still 3
     await client.aclose()
 
 
@@ -43,7 +43,7 @@ async def test_coborrower_no_count_inflation(client_factory, seed_data):
     resp = await client.get("/api/applications/")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 3
+    assert data["pagination"]["total"] == 3
     await client.aclose()
 
 
@@ -55,7 +55,7 @@ async def test_limit_exceeding_total(client_factory, seed_data):
     resp = await client.get("/api/applications/", params={"limit": 100})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 3
+    assert data["pagination"]["total"] == 3
     assert len(data["data"]) == 3
     await client.aclose()
 
@@ -80,6 +80,6 @@ async def test_zero_results(client_factory, seed_data):
     resp = await client.get("/api/applications/")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 0
+    assert data["pagination"]["total"] == 0
     assert data["data"] == []
     await client.aclose()

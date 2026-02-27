@@ -100,7 +100,7 @@ async def test_list_applications(client_factory, seed_data):
     resp = await client.get("/api/applications/")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["count"] == 3
+    assert data["pagination"]["total"] == 3
     assert len(data["data"]) == 3
     await client.aclose()
 

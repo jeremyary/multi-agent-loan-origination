@@ -24,7 +24,7 @@ class TestCeoPiiMasking:
         resp = client.get("/api/applications/")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 3
+        assert data["pagination"]["total"] == 3
 
         for item in data["data"]:
             for borrower in item.get("borrowers", []):
@@ -58,9 +58,9 @@ class TestCeoDocumentRestriction:
         doc = make_document()
         client = make_client(ceo(), make_mock_session(single=doc))
 
-        resp = client.get("/api/documents/1")
+        resp = client.get("/api/applications/101/documents/1")
         assert resp.status_code == 200
-        assert "file_path" not in resp.json()
+        assert resp.json()["file_path"] is None
 
     def test_list_documents_metadata_only(self, make_client):
         docs = app_101_documents()
@@ -80,7 +80,7 @@ class TestCeoDocumentRestriction:
         doc = make_document()
         client = make_client(ceo(), make_mock_session(single=doc))
 
-        resp = client.get("/api/documents/1/content")
+        resp = client.get("/api/applications/101/documents/1/content")
         assert resp.status_code == 403
 
 

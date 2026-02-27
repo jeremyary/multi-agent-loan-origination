@@ -190,7 +190,7 @@ def test_co_borrower_sees_shared_application(monkeypatch):
     assert resp.status_code == 200
 
     data = resp.json()
-    assert data["count"] == 1
+    assert data["pagination"]["total"] == 1
     apps = data["data"]
     assert len(apps) == 1
     assert apps[0]["id"] == 101

@@ -1,6 +1,8 @@
 # This project was developed with assistance from AI tools.
 """Pydantic response models for admin endpoints."""
 
+from datetime import datetime
+
 from pydantic import BaseModel
 
 
@@ -8,7 +10,7 @@ class AuditEventItem(BaseModel):
     """Single audit event in a query response."""
 
     id: int
-    timestamp: str
+    timestamp: datetime
     event_type: str
     user_id: str | None = None
     user_role: str | None = None
@@ -36,7 +38,7 @@ class SeedResponse(BaseModel):
     """Response for POST /api/admin/seed."""
 
     status: str
-    seeded_at: str | None = None
+    seeded_at: datetime | None = None
     config_hash: str | None = None
     borrowers: int | None = None
     active_applications: int | None = None
@@ -48,6 +50,6 @@ class SeedStatusResponse(BaseModel):
     """Response for GET /api/admin/seed/status."""
 
     seeded: bool
-    seeded_at: str | None = None
+    seeded_at: datetime | None = None
     config_hash: str | None = None
     summary: dict | None = None

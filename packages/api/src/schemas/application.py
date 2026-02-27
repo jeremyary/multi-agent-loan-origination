@@ -7,6 +7,8 @@ from decimal import Decimal
 from db.enums import ApplicationStage, EmploymentStatus, LoanType
 from pydantic import BaseModel, ConfigDict, Field
 
+from . import Pagination
+
 
 class ApplicationCreate(BaseModel):
     """Create a new mortgage application."""
@@ -64,7 +66,7 @@ class ApplicationListResponse(BaseModel):
     """Paginated list of applications."""
 
     data: list[ApplicationResponse]
-    count: int
+    pagination: Pagination
 
 
 class AddBorrowerRequest(BaseModel):

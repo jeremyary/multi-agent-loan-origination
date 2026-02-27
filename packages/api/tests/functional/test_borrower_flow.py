@@ -25,7 +25,7 @@ class TestBorrowerSarahVisibility:
         resp = client.get("/api/applications/")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 2
+        assert data["pagination"]["total"] == 2
         assert len(data["data"]) == 2
 
     def test_get_own_application_with_pii(self, make_client):
@@ -57,7 +57,7 @@ class TestBorrowerMichaelVisibility:
         resp = client.get("/api/applications/")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] == 1
+        assert data["pagination"]["total"] == 1
 
 
 class TestBorrowerCannotUpdate:

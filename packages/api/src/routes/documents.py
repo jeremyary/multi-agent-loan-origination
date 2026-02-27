@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import CurrentUser, require_roles
+from ..schemas import Pagination
 from ..schemas.completeness import CompletenessResponse
 from ..schemas.document import (
     DocumentDetailResponse,
@@ -133,29 +134,39 @@ async def list_documents(
         limit=limit,
     )
     items = [DocumentResponse.model_validate(doc) for doc in documents]
-    return DocumentListResponse(data=items, count=total)
+    return DocumentListResponse(
+        data=items,
+        pagination=Pagination(
+            total=total,
+            offset=offset,
+            limit=limit,
+            has_more=(offset + limit < total),
+        ),
+    )
 
 
 @router.get(
-    "/documents/{document_id}",
-    response_model=DocumentResponse | DocumentDetailResponse,
+    "/applications/{application_id}/documents/{document_id}",
+    response_model=DocumentDetailResponse,
     dependencies=[Depends(require_roles(*_ALL_AUTHENTICATED))],
 )
 async def get_document(
+    application_id: int,
     document_id: int,
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
-) -> DocumentResponse | DocumentDetailResponse:
-    """Get document metadata. CEO sees metadata only; others see file_path too."""
+) -> DocumentDetailResponse:
+    """Get document metadata. CEO sees file_path=null; others see the full path."""
     doc = await doc_service.get_document(session, user, document_id)
-    if doc is None:
+    if doc is None or doc.application_id != application_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found",
         )
+    result = DocumentDetailResponse.model_validate(doc)
     if user.data_scope.document_metadata_only:
-        return DocumentResponse.model_validate(doc)
-    return DocumentDetailResponse.model_validate(doc)
+        result = result.model_copy(update={"file_path": None})
+    return result
 
 
 @router.get(
@@ -179,18 +190,19 @@ async def get_completeness(
 
 
 @router.get(
-    "/documents/{document_id}/content",
+    "/applications/{application_id}/documents/{document_id}/content",
     response_model=DocumentFilePathResponse,
     dependencies=[Depends(require_roles(*_CONTENT_ROLES))],
 )
 async def get_document_content(
+    application_id: int,
     document_id: int,
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
 ) -> DocumentFilePathResponse:
     """Get document content (file path). CEO is blocked at route level (Layer 1)."""
     doc = await doc_service.get_document(session, user, document_id)
-    if doc is None:
+    if doc is None or doc.application_id != application_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found",
