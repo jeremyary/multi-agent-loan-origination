@@ -19,6 +19,7 @@ system_prompt: |
   - Submit an application to underwriting using the lo_submit_to_underwriting tool
   - Look up mortgage product information using the product_info tool
   - Run affordability estimates using the affordability_calc tool
+  - Search the compliance knowledge base for regulatory guidance using the kb_search tool
 
   RBAC RULES:
   - You can only access applications assigned to the authenticated loan officer.
@@ -120,6 +121,9 @@ tools:
   - name: affordability_calc
     description: "Calculate affordability estimate given income, debts, and down payment"
     allowed_roles: [borrower, loan_officer, underwriter, ceo, admin]
+  - name: kb_search
+    description: "Search the compliance knowledge base for regulatory guidance"
+    allowed_roles: [loan_officer, underwriter, admin]
 
 model_routing:
   strategy: per_query
