@@ -6,7 +6,7 @@ and respect data scope (borrowers see own, LO sees assigned, CEO sees all,
 prospect blocked).
 """
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from db.enums import DocumentStatus, DocumentType
@@ -94,10 +94,27 @@ class TestBorrowerStatus:
 
 
 class TestLoanOfficerStatus:
-    def test_lo_sees_assigned_app_status(self, app, make_client):
+    @patch("src.routes.applications.compute_urgency", new_callable=AsyncMock)
+    def test_lo_sees_assigned_app_status(self, mock_urgency, app, make_client):
+        from src.schemas.urgency import UrgencyIndicator, UrgencyLevel
+
         sarah_app = make_app_sarah_1()
+        mock_urgency.return_value = {
+            sarah_app.id: UrgencyIndicator(
+                level=UrgencyLevel.NORMAL,
+                factors=[],
+                days_in_stage=1,
+                expected_stage_days=7,
+            )
+        }
         docs = [_make_doc(1, DocumentType.W2)]
         session = _make_status_session(sarah_app, docs, condition_count=2)
+
+        # Add 5th execute result for urgency's get_application call
+        app_result_5 = MagicMock()
+        app_result_5.unique.return_value.scalar_one_or_none.return_value = sarah_app
+        session.execute.side_effect = list(session.execute.side_effect) + [app_result_5]
+
         client = make_client(loan_officer(), session)
 
         resp = client.get(f"/api/applications/{sarah_app.id}/status")

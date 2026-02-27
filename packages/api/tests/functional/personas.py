@@ -14,6 +14,7 @@ from src.schemas.auth import DataScope, UserContext
 SARAH_USER_ID = "sarah-mitchell-001"
 MICHAEL_USER_ID = "michael-chen-002"
 LO_USER_ID = "james-torres-lo"
+LO_BOB_USER_ID = "bob-williams-lo"
 UW_USER_ID = "emily-park-uw"
 CEO_USER_ID = "ceo-dashboard"
 ADMIN_USER_ID = "admin-user"
@@ -57,6 +58,16 @@ def loan_officer() -> UserContext:
         email="james@summit-cap.com",
         name="James Torres",
         data_scope=DataScope(assigned_to=LO_USER_ID),
+    )
+
+
+def loan_officer_bob() -> UserContext:
+    return UserContext(
+        user_id=LO_BOB_USER_ID,
+        role=UserRole.LOAN_OFFICER,
+        email="bob@summit-cap.com",
+        name="Bob Williams",
+        data_scope=DataScope(assigned_to=LO_BOB_USER_ID),
     )
 
 

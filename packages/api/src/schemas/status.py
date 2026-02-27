@@ -3,6 +3,8 @@
 
 from pydantic import BaseModel
 
+from .urgency import UrgencyIndicator
+
 
 class PendingAction(BaseModel):
     """A single action the borrower or LO needs to take."""
@@ -31,3 +33,4 @@ class ApplicationStatusResponse(BaseModel):
     required_doc_count: int
     open_condition_count: int
     pending_actions: list[PendingAction]
+    urgency: UrgencyIndicator | None = None
