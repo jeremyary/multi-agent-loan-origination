@@ -140,3 +140,22 @@ async def get_events_by_session(
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def get_events_by_application(
+    session: AsyncSession,
+    application_id: int,
+) -> list[AuditEvent]:
+    """Return all audit events for a given application_id.
+
+    This is the compliance-side query for per-loan audit trail review:
+    given an application_id, retrieve every audit event (stage transitions,
+    document flags, communications, etc.) in chronological order.
+    """
+    stmt = (
+        select(AuditEvent)
+        .where(AuditEvent.application_id == application_id)
+        .order_by(AuditEvent.timestamp.asc())
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
