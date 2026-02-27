@@ -1,17 +1,28 @@
 # This project was developed with assistance from AI tools.
-"""PII masking utilities for CEO role.
+"""PII masking middleware and utilities for CEO role.
 
-Masks sensitive fields in response data so that CEO-role users see
-aggregate/metadata without individual PII. Masking failure returns 500
-rather than leaking unmasked data.
+Masks sensitive fields (SSN, DOB) in JSON response bodies when the
+authenticated user's data scope has ``pii_mask=True``.  The middleware
+runs after every response so new endpoints get automatic coverage without
+per-route masking logic.
 
-TODO: When more endpoints need PII masking (Phase 3+), convert to FastAPI
-response middleware keyed on user role so masking is applied automatically
-rather than per-route.  At MVP only 2 call sites use this module, so the
-current utility-function approach is adequate.
+The ``request.state.pii_mask`` flag is set by the auth dependency
+(``get_current_user`` in ``middleware/auth.py``).
 """
 
+import json
+import logging
 import re
+from typing import Any
+
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import Response
+
+logger = logging.getLogger(__name__)
+
+# Fields to mask and their masking functions
+_PII_FIELD_MASKERS: dict[str, Any] = {}
 
 
 def mask_ssn(value: str | None) -> str | None:
@@ -46,6 +57,29 @@ def mask_account_number(value: str | None) -> str | None:
     return "********"
 
 
+# Register PII fields and their maskers
+_PII_FIELD_MASKERS = {
+    "ssn": mask_ssn,
+    "dob": mask_dob,
+}
+
+
+def _mask_pii_recursive(obj: Any) -> Any:
+    """Walk a JSON-compatible structure and mask known PII fields."""
+    if isinstance(obj, dict):
+        result = {}
+        for key, value in obj.items():
+            masker = _PII_FIELD_MASKERS.get(key)
+            if masker and isinstance(value, str | None):
+                result[key] = masker(value)
+            else:
+                result[key] = _mask_pii_recursive(value)
+        return result
+    if isinstance(obj, list):
+        return [_mask_pii_recursive(item) for item in obj]
+    return obj
+
+
 def mask_borrower_pii(borrower_dict: dict) -> dict:
     """Apply PII masking to a borrower dict for CEO-role responses."""
     masked = borrower_dict.copy()
@@ -62,3 +96,39 @@ def mask_application_pii(app_dict: dict) -> dict:
     if "borrowers" in masked:
         masked["borrowers"] = [mask_borrower_pii(b) for b in masked["borrowers"]]
     return masked
+
+
+class PIIMaskingMiddleware(BaseHTTPMiddleware):
+    """Intercept JSON responses and mask PII when ``request.state.pii_mask`` is set."""
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        response = await call_next(request)
+
+        if not getattr(request.state, "pii_mask", False):
+            return response
+
+        content_type = response.headers.get("content-type", "")
+        if "application/json" not in content_type:
+            return response
+
+        # Read full body from the streaming response
+        body_bytes = b""
+        async for chunk in response.body_iterator:
+            if isinstance(chunk, str):
+                body_bytes += chunk.encode("utf-8")
+            else:
+                body_bytes += chunk
+
+        try:
+            data = json.loads(body_bytes)
+            masked = _mask_pii_recursive(data)
+            new_body = json.dumps(masked).encode("utf-8")
+        except (json.JSONDecodeError, TypeError):
+            new_body = body_bytes
+
+        return Response(
+            content=new_body,
+            status_code=response.status_code,
+            headers=dict(response.headers),
+            media_type=response.media_type,
+        )

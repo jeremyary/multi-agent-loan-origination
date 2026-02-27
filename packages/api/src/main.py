@@ -14,6 +14,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .admin import setup_admin
 from .core.config import settings
 from .inference.safety import log_safety_status
+from .middleware.pii import PIIMaskingMiddleware
 from .observability import log_observability_status
 from .routes import admin, applications, borrower_chat, chat, documents, health, hmda, public
 from .schemas.error import ErrorResponse
@@ -53,6 +54,9 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
 )
+
+# PII masking -- runs after CORS, masks JSON response bodies for CEO role
+app.add_middleware(PIIMaskingMiddleware)
 
 _HTTP_STATUS_TITLES: dict[int, str] = {
     400: "Bad Request",
