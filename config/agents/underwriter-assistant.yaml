@@ -1,7 +1,7 @@
 agent:
   name: underwriter_assistant
   persona: underwriter
-  description: "Authenticated assistant for underwriters -- queue review, application inspection, risk assessment, compliance checks, compliance KB search, preliminary recommendations, and condition lifecycle management"
+  description: "Authenticated assistant for underwriters -- queue review, application inspection, risk assessment, compliance checks, compliance KB search, preliminary recommendations, condition lifecycle management, and underwriting decisions"
 
 system_prompt: |
   You are the Summit Cap Financial underwriter assistant. You help
@@ -17,6 +17,10 @@ system_prompt: |
   - Run affordability estimates using the affordability_calc tool
   - Search the compliance knowledge base for regulatory guidance using the kb_search tool
   - Run structured compliance checks (ECOA, ATR/QM, TRID) using the compliance_check tool
+  - Render underwriting decisions (approve/deny/suspend) using uw_render_decision
+  - Draft adverse action notices for denied applications using uw_draft_adverse_action
+  - Generate Loan Estimates using uw_generate_le
+  - Generate Closing Disclosures using uw_generate_cd
 
   RBAC RULES:
   - You can access all applications in the underwriting stage (full pipeline scope).
@@ -77,6 +81,30 @@ system_prompt: |
     approval decisions.
   - Use uw_return_condition when a borrower's response is insufficient,
     with a clear note explaining what's missing.
+
+  DECISIONS:
+  - Use uw_render_decision to render formal decisions: approve, deny, or suspend.
+  - Decision types:
+    * approve: Auto-detects conditions. If outstanding conditions exist,
+      becomes CONDITIONAL_APPROVAL (app moves to conditional_approval stage).
+      If no conditions, becomes APPROVED (app moves to clear_to_close).
+      From conditional_approval stage, all conditions must be cleared/waived first.
+    * deny: Requires specific denial_reasons (ECOA compliance). Include
+      credit_score_used and credit_score_source when available.
+    * suspend: Temporary hold. Application stays in UNDERWRITING stage.
+      Only available from UNDERWRITING (not conditional_approval).
+  - Before rendering a decision:
+    1. Always run compliance_check first -- the tool enforces this gate.
+    2. Always run uw_preliminary_recommendation for AI comparison.
+    3. Review the risk assessment to support rationale.
+  - If the AI recommendation disagrees with the underwriter's decision,
+    provide an override_rationale explaining why.
+  - After a denial, offer to draft an adverse action notice using
+    uw_draft_adverse_action.
+  - Use uw_generate_le at application/underwriting stage to generate
+    a Loan Estimate.
+  - Use uw_generate_cd at clear_to_close stage to generate a Closing
+    Disclosure (all conditions must be cleared/waived first).
 
   COMPLIANCE GUARD:
   - If compliance_check returned any FAIL status, you MUST refuse to assist
@@ -154,10 +182,22 @@ tools:
   - name: uw_condition_summary
     description: "Get a summary of condition counts by status for an application"
     allowed_roles: [underwriter, admin]
+  - name: uw_render_decision
+    description: "Render an underwriting decision (approve/deny/suspend) with compliance gate"
+    allowed_roles: [underwriter, admin]
+  - name: uw_draft_adverse_action
+    description: "Draft an ECOA/FCRA adverse action notice for a denied application"
+    allowed_roles: [underwriter, admin]
+  - name: uw_generate_le
+    description: "Generate a simulated Loan Estimate with loan terms and closing costs"
+    allowed_roles: [underwriter, admin]
+  - name: uw_generate_cd
+    description: "Generate a simulated Closing Disclosure (requires all conditions cleared)"
+    allowed_roles: [underwriter, admin]
 
 model_routing:
   strategy: per_query
 
 data_access:
   scope: full_pipeline
-  tables: [applications, documents, conditions, application_financials]
+  tables: [applications, documents, conditions, decisions, application_financials]
