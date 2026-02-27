@@ -2,12 +2,14 @@
 """Underwriter assistant -- LangGraph agent for authenticated underwriters.
 
 Tools: uw_queue_view, uw_application_detail, uw_risk_assessment,
-uw_preliminary_recommendation, product_info, affordability_calc, kb_search.
+uw_preliminary_recommendation, compliance_check, product_info,
+affordability_calc, kb_search.
 """
 
 from typing import Any
 
 from .base import build_agent_graph
+from .compliance_check_tool import compliance_check
 from .compliance_tools import kb_search
 from .tools import affordability_calc, product_info
 from .underwriter_tools import (
@@ -29,6 +31,7 @@ def build_graph(config: dict[str, Any], checkpointer=None):
             uw_application_detail,
             uw_risk_assessment,
             uw_preliminary_recommendation,
+            compliance_check,
             kb_search,
         ],
         checkpointer=checkpointer,
