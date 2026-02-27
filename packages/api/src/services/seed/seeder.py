@@ -27,6 +27,7 @@ from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..audit import write_audit_event
+from ..compliance.knowledge_base.ingestion import clear_kb_content, ingest_kb_content
 from ..compliance.seed_hmda import clear_hmda_demographics, seed_hmda_demographics
 from .fixtures import (
     ACTIVE_APPLICATIONS,
@@ -93,6 +94,9 @@ async def _clear_demo_data(session: AsyncSession, compliance_session: AsyncSessi
         await session.execute(delete(Borrower).where(Borrower.id.in_(borrower_ids)))
 
     # audit_events already truncated above; no per-type delete needed
+
+    # Clear KB content
+    await clear_kb_content(session)
 
     # Clear manifest
     await session.execute(delete(DemoDataManifest))
@@ -293,13 +297,18 @@ async def seed_demo_data(
 
     hmda_count = await seed_hmda_demographics(compliance_session, hmda_records)
 
-    # 5. Write manifest
+    # 5. Ingest compliance KB content
+    kb_summary = await ingest_kb_content(session)
+
+    # 6. Write manifest
     config_hash = compute_config_hash()
     summary = {
         "borrowers": len(borrower_records),
         "active_applications": len(active_apps),
         "historical_loans": len(historical_apps),
         "hmda_demographics": hmda_count,
+        "kb_documents": kb_summary["documents"],
+        "kb_chunks": kb_summary["chunks"],
     }
 
     manifest = DemoDataManifest(
@@ -317,7 +326,7 @@ async def seed_demo_data(
         event_data=summary,
     )
 
-    # 6. Commit both sessions.
+    # 7. Commit both sessions.
     # NOTE: These are separate DB connections so this is NOT atomic. If the
     # compliance commit fails after the lending commit succeeds, the manifest
     # will record "seeded" but HMDA data will be missing. In that case,

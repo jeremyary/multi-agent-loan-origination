@@ -34,6 +34,8 @@ from .models import (
     DocumentExtraction,
     HmdaDemographic,
     HmdaLoanData,
+    KBChunk,
+    KBDocument,
     RateLock,
 )
 
@@ -69,5 +71,7 @@ __all__ = [
     "DocumentExtraction",
     "HmdaDemographic",
     "HmdaLoanData",
+    "KBChunk",
+    "KBDocument",
     "RateLock",
 ]

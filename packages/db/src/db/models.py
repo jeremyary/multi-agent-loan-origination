@@ -23,6 +23,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 
+from pgvector.sqlalchemy import Vector
+
 from .database import Base
 from .enums import (
     ApplicationStage,
@@ -350,6 +352,46 @@ class DemoDataManifest(Base):
 
     def __repr__(self):
         return f"<DemoDataManifest(id={self.id}, seeded_at='{self.seeded_at}')>"
+
+
+class KBDocument(Base):
+    """Compliance knowledge base document (regulation, guideline, or policy)."""
+
+    __tablename__ = "kb_documents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    title = Column(String(500), nullable=False)
+    tier = Column(Integer, nullable=False, index=True)  # 1=federal, 2=agency, 3=internal
+    source_file = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    effective_date = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    chunks = relationship("KBChunk", back_populates="document", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<KBDocument(id={self.id}, title='{self.title}', tier={self.tier})>"
+
+
+class KBChunk(Base):
+    """Embedded text chunk from a compliance KB document."""
+
+    __tablename__ = "kb_chunks"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(
+        Integer, ForeignKey("kb_documents.id", ondelete="CASCADE"), nullable=False, index=True,
+    )
+    chunk_text = Column(Text, nullable=False)
+    section_ref = Column(String(500), nullable=True)
+    chunk_index = Column(Integer, nullable=False)
+    embedding = Column(Vector(768), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    document = relationship("KBDocument", back_populates="chunks")
+
+    def __repr__(self):
+        return f"<KBChunk(id={self.id}, doc_id={self.document_id}, index={self.chunk_index})>"
 
 
 class HmdaDemographic(Base):

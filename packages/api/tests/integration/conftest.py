@@ -417,7 +417,8 @@ async def truncate_all(async_engine):
         await conn.execute(text("TRUNCATE TABLE hmda.demographics, hmda.loan_data CASCADE"))
         await conn.execute(
             text(
-                "TRUNCATE TABLE document_extractions, documents, conditions, decisions, "
+                "TRUNCATE TABLE kb_chunks, kb_documents, "
+                "document_extractions, documents, conditions, decisions, "
                 "rate_locks, application_financials, application_borrowers, applications, "
                 "borrowers, audit_events, audit_violations, demo_data_manifest CASCADE"
             )
