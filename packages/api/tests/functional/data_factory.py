@@ -20,7 +20,7 @@ from db.enums import (
     LoanType,
 )
 
-from .personas import LO_USER_ID, MICHAEL_USER_ID, SARAH_USER_ID
+from .personas import LO_BOB_USER_ID, LO_USER_ID, MICHAEL_USER_ID, SARAH_USER_ID
 
 # ---------------------------------------------------------------------------
 # Borrowers
@@ -154,8 +154,29 @@ def michael_applications() -> list[MagicMock]:
 
 
 def lo_assigned_applications() -> list[MagicMock]:
-    """Apps assigned to the LO: 101 + 103 (102 is unassigned)."""
+    """Apps assigned to LO James: 101 + 103 (102 is unassigned)."""
     return [make_app_sarah_1(), make_app_michael()]
+
+
+def make_app_bob_assigned() -> MagicMock:
+    """App 104: Assigned to LO Bob, PROCESSING stage."""
+    return _make_application(
+        id=104,
+        stage=ApplicationStage.PROCESSING,
+        loan_type=LoanType.VA,
+        property_address="789 Elm Drive",
+        loan_amount=Decimal("400000.00"),
+        property_value=Decimal("500000.00"),
+        assigned_to=LO_BOB_USER_ID,
+        created_at=datetime(2026, 2, 5, tzinfo=UTC),
+        updated_at=datetime(2026, 2, 15, tzinfo=UTC),
+        application_borrowers=[_make_app_borrower(make_borrower_michael())],
+    )
+
+
+def lo_bob_applications() -> list[MagicMock]:
+    """Apps assigned to LO Bob: 104 only."""
+    return [make_app_bob_assigned()]
 
 
 # ---------------------------------------------------------------------------

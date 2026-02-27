@@ -203,6 +203,14 @@ async def get_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         )
+
+    # Enrich with urgency for LO/admin
+    if user.role in _URGENCY_ROLES:
+        app = await app_service.get_application(session, user, application_id)
+        if app is not None:
+            urgency_map = await compute_urgency(session, [app])
+            result = result.model_copy(update={"urgency": urgency_map.get(application_id)})
+
     return result
 
 
