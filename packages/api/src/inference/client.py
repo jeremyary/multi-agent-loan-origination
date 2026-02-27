@@ -52,6 +52,14 @@ async def get_completion(
     return response.choices[0].message.content or ""
 
 
+async def get_embeddings(texts: list[str], tier: str = "embedding") -> list[list[float]]:
+    """Get embeddings for a list of texts from the specified model tier."""
+    client = _get_client(tier)
+    model_cfg = get_model_config(tier)
+    response = await client.embeddings.create(model=model_cfg["model_name"], input=texts)
+    return [item.embedding for item in response.data]
+
+
 async def get_streaming_completion(
     messages: list[dict[str, str]],
     tier: str = "capable_large",
