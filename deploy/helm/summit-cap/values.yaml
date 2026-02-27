@@ -15,8 +15,31 @@ secrets:
 
   # API secrets
   DATABASE_URL: "postgresql+asyncpg://user:changeme@summit-cap-db:5432/summit-cap"
+  COMPLIANCE_DATABASE_URL: "postgresql+asyncpg://compliance_app:compliance_pass@summit-cap-db:5432/summit-cap"
   DEBUG: "false"
   ALLOWED_HOSTS: '["*"]'
+
+  # Auth (Keycloak) -- set AUTH_DISABLED=true to bypass for demo
+  AUTH_DISABLED: "false"
+  KEYCLOAK_URL: "http://keycloak:8080"
+  KEYCLOAK_REALM: "summit-cap"
+
+  # Storage (S3 / MinIO)
+  S3_ENDPOINT: "http://minio:9000"
+  S3_ACCESS_KEY: "minio"
+  S3_SECRET_KEY: "miniosecret"
+  S3_BUCKET: "documents"
+
+  # LLM
+  LLM_API_KEY: "not-needed"
+  LLM_BASE_URL: "http://vllm:8000/v1"
+  LLM_MODEL_FAST: "gpt-4o-mini"
+  LLM_MODEL_CAPABLE: "gpt-4o-mini"
+
+  # Observability (LangFuse) -- leave blank to disable tracing
+  LANGFUSE_PUBLIC_KEY: ""
+  LANGFUSE_SECRET_KEY: ""
+  LANGFUSE_HOST: ""
 
   # UI secrets
   VITE_API_BASE_URL: "http://localhost:8000"
@@ -59,7 +82,7 @@ api:
       cpu: "1000m"
   healthCheck:
     enabled: true
-    path: /health
+    path: /health/
     initialDelaySeconds: 30
     periodSeconds: 10
 # UI configuration
