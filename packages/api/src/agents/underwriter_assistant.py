@@ -1,8 +1,8 @@
 # This project was developed with assistance from AI tools.
 """Underwriter assistant -- LangGraph agent for authenticated underwriters.
 
-Tools: uw_queue_view, uw_application_detail, product_info,
-affordability_calc, kb_search.
+Tools: uw_queue_view, uw_application_detail, uw_risk_assessment,
+uw_preliminary_recommendation, product_info, affordability_calc, kb_search.
 """
 
 from typing import Any
@@ -12,7 +12,9 @@ from .compliance_tools import kb_search
 from .tools import affordability_calc, product_info
 from .underwriter_tools import (
     uw_application_detail,
+    uw_preliminary_recommendation,
     uw_queue_view,
+    uw_risk_assessment,
 )
 
 
@@ -25,6 +27,8 @@ def build_graph(config: dict[str, Any], checkpointer=None):
             affordability_calc,
             uw_queue_view,
             uw_application_detail,
+            uw_risk_assessment,
+            uw_preliminary_recommendation,
             kb_search,
         ],
         checkpointer=checkpointer,
