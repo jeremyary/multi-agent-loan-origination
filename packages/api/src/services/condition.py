@@ -1,21 +1,25 @@
 # This project was developed with assistance from AI tools.
-"""Condition service for borrower condition responses.
+"""Condition service for condition lifecycle management.
 
-Handles listing open conditions (with data scope), recording text
-responses, linking uploaded documents to conditions, and checking
-document-based condition satisfaction.
+Handles listing conditions (with data scope), recording borrower text
+responses, linking uploaded documents, checking document-based satisfaction,
+and underwriter lifecycle operations (issue, review, clear, waive, return).
 """
 
 import json
 import logging
+from datetime import datetime
 
 from db import (
+    Application,
     Condition,
+    ConditionSeverity,
     ConditionStatus,
     Document,
     DocumentExtraction,
 )
-from sqlalchemy import select
+from db.enums import ApplicationStage
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..schemas.auth import UserContext
@@ -72,6 +76,10 @@ async def get_conditions(
             "status": c.status.value if c.status else None,
             "response_text": c.response_text,
             "issued_by": c.issued_by,
+            "cleared_by": c.cleared_by,
+            "due_date": c.due_date.isoformat() if c.due_date else None,
+            "iteration_count": c.iteration_count or 0,
+            "waiver_rationale": c.waiver_rationale,
             "created_at": c.created_at.isoformat() if c.created_at else None,
         }
         for c in conditions
@@ -264,3 +272,353 @@ async def check_condition_documents(
         "has_documents": len(doc_details) > 0,
         "has_quality_issues": any(d["quality_flags"] for d in doc_details),
     }
+
+
+# ---------------------------------------------------------------------------
+# Underwriter lifecycle management
+# ---------------------------------------------------------------------------
+
+_TERMINAL_STATUSES = frozenset({ConditionStatus.CLEARED, ConditionStatus.WAIVED})
+_WAIVABLE_SEVERITIES = frozenset(
+    {ConditionSeverity.PRIOR_TO_CLOSING, ConditionSeverity.PRIOR_TO_FUNDING}
+)
+_CONDITION_STAGES = frozenset(
+    {ApplicationStage.UNDERWRITING, ApplicationStage.CONDITIONAL_APPROVAL}
+)
+
+
+async def _fetch_condition(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    condition_id: int,
+) -> tuple[Application | None, Condition | None]:
+    """Fetch an application + condition, respecting data scope.
+
+    Returns (app, condition). Either may be None if not found / out of scope.
+    """
+    app = await get_application(session, user, application_id)
+    if app is None:
+        return None, None
+
+    cond_stmt = select(Condition).where(
+        Condition.id == condition_id,
+        Condition.application_id == application_id,
+    )
+    cond_result = await session.execute(cond_stmt)
+    condition = cond_result.scalar_one_or_none()
+    return app, condition
+
+
+async def issue_condition(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    description: str,
+    severity: ConditionSeverity,
+    due_date: datetime | None = None,
+) -> dict | None:
+    """Issue a new condition on an application.
+
+    Returns the created condition dict, None if application not found,
+    or a dict with an ``"error"`` key if a business rule is violated.
+    """
+    app = await get_application(session, user, application_id)
+    if app is None:
+        return None
+
+    if app.stage not in _CONDITION_STAGES:
+        stage_val = app.stage.value if app.stage else "unknown"
+        return {
+            "error": (
+                f"Conditions can only be issued during underwriting or conditional "
+                f"approval. Application #{application_id} is in "
+                f"{stage_val.replace('_', ' ').title()}."
+            )
+        }
+
+    condition = Condition(
+        application_id=application_id,
+        description=description,
+        severity=severity,
+        status=ConditionStatus.OPEN,
+        issued_by=user.user_id,
+        due_date=due_date,
+        iteration_count=0,
+    )
+    session.add(condition)
+
+    await write_audit_event(
+        session,
+        event_type="condition_issued",
+        user_id=user.user_id,
+        user_role=user.role.value,
+        application_id=application_id,
+        event_data={
+            "description": description,
+            "severity": severity.value,
+            "due_date": due_date.isoformat() if due_date else None,
+        },
+    )
+
+    await session.commit()
+    await session.refresh(condition)
+
+    return {
+        "id": condition.id,
+        "description": condition.description,
+        "severity": condition.severity.value,
+        "status": condition.status.value,
+        "due_date": condition.due_date.isoformat() if condition.due_date else None,
+    }
+
+
+async def review_condition(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    condition_id: int,
+) -> dict | None:
+    """Move a condition from RESPONDED to UNDER_REVIEW.
+
+    Returns the updated condition dict, None if not found,
+    or a dict with an ``"error"`` key if a business rule is violated.
+    """
+    app, condition = await _fetch_condition(session, user, application_id, condition_id)
+    if app is None:
+        return None
+    if condition is None:
+        return None
+
+    if condition.status != ConditionStatus.RESPONDED:
+        return {
+            "error": (
+                f"Condition #{condition_id} is '{condition.status.value}' -- "
+                f"only RESPONDED conditions can be moved to review."
+            )
+        }
+
+    condition.status = ConditionStatus.UNDER_REVIEW
+
+    await write_audit_event(
+        session,
+        event_type="condition_review_started",
+        user_id=user.user_id,
+        user_role=user.role.value,
+        application_id=application_id,
+        event_data={"condition_id": condition_id},
+    )
+
+    await session.commit()
+    await session.refresh(condition)
+
+    return {
+        "id": condition.id,
+        "description": condition.description,
+        "status": condition.status.value,
+    }
+
+
+async def clear_condition(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    condition_id: int,
+) -> dict | None:
+    """Clear a condition (RESPONDED or UNDER_REVIEW -> CLEARED).
+
+    Returns the updated condition dict, None if not found,
+    or a dict with an ``"error"`` key if a business rule is violated.
+    """
+    app, condition = await _fetch_condition(session, user, application_id, condition_id)
+    if app is None:
+        return None
+    if condition is None:
+        return None
+
+    allowed = frozenset({ConditionStatus.RESPONDED, ConditionStatus.UNDER_REVIEW})
+    if condition.status not in allowed:
+        return {
+            "error": (
+                f"Condition #{condition_id} is '{condition.status.value}' -- "
+                f"only RESPONDED or UNDER_REVIEW conditions can be cleared."
+            )
+        }
+
+    condition.status = ConditionStatus.CLEARED
+    condition.cleared_by = user.user_id
+
+    await write_audit_event(
+        session,
+        event_type="condition_cleared",
+        user_id=user.user_id,
+        user_role=user.role.value,
+        application_id=application_id,
+        event_data={"condition_id": condition_id, "cleared_by": user.user_id},
+    )
+
+    await session.commit()
+    await session.refresh(condition)
+
+    return {
+        "id": condition.id,
+        "description": condition.description,
+        "status": condition.status.value,
+        "cleared_by": condition.cleared_by,
+    }
+
+
+async def waive_condition(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    condition_id: int,
+    rationale: str,
+) -> dict | None:
+    """Waive a condition (non-terminal, PRIOR_TO_CLOSING/FUNDING only).
+
+    Returns the updated condition dict, None if not found,
+    or a dict with an ``"error"`` key if a business rule is violated.
+    """
+    app, condition = await _fetch_condition(session, user, application_id, condition_id)
+    if app is None:
+        return None
+    if condition is None:
+        return None
+
+    if condition.status in _TERMINAL_STATUSES:
+        return {
+            "error": (
+                f"Condition #{condition_id} is already '{condition.status.value}' -- "
+                f"terminal conditions cannot be waived."
+            )
+        }
+
+    if condition.severity not in _WAIVABLE_SEVERITIES:
+        return {
+            "error": (
+                f"Condition #{condition_id} has severity '{condition.severity.value}' -- "
+                f"only PRIOR_TO_CLOSING and PRIOR_TO_FUNDING conditions can be waived."
+            )
+        }
+
+    condition.status = ConditionStatus.WAIVED
+    condition.waiver_rationale = rationale
+    condition.cleared_by = user.user_id
+
+    await write_audit_event(
+        session,
+        event_type="condition_waived",
+        user_id=user.user_id,
+        user_role=user.role.value,
+        application_id=application_id,
+        event_data={
+            "condition_id": condition_id,
+            "rationale": rationale,
+            "severity": condition.severity.value,
+        },
+    )
+
+    await session.commit()
+    await session.refresh(condition)
+
+    return {
+        "id": condition.id,
+        "description": condition.description,
+        "status": condition.status.value,
+        "waiver_rationale": condition.waiver_rationale,
+        "cleared_by": condition.cleared_by,
+    }
+
+
+async def return_condition(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    condition_id: int,
+    note: str,
+) -> dict | None:
+    """Return a condition to the borrower (UNDER_REVIEW -> OPEN).
+
+    Appends the note to response_text and increments iteration_count.
+    Returns the updated condition dict, None if not found,
+    or a dict with an ``"error"`` key if a business rule is violated.
+    """
+    app, condition = await _fetch_condition(session, user, application_id, condition_id)
+    if app is None:
+        return None
+    if condition is None:
+        return None
+
+    if condition.status != ConditionStatus.UNDER_REVIEW:
+        return {
+            "error": (
+                f"Condition #{condition_id} is '{condition.status.value}' -- "
+                f"only UNDER_REVIEW conditions can be returned."
+            )
+        }
+
+    condition.status = ConditionStatus.OPEN
+    condition.iteration_count = (condition.iteration_count or 0) + 1
+
+    # Append return note to response_text
+    return_note = f"[Return #{condition.iteration_count}]: {note}"
+    if condition.response_text:
+        condition.response_text = f"{condition.response_text}\n{return_note}"
+    else:
+        condition.response_text = return_note
+
+    await write_audit_event(
+        session,
+        event_type="condition_returned",
+        user_id=user.user_id,
+        user_role=user.role.value,
+        application_id=application_id,
+        event_data={
+            "condition_id": condition_id,
+            "note": note,
+            "iteration": condition.iteration_count,
+        },
+    )
+
+    await session.commit()
+    await session.refresh(condition)
+
+    return {
+        "id": condition.id,
+        "description": condition.description,
+        "status": condition.status.value,
+        "iteration_count": condition.iteration_count,
+        "response_text": condition.response_text,
+    }
+
+
+async def get_condition_summary(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+) -> dict | None:
+    """Get a summary of condition counts by status for an application.
+
+    Returns None if the application is not found or out of scope.
+    Returns a dict with status counts and total.
+    """
+    app = await get_application(session, user, application_id)
+    if app is None:
+        return None
+
+    stmt = (
+        select(Condition.status, func.count(Condition.id))
+        .where(Condition.application_id == application_id)
+        .group_by(Condition.status)
+    )
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    counts = {status.value: 0 for status in ConditionStatus}
+    total = 0
+    for status, count in rows:
+        counts[status.value] = count
+        total += count
+
+    return {"counts": counts, "total": total}

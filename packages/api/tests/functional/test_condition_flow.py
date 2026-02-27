@@ -32,6 +32,10 @@ def _mock_condition(
     c.status = status
     c.response_text = response_text
     c.issued_by = issued_by
+    c.cleared_by = None
+    c.due_date = None
+    c.iteration_count = 0
+    c.waiver_rationale = None
     c.created_at = MagicMock()
     c.created_at.isoformat.return_value = "2026-02-20T00:00:00+00:00"
     return c

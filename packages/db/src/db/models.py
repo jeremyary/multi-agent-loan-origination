@@ -216,6 +216,9 @@ class Condition(Base):
     response_text = Column(Text, nullable=True)
     issued_by = Column(String(255), nullable=True)
     cleared_by = Column(String(255), nullable=True)
+    due_date = Column(DateTime(timezone=True), nullable=True)
+    iteration_count = Column(Integer, nullable=False, server_default="0", default=0)
+    waiver_rationale = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 

@@ -1,7 +1,7 @@
 agent:
   name: underwriter_assistant
   persona: underwriter
-  description: "Authenticated assistant for underwriters -- queue review, application inspection, risk assessment, compliance checks, compliance KB search, and preliminary recommendations"
+  description: "Authenticated assistant for underwriters -- queue review, application inspection, risk assessment, compliance checks, compliance KB search, preliminary recommendations, and condition lifecycle management"
 
 system_prompt: |
   You are the Summit Cap Financial underwriter assistant. You help
@@ -59,6 +59,24 @@ system_prompt: |
   - When running ALL checks, also present the overall status and whether the
     application can proceed.
   - Include the regulatory disclaimer with all compliance check results.
+
+  CONDITIONS MANAGEMENT:
+  - Issue conditions using uw_issue_condition with a clear description,
+    appropriate severity, and optional due date.
+  - Severity levels (from most to least blocking):
+    * prior_to_approval: Must be cleared before any approval decision
+    * prior_to_docs: Must be cleared before final documents are prepared
+    * prior_to_closing: Must be cleared before closing (waivable)
+    * prior_to_funding: Must be cleared before funding disbursement (waivable)
+  - Default severity is prior_to_docs when not specified.
+  - Workflow: issue -> (borrower responds) -> review -> clear/return/waive
+  - Only PRIOR_TO_CLOSING and PRIOR_TO_FUNDING conditions can be waived.
+    PRIOR_TO_APPROVAL and PRIOR_TO_DOCS are blocking and cannot be waived.
+  - Always ask for a rationale when waiving a condition.
+  - Use uw_condition_summary to check remaining conditions before making
+    approval decisions.
+  - Use uw_return_condition when a borrower's response is insufficient,
+    with a clear note explaining what's missing.
 
   COMPLIANCE GUARD:
   - If compliance_check returned any FAIL status, you MUST refuse to assist
@@ -118,6 +136,24 @@ tools:
   - name: kb_search
     description: "Search the compliance knowledge base for regulatory guidance"
     allowed_roles: [loan_officer, underwriter, admin]
+  - name: uw_issue_condition
+    description: "Issue a new underwriting condition on an application"
+    allowed_roles: [underwriter, admin]
+  - name: uw_review_condition
+    description: "Move a condition from RESPONDED to UNDER_REVIEW"
+    allowed_roles: [underwriter, admin]
+  - name: uw_clear_condition
+    description: "Clear a condition after reviewing the borrower's response"
+    allowed_roles: [underwriter, admin]
+  - name: uw_waive_condition
+    description: "Waive a condition (PRIOR_TO_CLOSING/FUNDING only, requires rationale)"
+    allowed_roles: [underwriter, admin]
+  - name: uw_return_condition
+    description: "Return a condition to the borrower with a note about what's missing"
+    allowed_roles: [underwriter, admin]
+  - name: uw_condition_summary
+    description: "Get a summary of condition counts by status for an application"
+    allowed_roles: [underwriter, admin]
 
 model_routing:
   strategy: per_query
