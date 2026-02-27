@@ -190,6 +190,7 @@ async def test_render_decision_confirmed_approve(mock_session_cls, mock_render):
     )
 
     assert "Decision rendered" in result
+    assert "Decision ID: 1" in result
     assert "Approved" in result
     assert "Clear To Close" in result
     mock_render.assert_awaited_once()
@@ -382,7 +383,7 @@ async def test_render_decision_propose_override_warning(mock_session_cls, mock_p
 @patch("src.agents.decision_tools.write_audit_event", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
 async def test_draft_adverse_action_success(mock_session_cls, mock_audit):
-    """uw_draft_adverse_action generates notice text."""
+    """uw_draft_adverse_action generates notice text with explicit decision_id."""
     session = AsyncMock()
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
@@ -437,6 +438,52 @@ async def test_draft_adverse_action_success(mock_session_cls, mock_audit):
     assert "DISCLAIMER" in result
 
 
+@patch("src.agents.decision_tools.write_audit_event", new_callable=AsyncMock)
+@patch("src.agents.decision_tools.SessionLocal")
+async def test_draft_adverse_action_auto_find(mock_session_cls, mock_audit):
+    """uw_draft_adverse_action auto-finds latest DENIED decision when no ID given."""
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    app = _mock_app()
+    dec = _mock_decision(
+        id=42,
+        denial_reasons=["Insufficient income"],
+        credit_score_used=620,
+        credit_score_source="TransUnion",
+    )
+
+    ab = MagicMock()
+    ab.borrower_id = 10
+    borrower = MagicMock()
+    borrower.first_name = "Alice"
+    borrower.last_name = "Chen"
+
+    app_result = MagicMock()
+    app_result.unique.return_value.scalar_one_or_none.return_value = app
+    dec_result = MagicMock()
+    dec_result.scalar_one_or_none.return_value = dec
+    ab_result = MagicMock()
+    ab_result.scalar_one_or_none.return_value = ab
+    b_result = MagicMock()
+    b_result.scalar_one_or_none.return_value = borrower
+
+    session.execute = AsyncMock(side_effect=[app_result, dec_result, ab_result, b_result])
+
+    result = await uw_draft_adverse_action.ainvoke(
+        {
+            "application_id": 100,
+            "state": _state(),
+        }
+    )
+
+    assert "ADVERSE ACTION NOTICE" in result
+    assert "Alice Chen" in result
+    assert "Insufficient income" in result
+    assert "620" in result
+
+
 @patch("src.agents.decision_tools.SessionLocal")
 async def test_draft_adverse_action_not_found(mock_session_cls):
     """uw_draft_adverse_action returns error when app not found."""
@@ -457,6 +504,31 @@ async def test_draft_adverse_action_not_found(mock_session_cls):
     )
 
     assert "not found" in result
+
+
+@patch("src.agents.decision_tools.SessionLocal")
+async def test_draft_adverse_action_no_denied_decision(mock_session_cls):
+    """uw_draft_adverse_action returns error when no DENIED decision exists."""
+    session = AsyncMock()
+    mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
+    mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
+
+    app = _mock_app()
+    app_result = MagicMock()
+    app_result.unique.return_value.scalar_one_or_none.return_value = app
+    dec_result = MagicMock()
+    dec_result.scalar_one_or_none.return_value = None
+
+    session.execute = AsyncMock(side_effect=[app_result, dec_result])
+
+    result = await uw_draft_adverse_action.ainvoke(
+        {
+            "application_id": 100,
+            "state": _state(),
+        }
+    )
+
+    assert "No DENIED decision" in result
 
 
 @patch("src.agents.decision_tools.SessionLocal")

@@ -133,6 +133,7 @@ def _format_confirmed(result: dict, rationale: str) -> str:
     dt = result["decision_type"].replace("_", " ").title()
     lines = [
         f"Decision rendered for application #{result['application_id']}:",
+        f"  Decision ID: {result.get('id', 'N/A')}",
         f"  Type: {dt}",
         f"  Rationale: {rationale}",
     ]
@@ -253,7 +254,7 @@ async def uw_render_decision(
 @tool
 async def uw_draft_adverse_action(
     application_id: int,
-    decision_id: int,
+    decision_id: int | None = None,
     state: Annotated[dict, InjectedState] = None,
 ) -> str:
     """Draft an adverse action notice for a denied application.
@@ -264,7 +265,8 @@ async def uw_draft_adverse_action(
 
     Args:
         application_id: The loan application ID.
-        decision_id: The decision ID (must be a DENIED decision).
+        decision_id: Optional decision ID. If omitted, uses the most recent
+            DENIED decision for the application.
     """
     user = _user_context_from_state(state)
     async with SessionLocal() as session:
@@ -272,20 +274,35 @@ async def uw_draft_adverse_action(
         if app is None:
             return f"Application #{application_id} not found or you don't have access to it."
 
-        # Fetch decision
-        dec_stmt = select(Decision).where(
-            Decision.id == decision_id,
-            Decision.application_id == application_id,
-        )
+        if decision_id is not None:
+            # Fetch specific decision
+            dec_stmt = select(Decision).where(
+                Decision.id == decision_id,
+                Decision.application_id == application_id,
+            )
+        else:
+            # Auto-find latest DENIED decision
+            dec_stmt = (
+                select(Decision)
+                .where(
+                    Decision.application_id == application_id,
+                    Decision.decision_type == DecisionType.DENIED,
+                )
+                .order_by(Decision.created_at.desc())
+                .limit(1)
+            )
+
         dec_result = await session.execute(dec_stmt)
         dec = dec_result.scalar_one_or_none()
 
         if dec is None:
-            return f"Decision #{decision_id} not found on application #{application_id}."
+            if decision_id is not None:
+                return f"Decision #{decision_id} not found on application #{application_id}."
+            return f"No DENIED decision found on application #{application_id}."
 
         if dec.decision_type != DecisionType.DENIED:
             return (
-                f"Decision #{decision_id} is '{dec.decision_type.value}' -- "
+                f"Decision #{dec.id} is '{dec.decision_type.value}' -- "
                 f"adverse action notices are only for DENIED decisions."
             )
 
