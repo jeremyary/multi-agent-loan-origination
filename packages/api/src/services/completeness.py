@@ -284,3 +284,61 @@ async def check_completeness(
         provided_count=provided_count,
         required_count=len(required_types),
     )
+
+
+# Statuses that indicate a document is still being processed
+_UNPROCESSED_STATUSES = {
+    DocumentStatus.UPLOADED,
+    DocumentStatus.PROCESSING,
+}
+
+
+async def check_underwriting_readiness(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+) -> dict | None:
+    """Check whether an application is ready for underwriting submission.
+
+    Returns {"is_ready": bool, "blockers": list[str]} or None if the
+    application is not found / out of scope.
+    """
+    from db.enums import ApplicationStage
+
+    app = await get_application(session, user, application_id)
+    if app is None:
+        return None
+
+    blockers: list[str] = []
+
+    # 1. Must be in APPLICATION stage
+    current_stage = app.stage or ApplicationStage.INQUIRY
+    if current_stage != ApplicationStage.APPLICATION:
+        blockers.append(
+            f"Application is in '{current_stage.value}' stage "
+            f"(must be in 'application' stage to submit)"
+        )
+
+    # 2. All required documents must be provided
+    completeness = await check_completeness(session, user, application_id)
+    if completeness and not completeness.is_complete:
+        missing = [r.label for r in completeness.requirements if not r.is_provided]
+        blockers.append(f"Missing required documents: {', '.join(missing)}")
+
+    # 3. No documents still in processing
+    if completeness:
+        unprocessed = [
+            r.label
+            for r in completeness.requirements
+            if r.is_provided and r.status in _UNPROCESSED_STATUSES
+        ]
+        if unprocessed:
+            blockers.append(f"Documents still processing: {', '.join(unprocessed)}")
+
+    # 4. No critical quality flags
+    if completeness:
+        flagged = [r.label for r in completeness.requirements if r.is_provided and r.quality_flags]
+        if flagged:
+            blockers.append(f"Documents with quality issues: {', '.join(flagged)}")
+
+    return {"is_ready": len(blockers) == 0, "blockers": blockers}

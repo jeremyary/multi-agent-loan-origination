@@ -103,6 +103,49 @@ def get_document_content(user: UserContext, document: Document) -> str | None:
     return document.file_path
 
 
+# Statuses from which an LO may flag a document for resubmission.
+_FLAGGABLE_STATUSES = {
+    DocumentStatus.PROCESSING_COMPLETE,
+    DocumentStatus.PENDING_REVIEW,
+    DocumentStatus.ACCEPTED,
+}
+
+
+async def update_document_status(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    document_id: int,
+    new_status: DocumentStatus,
+    reason: str | None = None,
+) -> Document | None:
+    """Update a document's status (e.g. flag for resubmission).
+
+    Returns the updated Document, or None if the document is not found /
+    out of scope.  Raises ValueError for invalid status transitions.
+    """
+    doc = await get_document(session, user, document_id)
+    if doc is None:
+        return None
+
+    if doc.application_id != application_id:
+        return None
+
+    if new_status == DocumentStatus.FLAGGED_FOR_RESUBMISSION:
+        if doc.status not in _FLAGGABLE_STATUSES:
+            raise ValueError(
+                f"Cannot flag document from status '{doc.status.value}'. "
+                f"Allowed: {sorted(s.value for s in _FLAGGABLE_STATUSES)}."
+            )
+
+    doc.status = new_status
+    if reason:
+        doc.quality_flags = reason
+    await session.commit()
+    await session.refresh(doc)
+    return doc
+
+
 async def upload_document(
     session: AsyncSession,
     user: UserContext,
