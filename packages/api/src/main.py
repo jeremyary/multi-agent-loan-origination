@@ -26,6 +26,7 @@ from .routes import (
     hmda,
     loan_officer_chat,
     public,
+    underwriter_chat,
 )
 from .schemas.error import ErrorResponse
 
@@ -125,6 +126,7 @@ app.include_router(applications.router, prefix="/api/applications", tags=["appli
 app.include_router(chat.router, prefix="/api", tags=["chat"])
 app.include_router(borrower_chat.router, prefix="/api", tags=["chat"])
 app.include_router(loan_officer_chat.router, prefix="/api", tags=["chat"])
+app.include_router(underwriter_chat.router, prefix="/api", tags=["chat"])
 app.include_router(documents.router, prefix="/api", tags=["documents"])
 app.include_router(hmda.router, prefix="/api/hmda", tags=["hmda"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
