@@ -21,7 +21,7 @@ from ..services.application import get_application
 logger = logging.getLogger(__name__)
 
 # Human-readable labels for document types
-_DOC_TYPE_LABELS: dict[DocumentType, str] = {
+DOC_TYPE_LABELS: dict[DocumentType, str] = {
     DocumentType.W2: "W-2 Form",
     DocumentType.PAY_STUB: "Recent Pay Stub",
     DocumentType.TAX_RETURN: "Tax Return",
@@ -260,7 +260,7 @@ async def check_completeness(
             requirements.append(
                 DocumentRequirement(
                     doc_type=dt,
-                    label=_DOC_TYPE_LABELS.get(dt, dt.value),
+                    label=DOC_TYPE_LABELS.get(dt, dt.value),
                     is_provided=True,
                     document_id=doc.id,
                     status=doc.status,
@@ -272,7 +272,7 @@ async def check_completeness(
             requirements.append(
                 DocumentRequirement(
                     doc_type=dt,
-                    label=_DOC_TYPE_LABELS.get(dt, dt.value),
+                    label=DOC_TYPE_LABELS.get(dt, dt.value),
                     is_provided=False,
                 )
             )

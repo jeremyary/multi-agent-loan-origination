@@ -16,33 +16,24 @@ Design note -- session-per-tool-call:
 
 from typing import Annotated
 
+from db import ApplicationFinancials
 from db.database import SessionLocal
-from db.enums import ApplicationStage, EmploymentStatus, UserRole
+from db.enums import ApplicationStage, EmploymentStatus
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
+from sqlalchemy import select
 
-from ..middleware.auth import build_data_scope
-from ..schemas.auth import UserContext
 from ..services.application import get_application, list_applications
 from ..services.audit import write_audit_event
 from ..services.condition import get_conditions
 from ..services.document import list_documents
 from ..services.rate_lock import get_rate_lock_status
 from ..services.urgency import compute_urgency
+from .shared import format_enum_label, user_context_from_state
 
 
-def _user_context_from_state(state: dict) -> UserContext:
-    """Build a UserContext from the agent's graph state."""
-    user_id = state.get("user_id", "anonymous")
-    role_str = state.get("user_role", "underwriter")
-    role = UserRole(role_str)
-    return UserContext(
-        user_id=user_id,
-        role=role,
-        email=state.get("user_email") or f"{user_id}@summit-cap.local",
-        name=state.get("user_name") or user_id,
-        data_scope=build_data_scope(role, user_id),
-    )
+def _user_context_from_state(state: dict):
+    return user_context_from_state(state, default_role="underwriter")
 
 
 @tool
@@ -145,9 +136,6 @@ async def uw_application_detail(
             return "Application not found or you don't have access to it."
 
         # Financials -- separate query (session-per-tool isolation pattern)
-        from db import ApplicationFinancials
-        from sqlalchemy import select
-
         fin_stmt = select(ApplicationFinancials).where(
             ApplicationFinancials.application_id == application_id
         )
@@ -162,7 +150,7 @@ async def uw_application_detail(
         stage = app.stage.value if app.stage else "inquiry"
         lines = [
             f"Application #{application_id} -- Underwriting Detail",
-            f"Stage: {stage.replace('_', ' ').title()}",
+            f"Stage: {format_enum_label(stage)}",
             "",
         ]
 
@@ -179,7 +167,7 @@ async def uw_application_detail(
                         if hasattr(b.employment_status, "value")
                         else str(b.employment_status)
                     )
-                    lines.append(f"    Employment: {emp.replace('_', ' ').title()}")
+                    lines.append(f"    Employment: {format_enum_label(emp)}")
 
         # Financial Summary
         lines.append("")
@@ -465,11 +453,8 @@ async def uw_risk_assessment(
             return (
                 f"Risk assessment is only available for applications in the UNDERWRITING "
                 f"stage. Application #{application_id} is in "
-                f"{stage_val.replace('_', ' ').title()}."
+                f"{format_enum_label(stage_val)}."
             )
-
-        from db import ApplicationFinancials
-        from sqlalchemy import select
 
         fin_stmt = select(ApplicationFinancials).where(
             ApplicationFinancials.application_id == application_id
@@ -625,11 +610,8 @@ async def uw_preliminary_recommendation(
             return (
                 f"Preliminary recommendation is only available for applications in the "
                 f"UNDERWRITING stage. Application #{application_id} is in "
-                f"{stage_val.replace('_', ' ').title()}."
+                f"{format_enum_label(stage_val)}."
             )
-
-        from db import ApplicationFinancials
-        from sqlalchemy import select
 
         fin_stmt = select(ApplicationFinancials).where(
             ApplicationFinancials.application_id == application_id

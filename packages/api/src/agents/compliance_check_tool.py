@@ -13,14 +13,13 @@ Design note -- session-per-tool-call:
 import logging
 from typing import Annotated
 
+from db import ApplicationFinancials
 from db.database import SessionLocal
-from db.enums import ApplicationStage, DocumentType, UserRole
+from db.enums import ApplicationStage, DocumentType
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 from sqlalchemy import select
 
-from ..middleware.auth import build_data_scope
-from ..schemas.auth import UserContext
 from ..services.application import get_application
 from ..services.audit import write_audit_event
 from ..services.compliance.checks import (
@@ -30,6 +29,7 @@ from ..services.compliance.checks import (
     run_all_checks,
 )
 from ..services.document import list_documents
+from .shared import format_enum_label, user_context_from_state
 
 logger = logging.getLogger(__name__)
 
@@ -43,18 +43,8 @@ _ASSET_DOC_TYPES = frozenset({DocumentType.BANK_STATEMENT})
 _EMPLOYMENT_DOC_TYPES = frozenset({DocumentType.W2, DocumentType.PAY_STUB})
 
 
-def _user_context_from_state(state: dict) -> UserContext:
-    """Build a UserContext from the agent's graph state."""
-    user_id = state.get("user_id", "anonymous")
-    role_str = state.get("user_role", "underwriter")
-    role = UserRole(role_str)
-    return UserContext(
-        user_id=user_id,
-        role=role,
-        email=state.get("user_email") or f"{user_id}@summit-cap.local",
-        name=state.get("user_name") or user_id,
-        data_scope=build_data_scope(role, user_id),
-    )
+def _user_context_from_state(state: dict):
+    return user_context_from_state(state, default_role="underwriter")
 
 
 def _format_check_result(check) -> list[str]:
@@ -117,12 +107,10 @@ async def compliance_check(
             return (
                 f"Compliance checks are only available for applications in the "
                 f"UNDERWRITING stage. Application #{application_id} is in "
-                f"{stage_val.replace('_', ' ').title()}."
+                f"{format_enum_label(stage_val)}."
             )
 
         # Gather data for checks
-        from db import ApplicationFinancials
-
         fin_stmt = select(ApplicationFinancials).where(
             ApplicationFinancials.application_id == application_id
         )

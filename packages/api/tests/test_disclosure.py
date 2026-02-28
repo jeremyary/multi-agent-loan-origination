@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.services.disclosure import (
-    _DISCLOSURE_BY_ID,
     _DISCLOSURE_IDS,
+    DISCLOSURE_BY_ID,
     REQUIRED_DISCLOSURES,
     get_disclosure_status,
 )
@@ -27,8 +27,8 @@ def test_required_disclosures_ids():
 
 
 def test_disclosure_by_id_maps_all():
-    assert set(_DISCLOSURE_BY_ID.keys()) == _DISCLOSURE_IDS
-    for d_id, d_info in _DISCLOSURE_BY_ID.items():
+    assert set(DISCLOSURE_BY_ID.keys()) == _DISCLOSURE_IDS
+    for d_id, d_info in DISCLOSURE_BY_ID.items():
         assert d_info["id"] == d_id
         assert "label" in d_info
         assert "summary" in d_info
@@ -46,7 +46,7 @@ def _mock_audit_event(disclosure_id: str, application_id: int = 1):
     event.application_id = application_id
     event.event_data = {
         "disclosure_id": disclosure_id,
-        "disclosure_label": _DISCLOSURE_BY_ID[disclosure_id]["label"],
+        "disclosure_label": DISCLOSURE_BY_ID[disclosure_id]["label"],
         "borrower_confirmation": "I acknowledge",
     }
     return event

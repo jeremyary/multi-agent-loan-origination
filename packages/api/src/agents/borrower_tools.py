@@ -19,15 +19,12 @@ from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from db.database import SessionLocal
-from db.enums import UserRole
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 
-from ..middleware.auth import build_data_scope
-from ..schemas.auth import UserContext
 from ..services import application as app_service
 from ..services.audit import write_audit_event
-from ..services.completeness import _DOC_TYPE_LABELS, check_completeness
+from ..services.completeness import DOC_TYPE_LABELS, check_completeness
 from ..services.condition import (
     check_condition_documents,
     get_conditions,
@@ -44,6 +41,7 @@ from ..services.intake import (
 )
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
+from .shared import format_enum_label, user_context_from_state
 
 # REQ-CC-17 disclaimer appended to all regulatory deadline responses
 _REGULATORY_DISCLAIMER = (
@@ -52,18 +50,8 @@ _REGULATORY_DISCLAIMER = (
 )
 
 
-def _user_context_from_state(state: dict) -> UserContext:
-    """Build a UserContext from the agent's graph state."""
-    user_id = state.get("user_id", "anonymous")
-    role_str = state.get("user_role", "borrower")
-    role = UserRole(role_str)
-    return UserContext(
-        user_id=user_id,
-        role=role,
-        email=state.get("user_email") or f"{user_id}@summit-cap.local",
-        name=state.get("user_name") or user_id,
-        data_scope=build_data_scope(role, user_id),
-    )
+def _user_context_from_state(state: dict):
+    return user_context_from_state(state, default_role="borrower")
 
 
 @tool
@@ -144,7 +132,7 @@ async def document_processing_status(
 
     for doc in documents:
         status_val = doc.status.value if hasattr(doc.status, "value") else str(doc.status)
-        label = _DOC_TYPE_LABELS.get(doc.doc_type, str(doc.doc_type))
+        label = DOC_TYPE_LABELS.get(doc.doc_type, str(doc.doc_type))
         status_label = _STATUS_LABELS.get(status_val, status_val)
         lines.append(f"- {label}: {status_label}")
 
@@ -290,11 +278,11 @@ async def acknowledge_disclosure(
         disclosure_id: Identifier of the disclosure (loan_estimate, privacy_notice, hmda_notice, equal_opportunity_notice).
         borrower_confirmation: The borrower's exact confirmation text.
     """
-    from ..services.disclosure import _DISCLOSURE_BY_ID
+    from ..services.disclosure import DISCLOSURE_BY_ID
 
-    disclosure = _DISCLOSURE_BY_ID.get(disclosure_id)
+    disclosure = DISCLOSURE_BY_ID.get(disclosure_id)
     if disclosure is None:
-        valid = ", ".join(sorted(_DISCLOSURE_BY_ID.keys()))
+        valid = ", ".join(sorted(DISCLOSURE_BY_ID.keys()))
         return f"Unknown disclosure '{disclosure_id}'. Valid IDs: {valid}"
 
     user = _user_context_from_state(state)
@@ -348,18 +336,18 @@ async def disclosure_status(
         lines.append("")
         lines.append("Acknowledged:")
         for d_id in result["acknowledged"]:
-            from ..services.disclosure import _DISCLOSURE_BY_ID
+            from ..services.disclosure import DISCLOSURE_BY_ID
 
-            label = _DISCLOSURE_BY_ID.get(d_id, {}).get("label", d_id)
+            label = DISCLOSURE_BY_ID.get(d_id, {}).get("label", d_id)
             lines.append(f"  - {label}")
 
     if result["pending"]:
         lines.append("")
         lines.append("Pending:")
         for d_id in result["pending"]:
-            from ..services.disclosure import _DISCLOSURE_BY_ID
+            from ..services.disclosure import DISCLOSURE_BY_ID
 
-            label = _DISCLOSURE_BY_ID.get(d_id, {}).get("label", d_id)
+            label = DISCLOSURE_BY_ID.get(d_id, {}).get("label", d_id)
             lines.append(f"  - {label}")
 
     return "\n".join(lines)
@@ -601,7 +589,7 @@ async def start_application(
                 "details, property information, and financial situation."
             )
 
-        stage = result["stage"].replace("_", " ").title()
+        stage = format_enum_label(result["stage"])
         return (
             f"You already have an active application #{result['application_id']} "
             f"(stage: {stage}). Would you like to continue with this application?"
@@ -705,7 +693,7 @@ async def get_application_summary(
         await session.commit()
 
     pct = round(progress["completed"] / progress["total"] * 100) if progress["total"] else 0
-    stage = progress["stage"].replace("_", " ").title()
+    stage = format_enum_label(progress["stage"])
 
     lines = [
         f"Application #{progress['application_id']} (Stage: {stage})",

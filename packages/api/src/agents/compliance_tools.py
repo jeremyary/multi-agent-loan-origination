@@ -24,8 +24,6 @@ from ..services.compliance.knowledge_base.search import search_kb
 
 logger = logging.getLogger(__name__)
 
-_TIER_LABELS = {1: "Federal Regulation", 2: "Agency Guideline", 3: "Internal Policy"}
-
 _DISCLAIMER = (
     "\nThis content is simulated for demonstration purposes "
     "and does not constitute legal or regulatory advice."

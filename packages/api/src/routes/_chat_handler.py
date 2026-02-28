@@ -13,8 +13,9 @@ from db.enums import UserRole
 from fastapi import WebSocket
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
+from ..core.auth import build_data_scope
 from ..core.config import settings
-from ..middleware.auth import _decode_token, _resolve_role, build_data_scope
+from ..middleware.auth import _decode_token, _resolve_role
 from ..observability import build_langfuse_config, flush_langfuse
 from ..schemas.auth import UserContext
 from ..services.audit import write_audit_event

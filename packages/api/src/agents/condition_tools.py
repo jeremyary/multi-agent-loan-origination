@@ -15,12 +15,10 @@ from datetime import datetime
 from typing import Annotated
 
 from db.database import SessionLocal
-from db.enums import ConditionSeverity, UserRole
+from db.enums import ConditionSeverity
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 
-from ..middleware.auth import build_data_scope
-from ..schemas.auth import UserContext
 from ..services.condition import (
     clear_condition,
     get_condition_summary,
@@ -29,24 +27,15 @@ from ..services.condition import (
     review_condition,
     waive_condition,
 )
+from .shared import format_enum_label, user_context_from_state
 
 logger = logging.getLogger(__name__)
 
 _SEVERITY_MAP = {s.value: s for s in ConditionSeverity}
 
 
-def _user_context_from_state(state: dict) -> UserContext:
-    """Build a UserContext from the agent's graph state."""
-    user_id = state.get("user_id", "anonymous")
-    role_str = state.get("user_role", "underwriter")
-    role = UserRole(role_str)
-    return UserContext(
-        user_id=user_id,
-        role=role,
-        email=state.get("user_email") or f"{user_id}@summit-cap.local",
-        name=state.get("user_name") or user_id,
-        data_scope=build_data_scope(role, user_id),
-    )
+def _user_context_from_state(state: dict):
+    return user_context_from_state(state, default_role="underwriter")
 
 
 @tool
@@ -276,7 +265,7 @@ async def uw_condition_summary(
     lines = [f"Condition Summary -- Application #{application_id} ({result['total']} total):", ""]
     for status, count in result["counts"].items():
         if count > 0:
-            lines.append(f"  {status.replace('_', ' ').title()}: {count}")
+            lines.append(f"  {format_enum_label(status)}: {count}")
 
     # Highlight unresolved
     unresolved = (
