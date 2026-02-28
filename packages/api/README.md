@@ -84,9 +84,15 @@ tests/
 ### Admin (admin role only)
 - `POST /api/admin/seed` - Seed demo data
 - `GET /api/admin/seed/status` - Check seed status
-- `GET /api/admin/audit` - Query audit log (filterable by `application_id`, `event_type`)
-- `GET /api/admin/audit/application/{id}` - Audit events for a specific application
-- `GET /api/admin/audit/verify` - Verify hash chain integrity
+
+### Audit (admin + CEO)
+- `GET /api/audit/session?session_id=` - Query audit events by session ID
+- `GET /api/audit/application/{id}` - Audit events for a specific application
+- `GET /api/audit/decision/{id}` - Audit events for a decision
+- `GET /api/audit/decision/{id}/trace` - Backward trace from decision to contributing events
+- `GET /api/audit/search?days=&event_type=` - Search audit events by time range/type
+- `GET /api/audit/verify` - Verify hash chain integrity (admin only)
+- `GET /api/audit/export?fmt=json|csv` - Export audit trail (admin + CEO + underwriter)
 
 ### Conversation History (authenticated)
 - `GET /api/borrower/conversations/history` - Borrower conversation history

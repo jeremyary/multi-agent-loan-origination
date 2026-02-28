@@ -1,5 +1,5 @@
 # This project was developed with assistance from AI tools.
-"""Pydantic response schemas for CEO audit trail queries."""
+"""Pydantic response schemas for audit trail endpoints."""
 
 from datetime import datetime
 
@@ -19,9 +19,10 @@ class AuditEventItem(BaseModel):
     event_data: dict | str | None = None
 
 
-class AuditSearchResponse(BaseModel):
-    """Response for audit trail search queries."""
+class AuditBySessionResponse(BaseModel):
+    """Response for audit trail query by session ID."""
 
+    session_id: str
     count: int
     events: list[AuditEventItem]
 
@@ -40,6 +41,21 @@ class AuditByDecisionResponse(BaseModel):
     decision_id: int
     count: int
     events: list[AuditEventItem]
+
+
+class AuditSearchResponse(BaseModel):
+    """Response for audit trail search queries."""
+
+    count: int
+    events: list[AuditEventItem]
+
+
+class AuditChainVerifyResponse(BaseModel):
+    """Response for audit hash chain verification."""
+
+    status: str
+    events_checked: int
+    first_break_id: int | None = None
 
 
 class DecisionTraceResponse(BaseModel):

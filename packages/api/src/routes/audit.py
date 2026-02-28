@@ -1,5 +1,9 @@
 # This project was developed with assistance from AI tools.
-"""CEO audit trail query and export endpoints (F13, F15)."""
+"""Audit trail query and export endpoints.
+
+Consolidates all audit endpoints (previously split between admin and analytics).
+CEO and Admin can query; CEO, Admin, and Underwriter can export.
+"""
 
 from db import get_db
 from db.enums import UserRole
@@ -11,6 +15,8 @@ from ..middleware.auth import require_roles
 from ..schemas.audit import (
     AuditByApplicationResponse,
     AuditByDecisionResponse,
+    AuditBySessionResponse,
+    AuditChainVerifyResponse,
     AuditEventItem,
     AuditSearchResponse,
     DecisionTraceResponse,
@@ -20,7 +26,9 @@ from ..services.audit import (
     get_decision_trace,
     get_events_by_application,
     get_events_by_decision,
+    get_events_by_session,
     search_events,
+    verify_audit_chain,
     write_audit_event,
 )
 
@@ -40,6 +48,29 @@ def _to_item(evt) -> AuditEventItem:
     )
 
 
+# ---------------------------------------------------------------------------
+# Queries (moved from admin router, widened to CEO + Admin)
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/session",
+    response_model=AuditBySessionResponse,
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.CEO))],
+)
+async def audit_by_session(
+    session_id: str = Query(..., description="LangFuse/WebSocket session ID"),
+    session: AsyncSession = Depends(get_db),
+) -> AuditBySessionResponse:
+    """Query audit events by session ID for trace-audit correlation."""
+    events = await get_events_by_session(session, session_id)
+    return AuditBySessionResponse(
+        session_id=session_id,
+        count=len(events),
+        events=[_to_item(e) for e in events],
+    )
+
+
 @router.get(
     "/application/{application_id}",
     response_model=AuditByApplicationResponse,
@@ -49,7 +80,7 @@ async def audit_by_application(
     application_id: int,
     session: AsyncSession = Depends(get_db),
 ) -> AuditByApplicationResponse:
-    """Query audit trail by application ID (S-5-F13-01)."""
+    """Query audit trail by application ID."""
     events = await get_events_by_application(session, application_id)
     return AuditByApplicationResponse(
         application_id=application_id,
@@ -109,6 +140,24 @@ async def audit_search(
         count=len(events),
         events=[_to_item(e) for e in events],
     )
+
+
+@router.get(
+    "/verify",
+    response_model=AuditChainVerifyResponse,
+    dependencies=[Depends(require_roles(UserRole.ADMIN))],
+)
+async def verify_audit(
+    session: AsyncSession = Depends(get_db),
+) -> AuditChainVerifyResponse:
+    """Verify audit trail hash chain integrity."""
+    result = await verify_audit_chain(session)
+    return AuditChainVerifyResponse(**result)
+
+
+# ---------------------------------------------------------------------------
+# Export (S-5-F15-07)
+# ---------------------------------------------------------------------------
 
 
 @router.get(
