@@ -18,6 +18,7 @@ from .middleware.pii import PIIMaskingMiddleware
 from .observability import log_observability_status
 from .routes import (
     admin,
+    analytics,
     applications,
     borrower_chat,
     chat,
@@ -139,6 +140,7 @@ app.include_router(decisions.router, prefix="/api/applications", tags=["decision
 app.include_router(documents.router, prefix="/api", tags=["documents"])
 app.include_router(hmda.router, prefix="/api/hmda", tags=["hmda"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 
 # Setup SQLAdmin dashboard at /admin
 setup_admin(app)
