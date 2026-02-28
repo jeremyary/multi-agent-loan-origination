@@ -147,20 +147,17 @@ class TestExtractTextFromPdf:
     """pymupdf text extraction from PDF bytes."""
 
     def test_extract_text_from_pdf(self):
-        svc = ExtractionService()
-        result = svc._extract_text_from_pdf(_get_minimal_pdf())
+        result = ExtractionService._extract_text_from_pdf_sync(_get_minimal_pdf())
         assert result is not None
         assert "Hello World" in result
         assert len(result) >= 50
 
     def test_corrupted_pdf_returns_none(self):
-        svc = ExtractionService()
-        result = svc._extract_text_from_pdf(b"not a pdf at all")
+        result = ExtractionService._extract_text_from_pdf_sync(b"not a pdf at all")
         assert result is None
 
     def test_blank_pdf_returns_short_text(self):
-        svc = ExtractionService()
-        result = svc._extract_text_from_pdf(_get_blank_pdf())
+        result = ExtractionService._extract_text_from_pdf_sync(_get_blank_pdf())
         assert result is not None
         assert len(result) < 50
 

@@ -64,6 +64,10 @@ class Settings(BaseSettings):
         default="admin",
         description="Password for SQLAdmin login (ignored when AUTH_DISABLED=true).",
     )
+    SQLADMIN_SECRET_KEY: str = Field(
+        default="change-me-in-production",
+        description="Secret key for SQLAdmin session cookies. Must be stable across restarts.",
+    )
 
     # -- Safety / Shields --
     SAFETY_MODEL: str | None = Field(

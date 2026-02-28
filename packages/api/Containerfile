@@ -43,6 +43,9 @@ COPY packages/api/pyproject.toml ./packages/api/
 # Copy DB package source (API depends on it via editable install)
 COPY packages/db/ ./packages/db/
 
+# Copy config files (models.yaml, agent configs, keycloak realm)
+COPY config/ ./config/
+
 # Set working directory to API package
 WORKDIR /app/packages/api
 

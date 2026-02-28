@@ -121,6 +121,11 @@ spec:
                 secretKeyRef:
                   name: {{ include "summit-cap.fullname" . }}-secret
                   key: LANGFUSE_HOST
+            - name: SQLADMIN_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "summit-cap.fullname" . }}-secret
+                  key: SQLADMIN_SECRET_KEY
           {{- if .Values.api.healthCheck.enabled }}
           livenessProbe:
             httpGet:
@@ -137,6 +142,14 @@ spec:
           {{- end }}
           resources:
             {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: {{ .Values.api.name }}-config
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

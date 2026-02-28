@@ -226,8 +226,8 @@ def build_routed_graph(
 
         user_role = state.get("user_role", "")
         user_id = state.get("user_id", "anonymous")
-        # Merge graph-level defaults with any per-invocation overrides
-        roles_map = {**(tool_allowed_roles or {}), **state.get("tool_allowed_roles", {})}
+        # Use graph-level defaults only -- never allow state to override roles
+        roles_map = dict(tool_allowed_roles or {})
 
         blocked: list[str] = []
         for tc in last.tool_calls:

@@ -8,8 +8,6 @@ When AUTH_DISABLED=false, requires admin credentials via login form.
 When AUTH_DISABLED=true, admin panel is open (dev mode).
 """
 
-import secrets
-
 from db import (
     Application,
     ApplicationFinancials,
@@ -212,7 +210,9 @@ class DemoDataManifestAdmin(ModelView, model=DemoDataManifest):
 
 def setup_admin(app):
     """Set up SQLAdmin and mount it to the FastAPI app."""
-    auth_backend = AdminAuth(secret_key=secrets.token_urlsafe(32))
+    auth_backend = AdminAuth(
+        secret_key=settings.SQLADMIN_SECRET_KEY,
+    )
     admin = Admin(app, engine, title="Summit Cap Admin", authentication_backend=auth_backend)
 
     admin.add_view(BorrowerAdmin)

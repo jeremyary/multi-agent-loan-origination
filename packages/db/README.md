@@ -399,7 +399,7 @@ Database configuration is managed via environment variables:
 
 ```env
 # Database connection (project root .env file)
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/summit-cap
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5433/summit-cap
 DB_ECHO=false  # Set to true for SQL query logging
 ```
 
@@ -412,7 +412,7 @@ postgresql+asyncpg://[user[:password]@][host[:port]][/database]
 **Components:**
 - `postgresql+asyncpg`: Driver specification (required for async)
 - `user:password`: Database credentials
-- `host:port`: Database server (default: localhost:5432)
+- `host:port`: Database server (default: localhost:5433 via compose)
 - `database`: Database name
 
 ### Database Container
@@ -421,7 +421,7 @@ The database runs in a Podman container managed from the project root:
 
 - **Service Name**: summit-cap-db
 - **Host**: localhost
-- **Port**: 5432
+- **Port**: 5433 (host) / 5432 (container)
 - **Database**: summit-cap
 - **Username**: user
 - **Password**: password
