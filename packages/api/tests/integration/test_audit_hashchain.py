@@ -121,13 +121,13 @@ async def test_verify_chain_detects_tamper(db_session):
 
 
 async def test_verify_endpoint(client_factory, db_session, seed_data):
-    """GET /api/admin/audit/verify returns chain status."""
+    """GET /api/audit/verify returns chain status."""
     from tests.functional.personas import admin
 
     await write_audit_event(db_session, event_type="endpoint_verify_test", user_id="admin")
 
     client = await client_factory(admin())
-    resp = await client.get("/api/admin/audit/verify")
+    resp = await client.get("/api/audit/verify")
     assert resp.status_code == 200
     data = resp.json()
     assert data["status"] == "OK"

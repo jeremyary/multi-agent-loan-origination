@@ -80,8 +80,8 @@ async def test_events_ordered_by_timestamp(db_session):
     assert timestamps == sorted(timestamps)
 
 
-async def test_admin_audit_endpoint(client_factory, db_session, seed_data):
-    """GET /api/admin/audit?session_id=X returns events."""
+async def test_audit_session_endpoint(client_factory, db_session, seed_data):
+    """GET /api/audit/session?session_id=X returns events."""
     from src.services.audit import write_audit_event
     from tests.functional.personas import admin
 
@@ -93,7 +93,7 @@ async def test_admin_audit_endpoint(client_factory, db_session, seed_data):
     )
 
     client = await client_factory(admin())
-    resp = await client.get("/api/admin/audit", params={"session_id": "sess-endpoint"})
+    resp = await client.get("/api/audit/session", params={"session_id": "sess-endpoint"})
     assert resp.status_code == 200
     data = resp.json()
     assert data["session_id"] == "sess-endpoint"

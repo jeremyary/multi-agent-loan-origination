@@ -1,21 +1,13 @@
 # This project was developed with assistance from AI tools.
-"""Admin endpoints for demo data seeding and audit trail queries."""
+"""Admin endpoints for demo data seeding."""
 
 from db import get_compliance_db, get_db
 from db.enums import UserRole
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import require_roles
-from ..schemas.admin import (
-    AuditChainVerifyResponse,
-    AuditEventItem,
-    AuditEventsByApplicationResponse,
-    AuditEventsResponse,
-    SeedResponse,
-    SeedStatusResponse,
-)
-from ..services.audit import get_events_by_application, get_events_by_session, verify_audit_chain
+from ..schemas.admin import SeedResponse, SeedStatusResponse
 from ..services.seed.seeder import get_seed_status, seed_demo_data
 
 router = APIRouter()
@@ -57,74 +49,3 @@ async def seed_status(
     """Check if demo data has been seeded."""
     result = await get_seed_status(session)
     return SeedStatusResponse(**result)
-
-
-@router.get(
-    "/audit",
-    response_model=AuditEventsResponse,
-    dependencies=[Depends(require_roles(UserRole.ADMIN))],
-)
-async def get_audit_events(
-    session_id: str = Query(..., description="LangFuse/WebSocket session ID"),
-    session: AsyncSession = Depends(get_db),
-) -> AuditEventsResponse:
-    """Query audit events by session_id for trace-audit correlation."""
-    events = await get_events_by_session(session, session_id)
-    return AuditEventsResponse(
-        session_id=session_id,
-        count=len(events),
-        events=[
-            AuditEventItem(
-                id=e.id,
-                timestamp=e.timestamp,
-                event_type=e.event_type,
-                user_id=e.user_id,
-                user_role=e.user_role,
-                application_id=e.application_id,
-                event_data=e.event_data,
-            )
-            for e in events
-        ],
-    )
-
-
-@router.get(
-    "/audit/application/{application_id}",
-    response_model=AuditEventsByApplicationResponse,
-    dependencies=[Depends(require_roles(UserRole.ADMIN))],
-)
-async def get_audit_events_by_application(
-    application_id: int,
-    session: AsyncSession = Depends(get_db),
-) -> AuditEventsByApplicationResponse:
-    """Query audit events by application_id for per-loan audit trail review."""
-    events = await get_events_by_application(session, application_id)
-    return AuditEventsByApplicationResponse(
-        application_id=application_id,
-        count=len(events),
-        events=[
-            AuditEventItem(
-                id=e.id,
-                timestamp=e.timestamp,
-                event_type=e.event_type,
-                user_id=e.user_id,
-                user_role=e.user_role,
-                application_id=e.application_id,
-                event_data=e.event_data,
-            )
-            for e in events
-        ],
-    )
-
-
-@router.get(
-    "/audit/verify",
-    response_model=AuditChainVerifyResponse,
-    dependencies=[Depends(require_roles(UserRole.ADMIN))],
-)
-async def verify_audit(
-    session: AsyncSession = Depends(get_db),
-) -> AuditChainVerifyResponse:
-    """Verify audit trail hash chain integrity."""
-    result = await verify_audit_chain(session)
-    return AuditChainVerifyResponse(**result)

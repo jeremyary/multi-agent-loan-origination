@@ -7,11 +7,14 @@ computation (S-2-F15-05).  Session_id enables LangFuse trace correlation
 (S-1-F18-03).
 """
 
+import csv
 import hashlib
+import io
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 
-from db import AuditEvent
+from db import AuditEvent, Decision
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -196,3 +199,160 @@ async def get_events_by_application(
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+# ---------------------------------------------------------------------------
+# CEO audit trail queries (S-5-F13-01 to S-5-F13-05, S-5-F15-07)
+# ---------------------------------------------------------------------------
+
+
+async def get_events_by_decision(
+    session: AsyncSession,
+    decision_id: int,
+) -> list[AuditEvent]:
+    """Return all audit events linked to a decision (backward trace).
+
+    Finds the decision's application_id, then returns all events for that
+    application -- giving full context from creation through decision.
+    """
+    dec = await session.get(Decision, decision_id)
+    if dec is None:
+        return []
+
+    stmt = (
+        select(AuditEvent)
+        .where(AuditEvent.application_id == dec.application_id)
+        .order_by(AuditEvent.timestamp.asc())
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def search_events(
+    session: AsyncSession,
+    *,
+    days: int | None = None,
+    event_type: str | None = None,
+    limit: int = 500,
+) -> list[AuditEvent]:
+    """Search audit events by time range and/or event type."""
+    stmt = select(AuditEvent)
+
+    if days is not None:
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        stmt = stmt.where(AuditEvent.timestamp >= cutoff)
+
+    if event_type is not None:
+        stmt = stmt.where(AuditEvent.event_type == event_type)
+
+    stmt = stmt.order_by(AuditEvent.timestamp.desc()).limit(limit)
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def get_decision_trace(
+    session: AsyncSession,
+    decision_id: int,
+) -> dict | None:
+    """Build a structured backward trace from a decision.
+
+    Returns the decision record plus all contributing audit events grouped
+    by category, or None if the decision doesn't exist.
+    """
+    dec = await session.get(Decision, decision_id)
+    if dec is None:
+        return None
+
+    events = await get_events_by_application(session, dec.application_id)
+
+    grouped: dict[str, list] = {}
+    for evt in events:
+        grouped.setdefault(evt.event_type, []).append(
+            {
+                "id": evt.id,
+                "timestamp": evt.timestamp.isoformat() if evt.timestamp else None,
+                "user_id": evt.user_id,
+                "user_role": evt.user_role,
+                "event_data": evt.event_data,
+            }
+        )
+
+    return {
+        "decision_id": dec.id,
+        "application_id": dec.application_id,
+        "decision_type": dec.decision_type.value if dec.decision_type else None,
+        "rationale": dec.rationale,
+        "ai_recommendation": dec.ai_recommendation,
+        "ai_agreement": dec.ai_agreement,
+        "override_rationale": dec.override_rationale,
+        "denial_reasons": dec.denial_reasons,
+        "decided_by": dec.decided_by,
+        "events_by_type": grouped,
+        "total_events": len(events),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Audit export (S-5-F15-07)
+# ---------------------------------------------------------------------------
+
+_EXPORT_COLUMNS = [
+    "event_id",
+    "timestamp",
+    "event_type",
+    "user_id",
+    "user_role",
+    "application_id",
+    "event_data",
+    "prev_hash",
+]
+
+
+def _event_to_export_row(evt: AuditEvent) -> dict:
+    """Convert an AuditEvent to a flat export dict."""
+    return {
+        "event_id": evt.id,
+        "timestamp": evt.timestamp.isoformat() if evt.timestamp else None,
+        "event_type": evt.event_type,
+        "user_id": evt.user_id,
+        "user_role": evt.user_role,
+        "application_id": evt.application_id,
+        "event_data": json.dumps(evt.event_data, default=str) if evt.event_data else None,
+        "prev_hash": evt.prev_hash,
+    }
+
+
+async def export_events(
+    session: AsyncSession,
+    *,
+    fmt: str = "json",
+    application_id: int | None = None,
+    days: int | None = None,
+    limit: int = 10_000,
+) -> tuple[str, str]:
+    """Export audit events as JSON or CSV.
+
+    Returns (content_string, media_type).
+    """
+    stmt = select(AuditEvent)
+
+    if application_id is not None:
+        stmt = stmt.where(AuditEvent.application_id == application_id)
+    if days is not None:
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        stmt = stmt.where(AuditEvent.timestamp >= cutoff)
+
+    stmt = stmt.order_by(AuditEvent.timestamp.asc()).limit(limit)
+    result = await session.execute(stmt)
+    events = list(result.scalars().all())
+
+    rows = [_event_to_export_row(e) for e in events]
+
+    if fmt == "csv":
+        buf = io.StringIO()
+        writer = csv.DictWriter(buf, fieldnames=_EXPORT_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+        return buf.getvalue(), "text/csv"
+
+    return json.dumps(rows, indent=2, default=str), "application/json"

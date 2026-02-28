@@ -61,6 +61,7 @@ def mask_account_number(value: str | None) -> str | None:
 _PII_FIELD_MASKERS = {
     "ssn": mask_ssn,
     "dob": mask_dob,
+    "account_number": mask_account_number,
 }
 
 

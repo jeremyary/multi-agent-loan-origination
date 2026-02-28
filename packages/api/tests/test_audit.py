@@ -14,7 +14,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from src.middleware.auth import get_current_user
-from src.routes.admin import router
+from src.routes.audit import router as audit_router
 from src.schemas.auth import DataScope, UserContext
 from src.services.audit import get_events_by_session, write_audit_event
 
@@ -157,9 +157,9 @@ async def test_get_events_by_session_queries_by_session_id():
 
 
 def _make_app(user: UserContext, audit_events: list | None = None):
-    """Build a test FastAPI app with admin routes and mocked deps."""
+    """Build a test FastAPI app with audit routes and mocked deps."""
     app = FastAPI()
-    app.include_router(router, prefix="/api/admin")
+    app.include_router(audit_router, prefix="/api/audit")
 
     async def fake_user():
         return user
@@ -180,7 +180,7 @@ def _make_app(user: UserContext, audit_events: list | None = None):
 
 
 def test_audit_endpoint_returns_events_for_session():
-    """GET /api/admin/audit?session_id= returns matching events."""
+    """GET /api/audit/session?session_id= returns matching events."""
     mock_event = MagicMock()
     mock_event.id = 1
     mock_event.timestamp = "2026-01-15T10:00:00+00:00"
@@ -188,13 +188,14 @@ def test_audit_endpoint_returns_events_for_session():
     mock_event.user_id = "test-user"
     mock_event.user_role = "prospect"
     mock_event.application_id = None
+    mock_event.decision_id = None
     mock_event.event_data = '{"tool_name": "product_info"}'
 
     admin = _make_admin()
     app = _make_app(admin, audit_events=[mock_event])
     client = TestClient(app)
 
-    response = client.get("/api/admin/audit?session_id=sess-abc-123")
+    response = client.get("/api/audit/session?session_id=sess-abc-123")
     assert response.status_code == 200
     data = response.json()
     assert data["session_id"] == "sess-abc-123"
@@ -203,12 +204,12 @@ def test_audit_endpoint_returns_events_for_session():
 
 
 def test_audit_endpoint_returns_empty_for_unknown_session():
-    """GET /api/admin/audit with unknown session_id returns empty list."""
+    """GET /api/audit/session with unknown session_id returns empty list."""
     admin = _make_admin()
     app = _make_app(admin, audit_events=[])
     client = TestClient(app)
 
-    response = client.get("/api/admin/audit?session_id=nonexistent")
+    response = client.get("/api/audit/session?session_id=nonexistent")
     assert response.status_code == 200
     data = response.json()
     assert data["count"] == 0
@@ -216,17 +217,17 @@ def test_audit_endpoint_returns_empty_for_unknown_session():
 
 
 def test_audit_endpoint_requires_session_id():
-    """GET /api/admin/audit without session_id returns 422."""
+    """GET /api/audit/session without session_id returns 422."""
     admin = _make_admin()
     app = _make_app(admin, audit_events=[])
     client = TestClient(app)
 
-    response = client.get("/api/admin/audit")
+    response = client.get("/api/audit/session")
     assert response.status_code == 422
 
 
-def test_audit_endpoint_requires_admin_role(monkeypatch):
-    """Non-admin roles are blocked from audit endpoint."""
+def test_audit_endpoint_requires_admin_or_ceo_role(monkeypatch):
+    """Non-admin/CEO roles are blocked from audit endpoint."""
     from src.core.config import settings
 
     monkeypatch.setattr(settings, "AUTH_DISABLED", False)
@@ -235,7 +236,7 @@ def test_audit_endpoint_requires_admin_role(monkeypatch):
     app = _make_app(borrower, audit_events=[])
     client = TestClient(app)
 
-    response = client.get("/api/admin/audit?session_id=sess-123")
+    response = client.get("/api/audit/session?session_id=sess-123")
     assert response.status_code == 403
 
 
