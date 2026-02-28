@@ -61,7 +61,7 @@ class TestUwConversationHistory:
         assert resp.status_code == 403
 
     @patch(
-        "src.routes.underwriter_chat.get_conversation_service",
+        "src.services.conversation.get_conversation_service",
     )
     def test_history_returns_data_shape(self, mock_get_svc):
         """Underwriter gets back {"data": [...]} response."""
@@ -84,7 +84,7 @@ class TestUwConversationHistory:
         assert isinstance(data["data"], list)
 
     @patch(
-        "src.routes.underwriter_chat.get_conversation_service",
+        "src.services.conversation.get_conversation_service",
     )
     def test_admin_can_access_history(self, mock_get_svc):
         """Admin can access UW history endpoint."""

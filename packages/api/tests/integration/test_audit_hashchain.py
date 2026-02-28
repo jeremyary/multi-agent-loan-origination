@@ -32,7 +32,16 @@ async def test_second_event_chains_from_first(db_session):
         db_session, event_type="chain_second", user_id="test", event_data={"step": 2}
     )
 
-    expected = _compute_hash(first.id, str(first.timestamp), first.event_data)
+    expected = _compute_hash(
+        first.id,
+        str(first.timestamp),
+        first.event_type,
+        first.user_id,
+        first.user_role,
+        first.application_id,
+        first.session_id,
+        first.event_data,
+    )
     assert second.prev_hash == expected
     assert second.prev_hash != "genesis"
 
@@ -44,8 +53,26 @@ async def test_three_event_chain(db_session):
     e3 = await write_audit_event(db_session, event_type="e3", event_data={"n": 3})
 
     assert e1.prev_hash == "genesis"
-    assert e2.prev_hash == _compute_hash(e1.id, str(e1.timestamp), e1.event_data)
-    assert e3.prev_hash == _compute_hash(e2.id, str(e2.timestamp), e2.event_data)
+    assert e2.prev_hash == _compute_hash(
+        e1.id,
+        str(e1.timestamp),
+        e1.event_type,
+        e1.user_id,
+        e1.user_role,
+        e1.application_id,
+        e1.session_id,
+        e1.event_data,
+    )
+    assert e3.prev_hash == _compute_hash(
+        e2.id,
+        str(e2.timestamp),
+        e2.event_type,
+        e2.user_id,
+        e2.user_role,
+        e2.application_id,
+        e2.session_id,
+        e2.event_data,
+    )
 
 
 async def test_verify_chain_ok(db_session):
@@ -110,14 +137,36 @@ async def test_verify_endpoint(client_factory, db_session, seed_data):
 
 async def test_hash_is_deterministic():
     """_compute_hash produces consistent output for same inputs."""
-    h1 = _compute_hash(1, "2026-01-01T00:00:00+00:00", {"key": "value"})
-    h2 = _compute_hash(1, "2026-01-01T00:00:00+00:00", {"key": "value"})
+    h1 = _compute_hash(
+        1,
+        "2026-01-01T00:00:00+00:00",
+        "test_type",
+        "user1",
+        "borrower",
+        100,
+        "sess1",
+        {"key": "value"},
+    )
+    h2 = _compute_hash(
+        1,
+        "2026-01-01T00:00:00+00:00",
+        "test_type",
+        "user1",
+        "borrower",
+        100,
+        "sess1",
+        {"key": "value"},
+    )
     assert h1 == h2
     assert len(h1) == 64
 
 
 async def test_hash_changes_with_different_data():
     """_compute_hash produces different output for different inputs."""
-    h1 = _compute_hash(1, "2026-01-01T00:00:00+00:00", {"key": "a"})
-    h2 = _compute_hash(1, "2026-01-01T00:00:00+00:00", {"key": "b"})
+    h1 = _compute_hash(
+        1, "2026-01-01T00:00:00+00:00", "test_type", "user1", "borrower", 100, "sess1", {"key": "a"}
+    )
+    h2 = _compute_hash(
+        1, "2026-01-01T00:00:00+00:00", "test_type", "user1", "borrower", 100, "sess1", {"key": "b"}
+    )
     assert h1 != h2

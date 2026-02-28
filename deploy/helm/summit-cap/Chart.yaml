@@ -6,9 +6,9 @@ version: 0.1.0
 appVersion: "latest"
 keywords:
   - summit-cap
-home: https://github.com/example/summit-cap
+home: https://github.com/rh-ai-quickstart/mortgage-ai
 sources:
-  - https://github.com/example/summit-cap
+  - https://github.com/rh-ai-quickstart/mortgage-ai
 maintainers:
-  - name: Development Team
-    email: dev@example.com
+  - name: Summit Cap Development Team
+    email: dev@summitcap.example

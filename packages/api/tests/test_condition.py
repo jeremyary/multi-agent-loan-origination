@@ -23,6 +23,7 @@ from src.services.condition import (
     review_condition,
     waive_condition,
 )
+from tests.factories import make_mock_app, make_mock_condition, make_uw_user
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -31,30 +32,6 @@ from src.services.condition import (
 
 def _state(user_id="sarah-uuid", role="borrower"):
     return {"user_id": user_id, "user_role": role}
-
-
-def _mock_condition(
-    id=1,
-    description="Verify employment",
-    severity="prior_to_approval",
-    status="open",
-    response_text=None,
-    issued_by="maria-uuid",
-    application_id=100,
-):
-    c = MagicMock()
-    c.id = id
-    c.description = description
-    c.severity = MagicMock()
-    c.severity.value = severity
-    c.status = MagicMock()
-    c.status.value = status
-    c.response_text = response_text
-    c.issued_by = issued_by
-    c.application_id = application_id
-    c.created_at = MagicMock()
-    c.created_at.isoformat.return_value = "2026-02-20T00:00:00+00:00"
-    return c
 
 
 # ---------------------------------------------------------------------------
@@ -352,6 +329,7 @@ async def test_check_condition_documents_with_docs_and_extractions():
 
     # Mock extraction
     ext = MagicMock()
+    ext.document_id = 10  # Must match doc.id
     ext.field_name = "employer_name"
     ext.field_value = "Acme Corp"
     ext.confidence = 0.95
@@ -721,54 +699,40 @@ async def test_tool_check_satisfaction_not_found(mock_service, mock_session_cls)
 # ---------------------------------------------------------------------------
 
 
-def _mock_app(stage="underwriting"):
-    """Create a mock application with the given stage."""
-    from db.enums import ApplicationStage
-
-    app = MagicMock()
-    app.stage = ApplicationStage(stage)
-    app.id = 100
-    return app
+# Local wrappers for factories - these existed in the original file and are kept
+# to avoid changing all test function signatures
+_mock_app = make_mock_app
+_mock_condition_obj = make_mock_condition
+_uw_user = make_uw_user
 
 
-def _mock_condition_obj(
+def _mock_condition(
     id=1,
     description="Verify employment",
     severity="prior_to_approval",
     status="open",
     response_text=None,
-    issued_by="uw-maria",
-    cleared_by=None,
-    due_date=None,
-    iteration_count=0,
-    waiver_rationale=None,
+    issued_by="maria-uuid",
+    application_id=100,
 ):
-    """Create a mock Condition ORM object for lifecycle tests."""
-    from db.enums import ConditionSeverity, ConditionStatus
+    """Create a mock Condition with MagicMock enum values (for legacy tests).
 
+    This wrapper exists because some tests expect .severity.value and .status.value
+    patterns instead of direct enum instances.
+    """
     c = MagicMock()
     c.id = id
     c.description = description
-    c.severity = ConditionSeverity(severity)
-    c.status = ConditionStatus(status)
+    c.severity = MagicMock()
+    c.severity.value = severity
+    c.status = MagicMock()
+    c.status.value = status
     c.response_text = response_text
     c.issued_by = issued_by
-    c.cleared_by = cleared_by
-    c.due_date = due_date
-    c.iteration_count = iteration_count
-    c.waiver_rationale = waiver_rationale
-    c.application_id = 100
+    c.application_id = application_id
+    c.created_at = MagicMock()
+    c.created_at.isoformat.return_value = "2026-02-20T00:00:00+00:00"
     return c
-
-
-def _uw_user():
-    """Create a mock underwriter UserContext."""
-    user = MagicMock()
-    user.user_id = "uw-maria"
-    user.role = MagicMock()
-    user.role.value = "underwriter"
-    user.data_scope = MagicMock()
-    return user
 
 
 @pytest.mark.asyncio

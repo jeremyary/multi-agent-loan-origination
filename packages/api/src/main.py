@@ -82,13 +82,16 @@ _HTTP_STATUS_TITLES: dict[int, str] = {
 }
 
 
-def _build_error(status_code: int, detail: str, request_id: str) -> ErrorResponse:
+def _build_error(
+    status_code: int, detail: str, request_id: str, instance: str = ""
+) -> ErrorResponse:
     return ErrorResponse(
         type="about:blank",
         title=_HTTP_STATUS_TITLES.get(status_code, "Error"),
         status=status_code,
         detail=detail,
         request_id=request_id,
+        instance=instance,
     )
 
 
@@ -96,7 +99,9 @@ def _build_error(status_code: int, detail: str, request_id: str) -> ErrorRespons
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     """Convert HTTPException to RFC 7807 Problem Details."""
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
-    body = _build_error(exc.status_code, str(exc.detail), request_id)
+    body = _build_error(
+        exc.status_code, str(exc.detail), request_id, instance=str(request.url.path)
+    )
     return JSONResponse(
         status_code=exc.status_code,
         content=body.model_dump(),
@@ -107,7 +112,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Convert Pydantic validation errors to RFC 7807 Problem Details."""
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
-    body = _build_error(422, str(exc.errors()), request_id)
+    body = _build_error(422, str(exc.errors()), request_id, instance=str(request.url.path))
     return JSONResponse(status_code=422, content=body.model_dump())
 
 
@@ -116,7 +121,9 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     """Catch-all for unhandled exceptions -- log and return 500."""
     request_id = request.headers.get("x-request-id", str(uuid.uuid4()))
     logger.exception("Unhandled exception (request_id=%s)", request_id)
-    body = _build_error(500, "An unexpected error occurred.", request_id)
+    body = _build_error(
+        500, "An unexpected error occurred.", request_id, instance=str(request.url.path)
+    )
     return JSONResponse(status_code=500, content=body.model_dump())
 
 

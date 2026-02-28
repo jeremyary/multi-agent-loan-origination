@@ -14,6 +14,7 @@ from src.schemas.auth import TokenPayload
 # AUTH_DISABLED bypass
 # ---------------------------------------------------------------------------
 
+
 def test_auth_disabled_returns_dev_admin(monkeypatch):
     """When AUTH_DISABLED=true, any request gets a dev admin user."""
     monkeypatch.setattr(settings, "AUTH_DISABLED", True)
@@ -36,6 +37,7 @@ def test_auth_disabled_returns_dev_admin(monkeypatch):
 # Missing / malformed token
 # ---------------------------------------------------------------------------
 
+
 def test_missing_token_returns_401(monkeypatch):
     """A request with no Authorization header should get 401."""
     monkeypatch.setattr(settings, "AUTH_DISABLED", False)
@@ -56,6 +58,7 @@ def test_missing_token_returns_401(monkeypatch):
 # Role resolution
 # ---------------------------------------------------------------------------
 
+
 def test_resolve_role_picks_known_role():
     """_resolve_role returns the first known role from token claims."""
     payload = TokenPayload(
@@ -66,22 +69,21 @@ def test_resolve_role_picks_known_role():
     assert role == UserRole.LOAN_OFFICER
 
 
-def test_resolve_role_no_known_role_raises_403():
-    """_resolve_role raises 403 when no recognized roles are present."""
+def test_resolve_role_no_known_role_raises_value_error():
+    """_resolve_role raises ValueError when no recognized roles are present."""
     payload = TokenPayload(
         sub="user-1",
         realm_access={"roles": ["offline_access", "uma_authorization"]},
     )
-    from fastapi import HTTPException
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ValueError, match="No recognized role assigned"):
         _resolve_role(payload)
-    assert exc_info.value.status_code == 403
 
 
 # ---------------------------------------------------------------------------
 # require_roles dependency
 # ---------------------------------------------------------------------------
+
 
 def test_require_roles_rejects_wrong_role(monkeypatch):
     """require_roles returns 403 when user's role is not in allowed set."""

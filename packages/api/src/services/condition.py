@@ -29,7 +29,7 @@ from ..services.audit import write_audit_event
 logger = logging.getLogger(__name__)
 
 
-def _parse_quality_flags(raw: str | None) -> list[str]:
+def parse_quality_flags(raw: str | None) -> list[str]:
     """Parse quality_flags stored as JSON array or plain CSV string."""
     if not raw:
         return []
@@ -234,16 +234,25 @@ async def check_condition_documents(
     doc_result = await session.execute(doc_stmt)
     documents = doc_result.scalars().all()
 
-    doc_details = []
-    for doc in documents:
-        # Fetch extractions for each document
+    # Batch-fetch all extractions for these documents
+    doc_ids = [doc.id for doc in documents]
+    extractions_by_doc: dict[int, list] = {doc_id: [] for doc_id in doc_ids}
+
+    if doc_ids:
         ext_stmt = (
             select(DocumentExtraction)
-            .where(DocumentExtraction.document_id == doc.id)
-            .order_by(DocumentExtraction.field_name)
+            .where(DocumentExtraction.document_id.in_(doc_ids))
+            .order_by(DocumentExtraction.document_id, DocumentExtraction.field_name)
         )
         ext_result = await session.execute(ext_stmt)
-        extractions = ext_result.scalars().all()
+        all_extractions = ext_result.scalars().all()
+
+        for extraction in all_extractions:
+            extractions_by_doc[extraction.document_id].append(extraction)
+
+    doc_details = []
+    for doc in documents:
+        extractions = extractions_by_doc.get(doc.id, [])
 
         doc_details.append(
             {
@@ -251,7 +260,7 @@ async def check_condition_documents(
                 "file_path": doc.file_path,
                 "doc_type": doc.doc_type.value if doc.doc_type else None,
                 "status": doc.status.value if doc.status else None,
-                "quality_flags": _parse_quality_flags(doc.quality_flags),
+                "quality_flags": parse_quality_flags(doc.quality_flags),
                 "extractions": [
                     {
                         "field": e.field_name,
@@ -591,6 +600,33 @@ async def return_condition(
         "iteration_count": condition.iteration_count,
         "response_text": condition.response_text,
     }
+
+
+async def get_outstanding_count(session: AsyncSession, application_id: int) -> int:
+    """Get count of outstanding conditions (open, responded, under_review, escalated).
+
+    Does NOT enforce data scope -- caller must check access to the application first.
+
+    Args:
+        session: Database session.
+        application_id: The application ID.
+
+    Returns:
+        Count of outstanding conditions.
+    """
+    stmt = select(func.count(Condition.id)).where(
+        Condition.application_id == application_id,
+        Condition.status.in_(
+            [
+                ConditionStatus.OPEN,
+                ConditionStatus.RESPONDED,
+                ConditionStatus.UNDER_REVIEW,
+                ConditionStatus.ESCALATED,
+            ]
+        ),
+    )
+    result = await session.execute(stmt)
+    return result.scalar() or 0
 
 
 async def get_condition_summary(

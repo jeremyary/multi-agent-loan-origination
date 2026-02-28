@@ -109,6 +109,11 @@ async def test_write_audit_event_chains_from_previous():
     prev = MagicMock()
     prev.id = 42
     prev.timestamp = "2026-01-15T10:00:00+00:00"
+    prev.event_type = "previous_event"
+    prev.user_id = "prev-user"
+    prev.user_role = "borrower"
+    prev.application_id = 10
+    prev.session_id = "prev-sess-123"
     prev.event_data = {"tool_name": "calc"}
     mock_session = _mock_audit_session(prev_event=prev)
 
@@ -119,7 +124,16 @@ async def test_write_audit_event_chains_from_previous():
     )
 
     added_obj = mock_session.add.call_args[0][0]
-    expected_hash = _compute_hash(42, "2026-01-15T10:00:00+00:00", {"tool_name": "calc"})
+    expected_hash = _compute_hash(
+        42,
+        "2026-01-15T10:00:00+00:00",
+        "previous_event",
+        "prev-user",
+        "borrower",
+        10,
+        "prev-sess-123",
+        {"tool_name": "calc"},
+    )
     assert added_obj.prev_hash == expected_hash
 
 

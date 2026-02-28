@@ -49,7 +49,7 @@ REQUIRED_DISCLOSURES: list[dict[str, str]] = [
 ]
 
 _DISCLOSURE_IDS = {d["id"] for d in REQUIRED_DISCLOSURES}
-_DISCLOSURE_BY_ID = {d["id"]: d for d in REQUIRED_DISCLOSURES}
+DISCLOSURE_BY_ID = {d["id"]: d for d in REQUIRED_DISCLOSURES}
 
 
 async def get_disclosure_status(

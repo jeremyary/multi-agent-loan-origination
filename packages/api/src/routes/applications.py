@@ -3,10 +3,9 @@
 
 from typing import Literal
 
-from db import Application, ApplicationBorrower, Borrower, get_db
+from db import Application, get_db
 from db.enums import ApplicationStage, UserRole
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import CurrentUser, require_roles
@@ -29,6 +28,7 @@ from ..schemas.rate_lock import RateLockResponse
 from ..schemas.status import ApplicationStatusResponse
 from ..schemas.urgency import UrgencyLevel
 from ..services import application as app_service
+from ..services.application import InvalidTransitionError
 from ..services.condition import get_conditions, respond_to_condition
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
@@ -365,12 +365,18 @@ async def update_application(
     app = None
 
     if new_stage is not None:
-        app = await app_service.transition_stage(
-            session,
-            user,
-            application_id,
-            new_stage,
-        )
+        try:
+            app = await app_service.transition_stage(
+                session,
+                user,
+                application_id,
+                new_stage,
+            )
+        except InvalidTransitionError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(e),
+            )
         if app is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -401,51 +407,50 @@ async def update_application(
         Depends(require_roles(UserRole.LOAN_OFFICER, UserRole.UNDERWRITER, UserRole.ADMIN))
     ],
 )
-async def add_borrower(
+async def add_borrower_route(
     application_id: int,
     body: AddBorrowerRequest,
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
 ) -> ApplicationResponse:
     """Add a borrower to an application (co-borrower management)."""
-    app = await app_service.get_application(session, user, application_id)
+    try:
+        app = await app_service.add_borrower(
+            session,
+            user,
+            application_id,
+            body.borrower_id,
+            body.is_primary,
+        )
+    except ValueError as e:
+        error_msg = str(e)
+        if "not found" in error_msg.lower():
+            if "borrower" in error_msg.lower() and "application" not in error_msg.lower():
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Borrower not found",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Application not found",
+            )
+        if "already linked" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Borrower already linked to this application",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg,
+        )
+
     if app is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         )
 
-    # Verify borrower exists
-    borrower_result = await session.execute(select(Borrower).where(Borrower.id == body.borrower_id))
-    if borrower_result.scalar_one_or_none() is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Borrower not found",
-        )
-
-    # Check for duplicate junction row
-    dup_result = await session.execute(
-        select(ApplicationBorrower).where(
-            ApplicationBorrower.application_id == application_id,
-            ApplicationBorrower.borrower_id == body.borrower_id,
-        )
-    )
-    if dup_result.scalar_one_or_none() is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Borrower already linked to this application",
-        )
-
-    junction = ApplicationBorrower(
-        application_id=application_id,
-        borrower_id=body.borrower_id,
-        is_primary=body.is_primary,
-    )
-    session.add(junction)
-    await session.commit()
-
-    refreshed = await app_service.get_application(session, user, application_id)
-    return _build_app_response(refreshed)
+    return _build_app_response(app)
 
 
 @router.delete(
@@ -455,55 +460,36 @@ async def add_borrower(
         Depends(require_roles(UserRole.LOAN_OFFICER, UserRole.UNDERWRITER, UserRole.ADMIN))
     ],
 )
-async def remove_borrower(
+async def remove_borrower_route(
     application_id: int,
     borrower_id: int,
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
 ) -> ApplicationResponse:
     """Remove a borrower from an application."""
-    app = await app_service.get_application(session, user, application_id)
+    try:
+        app = await app_service.remove_borrower(
+            session,
+            user,
+            application_id,
+            borrower_id,
+        )
+    except ValueError as e:
+        error_msg = str(e)
+        if "not linked" in error_msg.lower():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Borrower not linked to this application",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=error_msg,
+        )
+
     if app is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Application not found",
         )
 
-    # Find the junction row
-    junction_result = await session.execute(
-        select(ApplicationBorrower).where(
-            ApplicationBorrower.application_id == application_id,
-            ApplicationBorrower.borrower_id == borrower_id,
-        )
-    )
-    junction = junction_result.scalar_one_or_none()
-    if junction is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Borrower not linked to this application",
-        )
-
-    # Count remaining borrowers (must keep at least one)
-    from sqlalchemy import func
-
-    count_result = await session.execute(
-        select(func.count()).where(ApplicationBorrower.application_id == application_id)
-    )
-    if count_result.scalar() <= 1:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot remove the last borrower from an application",
-        )
-
-    # Cannot remove primary without reassigning first
-    if junction.is_primary:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot remove the primary borrower. Reassign primary first.",
-        )
-
-    await session.delete(junction)
-    await session.commit()
-
-    refreshed = await app_service.get_application(session, user, application_id)
-    return _build_app_response(refreshed)
+    return _build_app_response(app)

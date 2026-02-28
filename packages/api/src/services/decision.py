@@ -5,7 +5,6 @@ Handles rendering decisions (approve/deny/suspend), comparing with AI
 recommendations, and querying decision history.
 """
 
-import json
 import logging
 
 from db import AuditEvent, Decision
@@ -16,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..schemas.auth import UserContext
 from ..services.application import get_application
 from ..services.audit import write_audit_event
-from ..services.condition import get_condition_summary
+from ..services.condition import get_outstanding_count
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +23,50 @@ _DECISION_STAGES = frozenset({ApplicationStage.UNDERWRITING, ApplicationStage.CO
 _APPROVAL_CATEGORIES = frozenset({"Approve", "Approve with Conditions"})
 _DENY_CATEGORIES = frozenset({"Deny"})
 _SUSPEND_CATEGORIES = frozenset({"Suspend"})
+
+
+async def check_compliance_gate(session: AsyncSession, application_id: int) -> str | None:
+    """Check that a passing compliance check exists for the application.
+
+    Returns an error message string if the gate fails, or None if it passes.
+    Does NOT enforce data scope -- caller must check access to the application first.
+
+    Args:
+        session: Database session.
+        application_id: The application ID.
+
+    Returns:
+        Error message if the gate fails, None if it passes.
+    """
+    comp_stmt = (
+        select(AuditEvent)
+        .where(
+            AuditEvent.application_id == application_id,
+            AuditEvent.event_type == "compliance_check",
+        )
+        .order_by(AuditEvent.timestamp.desc())
+        .limit(1)
+    )
+    comp_result = await session.execute(comp_stmt)
+    comp_event = comp_result.scalar_one_or_none()
+
+    if comp_event is None:
+        return (
+            "Run compliance_check before rendering a decision. No compliance "
+            f"check found for application #{application_id}."
+        )
+
+    event_data = comp_event.event_data or {}
+    overall = event_data.get("overall_status") or event_data.get("status")
+    if overall == "FAIL" or not event_data.get("can_proceed", True):
+        failed_checks = event_data.get("failed_checks", [])
+        failed_str = ", ".join(failed_checks) if failed_checks else "one or more checks"
+        return (
+            f"Cannot approve application #{application_id} -- compliance check "
+            f"FAILED ({failed_str}). Resolve compliance issues before approval."
+        )
+
+    return None
 
 
 async def _get_ai_recommendation(
@@ -116,14 +159,7 @@ async def _resolve_decision(
 
     # Determine decision type and new stage
     if decision_lower == "approve":
-        cond_summary = await get_condition_summary(session, user, application_id)
-        if cond_summary and cond_summary["total"] > 0:
-            outstanding_conditions = (
-                cond_summary["counts"].get("open", 0)
-                + cond_summary["counts"].get("responded", 0)
-                + cond_summary["counts"].get("under_review", 0)
-                + cond_summary["counts"].get("escalated", 0)
-            )
+        outstanding_conditions = await get_outstanding_count(session, application_id)
 
         if current_stage == ApplicationStage.CONDITIONAL_APPROVAL:
             if outstanding_conditions > 0:
@@ -280,7 +316,7 @@ async def render_decision(
         decided_by=user.user_id,
         ai_agreement=ai_agreement,
         override_rationale=override_rationale if ai_agreement is False else None,
-        denial_reasons=json.dumps(denial_reasons) if denial_reasons else None,
+        denial_reasons=denial_reasons,
         credit_score_used=credit_score_used,
         credit_score_source=credit_score_source,
         contributing_factors=contributing_factors,
@@ -379,9 +415,9 @@ async def get_latest_decision(
 ) -> dict | None:
     """Get the most recent decision for an application.
 
-    Returns None if application not found / out of scope, or if
-    no decisions exist (returns empty dict is NOT correct -- we return None
-    for not-found, and a dict or None-when-empty).
+    Returns None if application not found / out of scope.
+    Returns {"no_decisions": True} if no decisions exist for the application.
+    Returns decision dict otherwise.
     """
     app = await get_application(session, user, application_id)
     if app is None:
@@ -404,13 +440,6 @@ async def get_latest_decision(
 
 def _decision_to_dict(d: Decision) -> dict:
     """Convert a Decision ORM object to a dict."""
-    denial_reasons = None
-    if d.denial_reasons:
-        try:
-            denial_reasons = json.loads(d.denial_reasons)
-        except (json.JSONDecodeError, TypeError):
-            denial_reasons = [d.denial_reasons]
-
     return {
         "id": d.id,
         "application_id": d.application_id,
@@ -419,7 +448,7 @@ def _decision_to_dict(d: Decision) -> dict:
         "ai_recommendation": d.ai_recommendation,
         "ai_agreement": d.ai_agreement,
         "override_rationale": d.override_rationale,
-        "denial_reasons": denial_reasons,
+        "denial_reasons": d.denial_reasons,
         "credit_score_used": d.credit_score_used,
         "credit_score_source": d.credit_score_source,
         "contributing_factors": d.contributing_factors,

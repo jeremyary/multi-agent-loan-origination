@@ -1,7 +1,6 @@
 # This project was developed with assistance from AI tools.
 """Tests for decision agent tools."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agents.decision_tools import (
@@ -10,6 +9,7 @@ from src.agents.decision_tools import (
     uw_generate_le,
     uw_render_decision,
 )
+from tests.factories import make_mock_app, make_mock_decision
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -20,45 +20,8 @@ def _state(user_id="uw-maria", role="underwriter"):
     return {"user_id": user_id, "user_role": role}
 
 
-def _mock_app(stage="underwriting", id=100):
-    from decimal import Decimal
-
-    from db.enums import ApplicationStage, LoanType
-
-    app = MagicMock()
-    app.stage = ApplicationStage(stage)
-    app.id = id
-    app.loan_amount = Decimal("350000")
-    app.property_value = Decimal("450000")
-    app.loan_type = LoanType.CONVENTIONAL_30
-    app.property_address = "123 Main St, Denver, CO"
-    app.le_delivery_date = None
-    app.cd_delivery_date = None
-    app.application_borrowers = []
-    return app
-
-
-def _mock_decision(
-    id=1,
-    application_id=100,
-    decision_type="denied",
-    denial_reasons=None,
-    credit_score_used=None,
-    credit_score_source=None,
-    contributing_factors=None,
-):
-    from db.enums import DecisionType
-
-    d = MagicMock()
-    d.id = id
-    d.application_id = application_id
-    d.decision_type = DecisionType(decision_type)
-    d.rationale = "Test rationale"
-    d.denial_reasons = json.dumps(denial_reasons) if denial_reasons else None
-    d.credit_score_used = credit_score_used
-    d.credit_score_source = credit_score_source
-    d.contributing_factors = contributing_factors
-    return d
+_mock_app = make_mock_app
+_mock_decision = make_mock_decision
 
 
 # ---------------------------------------------------------------------------
@@ -179,13 +142,23 @@ async def test_render_decision_confirmed_approve(mock_session_cls, mock_render):
     comp_result.scalar_one_or_none.return_value = comp_event
     session.execute.return_value = comp_result
 
+    state = _state()
+    state["decision_proposals"] = {
+        "test-proposal-1": {
+            "application_id": 100,
+            "decision": "approve",
+            "rationale": "Strong financials",
+        },
+    }
+
     result = await uw_render_decision.ainvoke(
         {
             "application_id": 100,
             "decision": "approve",
             "rationale": "Strong financials",
             "confirmed": True,
-            "state": _state(),
+            "proposal_id": "test-proposal-1",
+            "state": state,
         }
     )
 
@@ -216,6 +189,15 @@ async def test_render_decision_confirmed_deny(mock_session_cls, mock_render):
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
+    state = _state()
+    state["decision_proposals"] = {
+        "test-proposal-2": {
+            "application_id": 100,
+            "decision": "deny",
+            "rationale": "Insufficient income",
+        },
+    }
+
     result = await uw_render_decision.ainvoke(
         {
             "application_id": 100,
@@ -223,7 +205,8 @@ async def test_render_decision_confirmed_deny(mock_session_cls, mock_render):
             "rationale": "Insufficient income",
             "denial_reasons": ["Insufficient income", "High DTI"],
             "confirmed": True,
-            "state": _state(),
+            "proposal_id": "test-proposal-2",
+            "state": state,
         }
     )
 
@@ -318,6 +301,15 @@ async def test_render_decision_confirmed_service_error(mock_session_cls, mock_re
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
+    state = _state()
+    state["decision_proposals"] = {
+        "test-proposal-3": {
+            "application_id": 100,
+            "decision": "deny",
+            "rationale": "test",
+        },
+    }
+
     result = await uw_render_decision.ainvoke(
         {
             "application_id": 100,
@@ -325,7 +317,8 @@ async def test_render_decision_confirmed_service_error(mock_session_cls, mock_re
             "rationale": "test",
             "denial_reasons": ["test"],
             "confirmed": True,
-            "state": _state(),
+            "proposal_id": "test-proposal-3",
+            "state": state,
         }
     )
 
@@ -393,6 +386,7 @@ async def test_draft_adverse_action_success(mock_session_cls, mock_audit):
 
     # Mock decision
     dec = _mock_decision(
+        decision_type="denied",
         denial_reasons=["Low credit", "High DTI"],
         credit_score_used=580,
         credit_score_source="Equifax",
@@ -449,6 +443,7 @@ async def test_draft_adverse_action_auto_find(mock_session_cls, mock_audit):
     app = _mock_app()
     dec = _mock_decision(
         id=42,
+        decision_type="denied",
         denial_reasons=["Insufficient income"],
         credit_score_used=620,
         credit_score_source="TransUnion",
@@ -566,8 +561,11 @@ async def test_draft_adverse_action_wrong_decision_type(mock_session_cls):
 
 @patch("src.agents.decision_tools.write_audit_event", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.get_rate_lock_status", new_callable=AsyncMock)
+@patch("src.agents.disclosure_tools.get_rate_lock_status", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
-async def test_generate_le_success(mock_session_cls, mock_rate_lock, mock_audit):
+async def test_generate_le_success(
+    mock_session_cls, mock_rate_lock_disclosure, mock_rate_lock, mock_audit
+):
     """uw_generate_le generates LE text with loan details."""
     session = AsyncMock()
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
@@ -591,6 +589,7 @@ async def test_generate_le_success(mock_session_cls, mock_rate_lock, mock_audit)
 
     session.execute = AsyncMock(side_effect=[app_result, ab_result, b_result])
     mock_rate_lock.return_value = {"locked_rate": 6.5, "status": "active"}
+    mock_rate_lock_disclosure.return_value = {"locked_rate": 6.5, "status": "active"}
 
     result = await uw_generate_le.ainvoke(
         {
@@ -637,26 +636,19 @@ async def test_generate_le_not_found(mock_session_cls):
 
 @patch("src.agents.decision_tools.write_audit_event", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.get_rate_lock_status", new_callable=AsyncMock)
-@patch("src.agents.decision_tools.get_condition_summary", new_callable=AsyncMock)
+@patch("src.agents.disclosure_tools.get_rate_lock_status", new_callable=AsyncMock)
+@patch("src.agents.decision_tools.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
-async def test_generate_cd_success(mock_session_cls, mock_cond, mock_rate_lock, mock_audit):
+async def test_generate_cd_success(
+    mock_session_cls, mock_cond, mock_rate_lock_disclosure, mock_rate_lock, mock_audit
+):
     """uw_generate_cd generates CD text when conditions cleared."""
     session = AsyncMock()
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
     app = _mock_app(stage="clear_to_close")
-    mock_cond.return_value = {
-        "total": 2,
-        "counts": {
-            "open": 0,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 1,
-            "waived": 1,
-        },
-    }
+    mock_cond.return_value = 0  # All conditions cleared or waived
 
     ab = MagicMock()
     ab.borrower_id = 10
@@ -673,6 +665,7 @@ async def test_generate_cd_success(mock_session_cls, mock_cond, mock_rate_lock, 
 
     session.execute = AsyncMock(side_effect=[app_result, ab_result, b_result])
     mock_rate_lock.return_value = {"locked_rate": 6.5, "status": "active"}
+    mock_rate_lock_disclosure.return_value = {"locked_rate": 6.5, "status": "active"}
 
     result = await uw_generate_cd.ainvoke(
         {
@@ -689,7 +682,7 @@ async def test_generate_cd_success(mock_session_cls, mock_cond, mock_rate_lock, 
     assert mock_audit.call_args.kwargs["event_type"] == "cd_generated"
 
 
-@patch("src.agents.decision_tools.get_condition_summary", new_callable=AsyncMock)
+@patch("src.agents.decision_tools.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
 async def test_generate_cd_outstanding_conditions(mock_session_cls, mock_cond):
     """uw_generate_cd blocks when conditions are outstanding."""
@@ -698,17 +691,7 @@ async def test_generate_cd_outstanding_conditions(mock_session_cls, mock_cond):
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
     app = _mock_app(stage="clear_to_close")
-    mock_cond.return_value = {
-        "total": 3,
-        "counts": {
-            "open": 1,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 1,
-            "waived": 1,
-        },
-    }
+    mock_cond.return_value = 1  # 1 outstanding condition
 
     app_result = MagicMock()
     app_result.unique.return_value.scalar_one_or_none.return_value = app

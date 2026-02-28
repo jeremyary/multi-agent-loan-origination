@@ -17,6 +17,7 @@ import jwt
 from db.enums import UserRole
 from fastapi import Depends, HTTPException, Request, status
 
+from ..core.auth import build_data_scope
 from ..core.config import settings
 from ..schemas.auth import DataScope, TokenPayload, UserContext
 
@@ -110,7 +111,11 @@ async def _decode_token(token: str) -> TokenPayload:
 
 
 def _resolve_role(token_payload: TokenPayload) -> UserRole:
-    """Extract the primary role from realm_access.roles."""
+    """Extract the primary role from realm_access.roles.
+
+    Raises:
+        ValueError: If no recognized role is assigned.
+    """
     roles = token_payload.realm_access.get("roles", [])
 
     # Filter to roles we actually define (ignore Keycloak built-ins)
@@ -118,10 +123,7 @@ def _resolve_role(token_payload: TokenPayload) -> UserRole:
     user_roles = [r for r in roles if r in {role.value for role in known}]
 
     if not user_roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No recognized role assigned",
-        )
+        raise ValueError("No recognized role assigned")
 
     if len(user_roles) > 1:
         logger.warning(
@@ -134,21 +136,8 @@ def _resolve_role(token_payload: TokenPayload) -> UserRole:
     return UserRole(user_roles[0])
 
 
-def build_data_scope(role: UserRole, user_id: str) -> DataScope:
-    """Build data scope rules based on the user's role."""
-    if role == UserRole.BORROWER:
-        return DataScope(own_data_only=True, user_id=user_id)
-    if role == UserRole.LOAN_OFFICER:
-        return DataScope(assigned_to=user_id)
-    if role == UserRole.CEO:
-        return DataScope(pii_mask=True, document_metadata_only=True, full_pipeline=True)
-    if role == UserRole.UNDERWRITER:
-        return DataScope(full_pipeline=True)
-    if role == UserRole.ADMIN:
-        return DataScope(full_pipeline=True)
-    # prospect or unknown -- minimal access
-    return DataScope()
-
+# build_data_scope is re-exported from core.auth for backward compatibility
+__all__ = ["build_data_scope"]
 
 # ---------------------------------------------------------------------------
 # FastAPI dependencies
@@ -195,7 +184,14 @@ async def get_current_user(request: Request) -> UserContext:
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    role = _resolve_role(payload)
+    try:
+        role = _resolve_role(payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+
     data_scope = build_data_scope(role, payload.sub)
 
     user = UserContext(
