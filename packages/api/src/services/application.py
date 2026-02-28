@@ -244,3 +244,139 @@ async def get_financials(
     )
     result = await session.execute(stmt)
     return result.scalars().all()
+
+
+async def add_borrower(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    borrower_id: int,
+    is_primary: bool,
+) -> Application | None:
+    """Add a borrower to an application.
+
+    Args:
+        session: Database session.
+        user: Current user context.
+        application_id: The application ID.
+        borrower_id: The borrower ID to add.
+        is_primary: Whether this borrower should be primary.
+
+    Returns:
+        Updated Application with borrowers loaded, or None if not found.
+
+    Raises:
+        ValueError: If borrower doesn't exist or is already linked.
+    """
+    from . import audit
+
+    # Verify application exists and is accessible
+    app = await get_application(session, user, application_id)
+    if app is None:
+        return None
+
+    # Verify borrower exists
+    borrower_result = await session.execute(select(Borrower).where(Borrower.id == borrower_id))
+    if borrower_result.scalar_one_or_none() is None:
+        raise ValueError("Borrower not found")
+
+    # Check for duplicate junction row
+    dup_result = await session.execute(
+        select(ApplicationBorrower).where(
+            ApplicationBorrower.application_id == application_id,
+            ApplicationBorrower.borrower_id == borrower_id,
+        )
+    )
+    if dup_result.scalar_one_or_none() is not None:
+        raise ValueError("Borrower already linked to this application")
+
+    # Create junction row
+    junction = ApplicationBorrower(
+        application_id=application_id,
+        borrower_id=borrower_id,
+        is_primary=is_primary,
+    )
+    session.add(junction)
+    await session.commit()
+
+    # Write audit event
+    await audit.write_audit_event(
+        session,
+        event_type="co_borrower_added",
+        user_id=user.user_id,
+        user_role=user.role.value,
+        application_id=application_id,
+        event_data={"borrower_id": borrower_id, "is_primary": is_primary},
+    )
+    await session.commit()
+
+    # Return refreshed application
+    return await get_application(session, user, application_id)
+
+
+async def remove_borrower(
+    session: AsyncSession,
+    user: UserContext,
+    application_id: int,
+    borrower_id: int,
+) -> Application | None:
+    """Remove a borrower from an application.
+
+    Args:
+        session: Database session.
+        user: Current user context.
+        application_id: The application ID.
+        borrower_id: The borrower ID to remove.
+
+    Returns:
+        Updated Application with borrowers loaded, or None if not found.
+
+    Raises:
+        ValueError: If borrower is not linked, is primary, or is the last borrower.
+    """
+    from . import audit
+
+    # Verify application exists and is accessible
+    app = await get_application(session, user, application_id)
+    if app is None:
+        return None
+
+    # Find the junction row
+    junction_result = await session.execute(
+        select(ApplicationBorrower).where(
+            ApplicationBorrower.application_id == application_id,
+            ApplicationBorrower.borrower_id == borrower_id,
+        )
+    )
+    junction = junction_result.scalar_one_or_none()
+    if junction is None:
+        raise ValueError("Borrower not linked to this application")
+
+    # Count remaining borrowers (must keep at least one)
+    count_result = await session.execute(
+        select(func.count()).where(ApplicationBorrower.application_id == application_id)
+    )
+    if count_result.scalar() <= 1:
+        raise ValueError("Cannot remove the last borrower from an application")
+
+    # Cannot remove primary without reassigning first
+    if junction.is_primary:
+        raise ValueError("Cannot remove the primary borrower. Reassign primary first.")
+
+    # Delete junction row
+    await session.delete(junction)
+    await session.commit()
+
+    # Write audit event
+    await audit.write_audit_event(
+        session,
+        event_type="co_borrower_removed",
+        user_id=user.user_id,
+        user_role=user.role.value,
+        application_id=application_id,
+        event_data={"borrower_id": borrower_id},
+    )
+    await session.commit()
+
+    # Return refreshed application
+    return await get_application(session, user, application_id)
