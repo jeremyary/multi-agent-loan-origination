@@ -12,7 +12,7 @@ Design note -- session-per-tool-call:
 
 from typing import Annotated
 
-from db import Application
+from db import Application, ApplicationBorrower, Borrower
 from db.database import SessionLocal
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
@@ -213,18 +213,15 @@ async def ceo_application_lookup(
 
     user = _user_context_from_state(state)
     async with SessionLocal() as session:
+        eager = selectinload(Application.application_borrowers).joinedload(
+            ApplicationBorrower.borrower
+        )
         if application_id:
-            stmt = (
-                select(Application)
-                .options(selectinload(Application.application_borrowers))
-                .where(Application.id == application_id)
-            )
+            stmt = select(Application).options(eager).where(Application.id == application_id)
         else:
-            from db import ApplicationBorrower, Borrower
-
             stmt = (
                 select(Application)
-                .options(selectinload(Application.application_borrowers))
+                .options(eager)
                 .join(ApplicationBorrower)
                 .join(Borrower)
                 .where((Borrower.first_name + " " + Borrower.last_name).ilike(f"%{borrower_name}%"))
@@ -232,6 +229,50 @@ async def ceo_application_lookup(
 
         result = await session.execute(stmt)
         apps = result.scalars().unique().all()
+
+        if not apps:
+            await write_audit_event(
+                session,
+                event_type="query",
+                user_id=user.user_id,
+                user_role=user.role.value,
+                event_data={
+                    "tool": "ceo_application_lookup",
+                    "borrower_name": borrower_name,
+                    "application_id": application_id,
+                    "result": "not_found",
+                },
+            )
+            await session.commit()
+            if borrower_name:
+                return (
+                    f"No applications found for borrower matching '{borrower_name}'. "
+                    "Try searching by application ID instead."
+                )
+            return f"Application {application_id} not found."
+
+        # Format inside session to avoid DetachedInstanceError
+        lines = []
+        for app in apps:
+            stage = app.stage.value if app.stage else "inquiry"
+            lines.append(f"Application #{app.id}:")
+            lines.append(f"  Stage: {stage.replace('_', ' ').title()}")
+            if app.assigned_to:
+                lines.append(f"  Assigned LO: {app.assigned_to}")
+            if app.loan_type:
+                lines.append(f"  Loan type: {app.loan_type.value}")
+            if app.loan_amount:
+                lines.append(f"  Loan amount: ${app.loan_amount:,.2f}")
+            if app.property_address:
+                lines.append(f"  Property: {app.property_address}")
+
+            for ab in app.application_borrowers or []:
+                if ab.borrower:
+                    b = ab.borrower
+                    role_label = "Primary" if ab.is_primary else "Co-borrower"
+                    lines.append(f"  {role_label}: {b.first_name} {b.last_name}")
+
+            lines.append("")
 
         await write_audit_event(
             session,
@@ -245,36 +286,6 @@ async def ceo_application_lookup(
             },
         )
         await session.commit()
-
-    if not apps:
-        if borrower_name:
-            return (
-                f"No applications found for borrower matching '{borrower_name}'. "
-                "Try searching by application ID instead."
-            )
-        return f"Application {application_id} not found."
-
-    lines = []
-    for app in apps:
-        stage = app.stage.value if app.stage else "inquiry"
-        lines.append(f"Application #{app.id}:")
-        lines.append(f"  Stage: {stage.replace('_', ' ').title()}")
-        if app.assigned_to:
-            lines.append(f"  Assigned LO: {app.assigned_to}")
-        if app.loan_type:
-            lines.append(f"  Loan type: {app.loan_type.value}")
-        if app.loan_amount:
-            lines.append(f"  Loan amount: ${app.loan_amount:,.2f}")
-        if app.property_address:
-            lines.append(f"  Property: {app.property_address}")
-
-        for ab in app.application_borrowers or []:
-            if ab.borrower:
-                b = ab.borrower
-                role_label = "Primary" if ab.is_primary else "Co-borrower"
-                lines.append(f"  {role_label}: {b.first_name} {b.last_name}")
-
-        lines.append("")
 
     return "\n".join(lines)
 
@@ -293,6 +304,26 @@ async def ceo_audit_trail(
     async with SessionLocal() as session:
         events = await get_events_by_application(session, application_id)
 
+        if not events:
+            await write_audit_event(
+                session,
+                event_type="query",
+                user_id=user.user_id,
+                user_role=user.role.value,
+                event_data={"tool": "ceo_audit_trail", "application_id": application_id},
+            )
+            await session.commit()
+            return f"No audit events found for application {application_id}."
+
+        # Format inside session to avoid DetachedInstanceError
+        lines = [f"Audit trail for application #{application_id} ({len(events)} events):", ""]
+        for evt in events:
+            ts = str(evt.timestamp)[:19] if evt.timestamp else "?"
+            line = f"  [{ts}] {evt.event_type}"
+            if evt.user_id:
+                line += f" (by {evt.user_id})"
+            lines.append(line)
+
         await write_audit_event(
             session,
             event_type="query",
@@ -301,17 +332,6 @@ async def ceo_audit_trail(
             event_data={"tool": "ceo_audit_trail", "application_id": application_id},
         )
         await session.commit()
-
-    if not events:
-        return f"No audit events found for application {application_id}."
-
-    lines = [f"Audit trail for application #{application_id} ({len(events)} events):", ""]
-    for evt in events:
-        ts = str(evt.timestamp)[:19] if evt.timestamp else "?"
-        line = f"  [{ts}] {evt.event_type}"
-        if evt.user_id:
-            line += f" (by {evt.user_id})"
-        lines.append(line)
 
     return "\n".join(lines)
 
@@ -390,6 +410,42 @@ async def ceo_audit_search(
     async with SessionLocal() as session:
         events = await search_events(session, days=days, event_type=event_type, limit=limit)
 
+        if not events:
+            await write_audit_event(
+                session,
+                event_type="query",
+                user_id=user.user_id,
+                user_role=user.role.value,
+                event_data={
+                    "tool": "ceo_audit_search",
+                    "days": days,
+                    "event_type": event_type,
+                    "limit": limit,
+                },
+            )
+            await session.commit()
+            return "No audit events found matching the criteria."
+
+        # Format inside session to avoid DetachedInstanceError
+        lines = [f"Audit search results ({len(events)} events):"]
+        if days:
+            lines[0] += f" (last {days} days)"
+        if event_type:
+            lines[0] += f" (type: {event_type})"
+        lines.append("")
+
+        for evt in events[:50]:  # Cap display at 50 for readability
+            ts = str(evt.timestamp)[:19] if evt.timestamp else "?"
+            line = f"  [{ts}] {evt.event_type}"
+            if evt.application_id:
+                line += f" (app #{evt.application_id})"
+            if evt.user_id:
+                line += f" by {evt.user_id}"
+            lines.append(line)
+
+        if len(events) > 50:
+            lines.append(f"  ... and {len(events) - 50} more events")
+
         await write_audit_event(
             session,
             event_type="query",
@@ -403,27 +459,5 @@ async def ceo_audit_search(
             },
         )
         await session.commit()
-
-    if not events:
-        return "No audit events found matching the criteria."
-
-    lines = [f"Audit search results ({len(events)} events):"]
-    if days:
-        lines[0] += f" (last {days} days)"
-    if event_type:
-        lines[0] += f" (type: {event_type})"
-    lines.append("")
-
-    for evt in events[:50]:  # Cap display at 50 for readability
-        ts = str(evt.timestamp)[:19] if evt.timestamp else "?"
-        line = f"  [{ts}] {evt.event_type}"
-        if evt.application_id:
-            line += f" (app #{evt.application_id})"
-        if evt.user_id:
-            line += f" by {evt.user_id}"
-        lines.append(line)
-
-    if len(events) > 50:
-        lines.append(f"  ... and {len(events) - 50} more events")
 
     return "\n".join(lines)
