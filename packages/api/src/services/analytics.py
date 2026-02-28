@@ -203,33 +203,43 @@ async def get_denial_trends(
 
     # Base query: decisions in the time range, optionally filtered by product
     base_filter = [Decision.created_at >= cutoff]
+    needs_app_join = False
     if product:
         try:
             loan_type = LoanType(product)
         except ValueError:
             valid = [lt.value for lt in LoanType]
             raise ValueError(f"Unknown product '{product}'. Valid: {valid}") from None
-        base_filter.append(Decision.application.has(Application.loan_type == loan_type))
+        base_filter.append(Application.loan_type == loan_type)
+        needs_app_join = True
+
+    def _base_stmt(extra_filters: list | None = None):
+        """Build a count(Decision.id) statement with optional join and filters."""
+        stmt = select(func.count(Decision.id))
+        if needs_app_join:
+            stmt = stmt.join(Application, Decision.application_id == Application.id)
+        all_filters = base_filter + (extra_filters or [])
+        return stmt.where(*all_filters)
 
     # Total decisions and denials
-    total_stmt = select(func.count(Decision.id)).where(*base_filter)
-    total_result = await session.execute(total_stmt)
+    total_result = await session.execute(_base_stmt())
     total_decisions = total_result.scalar() or 0
 
-    denial_stmt = select(func.count(Decision.id)).where(
-        *base_filter, Decision.decision_type == DecisionType.DENIED
+    denial_result = await session.execute(
+        _base_stmt([Decision.decision_type == DecisionType.DENIED])
     )
-    denial_result = await session.execute(denial_stmt)
     total_denials = denial_result.scalar() or 0
 
     overall_rate = (total_denials / total_decisions * 100) if total_decisions > 0 else 0.0
 
     # Trend: monthly for 90+ days, weekly for shorter periods
     use_monthly = days >= 60
-    trend = await _compute_denial_trend(session, base_filter, cutoff, now, use_monthly)
+    trend = await _compute_denial_trend(
+        session, base_filter, cutoff, now, use_monthly, needs_app_join
+    )
 
     # Top denial reasons from denial_reasons JSONB
-    top_reasons = await _compute_top_denial_reasons(session, base_filter)
+    top_reasons = await _compute_top_denial_reasons(session, base_filter, needs_app_join)
 
     # Denial rate by product (only when no product filter applied)
     by_product: dict[str, float] | None = None
@@ -254,6 +264,7 @@ async def _compute_denial_trend(
     cutoff: datetime,
     now: datetime,
     monthly: bool,
+    needs_app_join: bool = False,
 ) -> list[DenialTrendPoint]:
     """Compute denial rate trend over time."""
     if monthly:
@@ -261,20 +272,18 @@ async def _compute_denial_trend(
     else:
         period_expr = func.concat("Week ", func.extract("week", Decision.created_at).cast(str))
 
-    stmt = (
-        select(
-            period_expr.label("period"),
-            func.count(Decision.id).label("total"),
-            func.count(
-                case(
-                    (Decision.decision_type == DecisionType.DENIED, Decision.id),
-                )
-            ).label("denials"),
-        )
-        .where(*base_filter)
-        .group_by(period_expr)
-        .order_by(period_expr)
+    stmt = select(
+        period_expr.label("period"),
+        func.count(Decision.id).label("total"),
+        func.count(
+            case(
+                (Decision.decision_type == DecisionType.DENIED, Decision.id),
+            )
+        ).label("denials"),
     )
+    if needs_app_join:
+        stmt = stmt.join(Application, Decision.application_id == Application.id)
+    stmt = stmt.where(*base_filter).group_by(period_expr).order_by(period_expr)
 
     result = await session.execute(stmt)
     points = []
@@ -296,16 +305,18 @@ async def _compute_denial_trend(
 async def _compute_top_denial_reasons(
     session: AsyncSession,
     base_filter: list,
+    needs_app_join: bool = False,
 ) -> list[DenialReason]:
     """Extract top 5 denial reasons from the denial_reasons JSONB field.
 
     Reasons appearing in fewer than 3 decisions are aggregated into 'Other'.
     """
     # Get all denial decisions with their reasons
-    stmt = (
-        select(Decision.denial_reasons)
-        .where(*base_filter, Decision.decision_type == DecisionType.DENIED)
-        .where(Decision.denial_reasons.isnot(None))
+    stmt = select(Decision.denial_reasons)
+    if needs_app_join:
+        stmt = stmt.join(Application, Decision.application_id == Application.id)
+    stmt = stmt.where(*base_filter, Decision.decision_type == DecisionType.DENIED).where(
+        Decision.denial_reasons.isnot(None)
     )
     result = await session.execute(stmt)
 
