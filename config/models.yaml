@@ -56,6 +56,18 @@ routing:
           - "qualified mortgage"
           - "appraisal"
           - "fair lending"
+          - "pipeline"
+          - "denial"
+          - "performance"
+          - "loan officer"
+          - "pull-through"
+          - "turn time"
+          - "audit"
+          - "trace"
+          - "decision"
+          - "trend"
+          - "metric"
+          - "export"
 
 models:
   fast_small:
