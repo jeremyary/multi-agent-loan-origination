@@ -13,14 +13,12 @@ Design note -- session-per-tool-call:
 import logging
 from typing import Annotated
 
-from db import ApplicationFinancials
 from db.database import SessionLocal
 from db.enums import ApplicationStage, DocumentType
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-from sqlalchemy import select
 
-from ..services.application import get_application
+from ..services.application import get_application, get_financials
 from ..services.audit import write_audit_event
 from ..services.compliance.checks import (
     check_atr_qm,
@@ -111,11 +109,7 @@ async def compliance_check(
             )
 
         # Gather data for checks
-        fin_stmt = select(ApplicationFinancials).where(
-            ApplicationFinancials.application_id == application_id
-        )
-        fin_result = await session.execute(fin_stmt)
-        financials = fin_result.scalars().all()
+        financials = await get_financials(session, application_id)
 
         documents, _ = await list_documents(session, user, application_id, limit=100)
 

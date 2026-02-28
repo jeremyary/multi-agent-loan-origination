@@ -10,9 +10,8 @@ import logging
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from db import Application, ApplicationBorrower, Borrower
+from db import Application, ApplicationBorrower, ApplicationFinancials, Borrower
 from db.enums import ApplicationStage, LoanType
-from fastapi import HTTPException, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -21,6 +20,12 @@ from ..schemas.auth import UserContext
 from ..services.scope import apply_data_scope
 
 logger = logging.getLogger(__name__)
+
+
+class InvalidTransitionError(ValueError):
+    """Raised when an application stage transition is not allowed."""
+
+    pass
 
 
 _TERMINAL_STAGES = ApplicationStage.terminal_stages()
@@ -173,7 +178,7 @@ async def transition_stage(
     """Transition an application to a new stage with validation.
 
     Returns None if the application is not found or not accessible.
-    Raises HTTPException 422 if the transition is not allowed.
+    Raises InvalidTransitionError if the transition is not allowed.
     """
     app = await get_application(session, user, application_id)
     if app is None:
@@ -184,12 +189,9 @@ async def transition_stage(
     allowed = valid.get(current, frozenset())
 
     if new_stage not in allowed:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"Cannot transition from '{current.value}' to '{new_stage.value}'. "
-                f"Allowed: {sorted(s.value for s in allowed) if allowed else 'none (terminal stage)'}."
-            ),
+        raise InvalidTransitionError(
+            f"Cannot transition from '{current.value}' to '{new_stage.value}'. "
+            f"Allowed: {sorted(s.value for s in allowed) if allowed else 'none (terminal stage)'}."
         )
 
     app.stage = new_stage
@@ -220,3 +222,25 @@ async def update_application(
     await session.commit()
     # Re-query with eager loading to avoid lazy-load in async context
     return await get_application(session, user, application_id)
+
+
+async def get_financials(
+    session: AsyncSession,
+    application_id: int,
+) -> list[ApplicationFinancials]:
+    """Get all financial records for an application.
+
+    Does NOT enforce data scope -- caller must check access to the application first.
+
+    Args:
+        session: Database session.
+        application_id: The application ID.
+
+    Returns:
+        List of ApplicationFinancials objects (may be empty).
+    """
+    stmt = select(ApplicationFinancials).where(
+        ApplicationFinancials.application_id == application_id
+    )
+    result = await session.execute(stmt)
+    return result.scalars().all()

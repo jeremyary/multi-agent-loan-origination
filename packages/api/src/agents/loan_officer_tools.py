@@ -14,7 +14,6 @@ Design note -- session-per-tool-call:
     self-contained and avoids cross-tool state leakage.
 """
 
-import json
 from typing import Annotated
 
 from db.database import SessionLocal
@@ -25,7 +24,7 @@ from langgraph.prebuilt import InjectedState
 from ..services.application import get_application, transition_stage
 from ..services.audit import write_audit_event
 from ..services.completeness import check_completeness, check_underwriting_readiness
-from ..services.condition import get_conditions
+from ..services.condition import get_conditions, parse_quality_flags
 from ..services.document import get_document, list_documents, update_document_status
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
@@ -147,14 +146,9 @@ async def lo_document_review(
         line = f"- [{doc.id}] {doc_type}: {status_val}"
 
         if doc.quality_flags:
-            try:
-                flags = json.loads(doc.quality_flags)
-                if isinstance(flags, list):
-                    line += f" (issues: {', '.join(flags)})"
-                else:
-                    line += f" (issues: {doc.quality_flags})"
-            except (json.JSONDecodeError, TypeError):
-                line += f" (issues: {doc.quality_flags})"
+            flags = parse_quality_flags(doc.quality_flags)
+            if flags:
+                line += f" (issues: {', '.join(flags)})"
 
         if doc.created_at:
             line += f" (uploaded: {doc.created_at.strftime('%Y-%m-%d')})"
@@ -195,16 +189,13 @@ async def lo_document_quality(
     ]
 
     if doc.quality_flags:
-        try:
-            flags = json.loads(doc.quality_flags)
-            if isinstance(flags, list) and flags:
-                lines.append("Quality issues:")
-                for flag in flags:
-                    lines.append(f"  - {flag}")
-            elif doc.quality_flags:
-                lines.append(f"Quality notes: {doc.quality_flags}")
-        except (json.JSONDecodeError, TypeError):
-            lines.append(f"Quality notes: {doc.quality_flags}")
+        flags = parse_quality_flags(doc.quality_flags)
+        if flags:
+            lines.append("Quality issues:")
+            for flag in flags:
+                lines.append(f"  - {flag}")
+        else:
+            lines.append("Quality: No issues detected")
     else:
         lines.append("Quality: No issues detected")
 

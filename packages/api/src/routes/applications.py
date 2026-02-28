@@ -29,6 +29,7 @@ from ..schemas.rate_lock import RateLockResponse
 from ..schemas.status import ApplicationStatusResponse
 from ..schemas.urgency import UrgencyLevel
 from ..services import application as app_service
+from ..services.application import InvalidTransitionError
 from ..services.condition import get_conditions, respond_to_condition
 from ..services.rate_lock import get_rate_lock_status
 from ..services.status import get_application_status
@@ -365,12 +366,18 @@ async def update_application(
     app = None
 
     if new_stage is not None:
-        app = await app_service.transition_stage(
-            session,
-            user,
-            application_id,
-            new_stage,
-        )
+        try:
+            app = await app_service.transition_stage(
+                session,
+                user,
+                application_id,
+                new_stage,
+            )
+        except InvalidTransitionError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(e),
+            )
         if app is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

@@ -145,7 +145,7 @@ async def test_get_ai_recommendation_returns_none_when_no_recommendation():
 
 @pytest.mark.asyncio
 @patch("src.services.decision.write_audit_event", new_callable=AsyncMock)
-@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
 @patch("src.services.decision.get_application", new_callable=AsyncMock)
 async def test_render_decision_out_of_scope(mock_get_app, mock_ai, mock_cond, mock_audit):
@@ -159,7 +159,7 @@ async def test_render_decision_out_of_scope(mock_get_app, mock_ai, mock_cond, mo
 
 @pytest.mark.asyncio
 @patch("src.services.decision.write_audit_event", new_callable=AsyncMock)
-@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
 @patch("src.services.decision.get_application", new_callable=AsyncMock)
 async def test_render_decision_wrong_stage(mock_get_app, mock_ai, mock_cond, mock_audit):
@@ -175,7 +175,7 @@ async def test_render_decision_wrong_stage(mock_get_app, mock_ai, mock_cond, moc
 
 @pytest.mark.asyncio
 @patch("src.services.decision.write_audit_event", new_callable=AsyncMock)
-@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
 @patch("src.services.decision.get_application", new_callable=AsyncMock)
 async def test_render_decision_approve_no_conditions(mock_get_app, mock_ai, mock_cond, mock_audit):
@@ -183,17 +183,7 @@ async def test_render_decision_approve_no_conditions(mock_get_app, mock_ai, mock
     app = _mock_app(stage="underwriting")
     mock_get_app.return_value = app
     mock_ai.return_value = ("Approve", "Approve")
-    mock_cond.return_value = {
-        "total": 0,
-        "counts": {
-            "open": 0,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 0,
-            "waived": 0,
-        },
-    }
+    mock_cond.return_value = 0  # No outstanding conditions
     session = AsyncMock()
 
     async def fake_refresh(obj):
@@ -224,7 +214,7 @@ async def test_render_decision_approve_no_conditions(mock_get_app, mock_ai, mock
 
 @pytest.mark.asyncio
 @patch("src.services.decision.write_audit_event", new_callable=AsyncMock)
-@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
 @patch("src.services.decision.get_application", new_callable=AsyncMock)
 async def test_render_decision_approve_with_conditions(
@@ -234,17 +224,7 @@ async def test_render_decision_approve_with_conditions(
     app = _mock_app(stage="underwriting")
     mock_get_app.return_value = app
     mock_ai.return_value = ("Approve with Conditions", "Approve with Conditions")
-    mock_cond.return_value = {
-        "total": 2,
-        "counts": {
-            "open": 2,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 0,
-            "waived": 0,
-        },
-    }
+    mock_cond.return_value = 2  # 2 outstanding conditions
     session = AsyncMock()
 
     async def fake_refresh(obj):
@@ -273,7 +253,7 @@ async def test_render_decision_approve_with_conditions(
 
 @pytest.mark.asyncio
 @patch("src.services.decision.write_audit_event", new_callable=AsyncMock)
-@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
 @patch("src.services.decision.get_application", new_callable=AsyncMock)
 async def test_render_decision_approve_from_conditional_all_cleared(
@@ -283,17 +263,7 @@ async def test_render_decision_approve_from_conditional_all_cleared(
     app = _mock_app(stage="conditional_approval")
     mock_get_app.return_value = app
     mock_ai.return_value = ("Approve", "Approve")
-    mock_cond.return_value = {
-        "total": 2,
-        "counts": {
-            "open": 0,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 1,
-            "waived": 1,
-        },
-    }
+    mock_cond.return_value = 0  # All conditions cleared or waived
     session = AsyncMock()
 
     async def fake_refresh(obj):
@@ -322,7 +292,7 @@ async def test_render_decision_approve_from_conditional_all_cleared(
 
 @pytest.mark.asyncio
 @patch("src.services.decision.write_audit_event", new_callable=AsyncMock)
-@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
 @patch("src.services.decision.get_application", new_callable=AsyncMock)
 async def test_render_decision_approve_from_conditional_outstanding(
@@ -332,17 +302,7 @@ async def test_render_decision_approve_from_conditional_outstanding(
     app = _mock_app(stage="conditional_approval")
     mock_get_app.return_value = app
     mock_ai.return_value = (None, None)
-    mock_cond.return_value = {
-        "total": 2,
-        "counts": {
-            "open": 1,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 1,
-            "waived": 0,
-        },
-    }
+    mock_cond.return_value = 1  # 1 outstanding condition
     session = AsyncMock()
 
     result = await render_decision(session, _uw_user(), 100, "approve", "Trying to approve")
@@ -511,7 +471,7 @@ async def test_render_decision_suspend_from_conditional_error(mock_get_app, mock
 
 @pytest.mark.asyncio
 @patch("src.services.decision.write_audit_event", new_callable=AsyncMock)
-@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
 @patch("src.services.decision.get_application", new_callable=AsyncMock)
 async def test_render_decision_ai_agreement(mock_get_app, mock_ai, mock_cond, mock_audit):
@@ -519,17 +479,7 @@ async def test_render_decision_ai_agreement(mock_get_app, mock_ai, mock_cond, mo
     app = _mock_app(stage="underwriting")
     mock_get_app.return_value = app
     mock_ai.return_value = ("Approve", "Approve")
-    mock_cond.return_value = {
-        "total": 0,
-        "counts": {
-            "open": 0,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 0,
-            "waived": 0,
-        },
-    }
+    mock_cond.return_value = 0  # No outstanding conditions
     session = AsyncMock()
 
     async def fake_refresh(obj):
@@ -562,7 +512,7 @@ async def test_render_decision_ai_agreement(mock_get_app, mock_ai, mock_cond, mo
 
 @pytest.mark.asyncio
 @patch("src.services.decision.write_audit_event", new_callable=AsyncMock)
-@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
 @patch("src.services.decision.get_application", new_callable=AsyncMock)
 async def test_render_decision_ai_override(mock_get_app, mock_ai, mock_cond, mock_audit):
@@ -570,17 +520,7 @@ async def test_render_decision_ai_override(mock_get_app, mock_ai, mock_cond, moc
     app = _mock_app(stage="underwriting")
     mock_get_app.return_value = app
     mock_ai.return_value = ("Deny", "Deny")
-    mock_cond.return_value = {
-        "total": 0,
-        "counts": {
-            "open": 0,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 0,
-            "waived": 0,
-        },
-    }
+    mock_cond.return_value = 0  # No outstanding conditions
     session = AsyncMock()
 
     async def fake_refresh(obj):
@@ -644,7 +584,7 @@ async def test_render_decision_invalid_decision_type(mock_get_app, mock_ai, mock
 
 
 @pytest.mark.asyncio
-@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
 @patch("src.services.decision.get_application", new_callable=AsyncMock)
 async def test_propose_decision_returns_preview(mock_get_app, mock_ai, mock_cond):
@@ -652,17 +592,7 @@ async def test_propose_decision_returns_preview(mock_get_app, mock_ai, mock_cond
     app = _mock_app(stage="underwriting")
     mock_get_app.return_value = app
     mock_ai.return_value = ("Approve", "Approve")
-    mock_cond.return_value = {
-        "total": 0,
-        "counts": {
-            "open": 0,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 0,
-            "waived": 0,
-        },
-    }
+    mock_cond.return_value = 0  # No outstanding conditions
     session = AsyncMock()
 
     result = await propose_decision(session, _uw_user(), 100, "approve", "Strong financials")
@@ -678,7 +608,7 @@ async def test_propose_decision_returns_preview(mock_get_app, mock_ai, mock_cond
 
 
 @pytest.mark.asyncio
-@patch("src.services.decision.get_condition_summary", new_callable=AsyncMock)
+@patch("src.services.decision.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.services.decision._get_ai_recommendation", new_callable=AsyncMock)
 @patch("src.services.decision.get_application", new_callable=AsyncMock)
 async def test_propose_decision_shows_conditions(mock_get_app, mock_ai, mock_cond):
@@ -686,17 +616,7 @@ async def test_propose_decision_shows_conditions(mock_get_app, mock_ai, mock_con
     app = _mock_app(stage="underwriting")
     mock_get_app.return_value = app
     mock_ai.return_value = (None, None)
-    mock_cond.return_value = {
-        "total": 3,
-        "counts": {
-            "open": 2,
-            "responded": 1,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 0,
-            "waived": 0,
-        },
-    }
+    mock_cond.return_value = 3  # 3 outstanding conditions
     session = AsyncMock()
 
     result = await propose_decision(session, _uw_user(), 100, "approve", "Looks good")

@@ -7,6 +7,30 @@ Pure math, no I/O. Shared by the public API route and the agent tool.
 from ..schemas.calculator import AffordabilityRequest, AffordabilityResponse
 
 
+def compute_monthly_payment(principal: float, annual_rate: float, term_months: int) -> float:
+    """Compute monthly payment for a loan.
+
+    Uses the standard amortization formula. Returns 0 for invalid inputs.
+
+    Args:
+        principal: The loan amount in dollars.
+        annual_rate: Annual interest rate as a percentage (e.g., 6.875 for 6.875%).
+        term_months: Loan term in months.
+
+    Returns:
+        Monthly payment amount in dollars.
+    """
+    if principal <= 0 or term_months <= 0:
+        return 0.0
+
+    monthly_rate = annual_rate / 100 / 12
+    if monthly_rate <= 0:
+        return principal / term_months
+
+    compound = (1 + monthly_rate) ** term_months
+    return principal * (monthly_rate * compound) / (compound - 1)
+
+
 def calculate_affordability(req: AffordabilityRequest) -> AffordabilityResponse:
     """Estimate maximum loan amount and monthly payment."""
     gross_monthly_income = req.gross_annual_income / 12

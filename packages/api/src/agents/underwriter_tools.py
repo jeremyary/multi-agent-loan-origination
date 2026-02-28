@@ -16,14 +16,12 @@ Design note -- session-per-tool-call:
 
 from typing import Annotated
 
-from db import ApplicationFinancials
 from db.database import SessionLocal
 from db.enums import ApplicationStage, EmploymentStatus
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
-from sqlalchemy import select
 
-from ..services.application import get_application, list_applications
+from ..services.application import get_application, get_financials, list_applications
 from ..services.audit import write_audit_event
 from ..services.condition import get_conditions
 from ..services.document import list_documents
@@ -136,11 +134,7 @@ async def uw_application_detail(
             return "Application not found or you don't have access to it."
 
         # Financials -- separate query (session-per-tool isolation pattern)
-        fin_stmt = select(ApplicationFinancials).where(
-            ApplicationFinancials.application_id == application_id
-        )
-        fin_result = await session.execute(fin_stmt)
-        financials = fin_result.scalars().all()
+        financials = await get_financials(session, application_id)
 
         documents, doc_total = await list_documents(session, user, application_id, limit=50)
         conditions = await get_conditions(session, user, application_id)
@@ -456,11 +450,7 @@ async def uw_risk_assessment(
                 f"{format_enum_label(stage_val)}."
             )
 
-        fin_stmt = select(ApplicationFinancials).where(
-            ApplicationFinancials.application_id == application_id
-        )
-        fin_result = await session.execute(fin_stmt)
-        financials = fin_result.scalars().all()
+        financials = await get_financials(session, application_id)
 
         borrowers = _extract_borrower_info(app)
         risk = _compute_risk_factors(app, financials, borrowers)
@@ -613,11 +603,7 @@ async def uw_preliminary_recommendation(
                 f"{format_enum_label(stage_val)}."
             )
 
-        fin_stmt = select(ApplicationFinancials).where(
-            ApplicationFinancials.application_id == application_id
-        )
-        fin_result = await session.execute(fin_stmt)
-        financials = fin_result.scalars().all()
+        financials = await get_financials(session, application_id)
 
         documents, doc_total = await list_documents(session, user, application_id, limit=50)
         borrowers = _extract_borrower_info(app)

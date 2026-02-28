@@ -352,6 +352,7 @@ async def test_check_condition_documents_with_docs_and_extractions():
 
     # Mock extraction
     ext = MagicMock()
+    ext.document_id = 10  # Must match doc.id
     ext.field_name = "employer_name"
     ext.field_value = "Acme Corp"
     ext.confidence = 0.95

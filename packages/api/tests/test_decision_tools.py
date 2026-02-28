@@ -637,7 +637,7 @@ async def test_generate_le_not_found(mock_session_cls):
 
 @patch("src.agents.decision_tools.write_audit_event", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.get_rate_lock_status", new_callable=AsyncMock)
-@patch("src.agents.decision_tools.get_condition_summary", new_callable=AsyncMock)
+@patch("src.agents.decision_tools.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
 async def test_generate_cd_success(mock_session_cls, mock_cond, mock_rate_lock, mock_audit):
     """uw_generate_cd generates CD text when conditions cleared."""
@@ -646,17 +646,7 @@ async def test_generate_cd_success(mock_session_cls, mock_cond, mock_rate_lock, 
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
     app = _mock_app(stage="clear_to_close")
-    mock_cond.return_value = {
-        "total": 2,
-        "counts": {
-            "open": 0,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 1,
-            "waived": 1,
-        },
-    }
+    mock_cond.return_value = 0  # All conditions cleared or waived
 
     ab = MagicMock()
     ab.borrower_id = 10
@@ -689,7 +679,7 @@ async def test_generate_cd_success(mock_session_cls, mock_cond, mock_rate_lock, 
     assert mock_audit.call_args.kwargs["event_type"] == "cd_generated"
 
 
-@patch("src.agents.decision_tools.get_condition_summary", new_callable=AsyncMock)
+@patch("src.agents.decision_tools.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
 async def test_generate_cd_outstanding_conditions(mock_session_cls, mock_cond):
     """uw_generate_cd blocks when conditions are outstanding."""
@@ -698,17 +688,7 @@ async def test_generate_cd_outstanding_conditions(mock_session_cls, mock_cond):
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
     app = _mock_app(stage="clear_to_close")
-    mock_cond.return_value = {
-        "total": 3,
-        "counts": {
-            "open": 1,
-            "responded": 0,
-            "under_review": 0,
-            "escalated": 0,
-            "cleared": 1,
-            "waived": 1,
-        },
-    }
+    mock_cond.return_value = 1  # 1 outstanding condition
 
     app_result = MagicMock()
     app_result.unique.return_value.scalar_one_or_none.return_value = app
