@@ -38,6 +38,31 @@ class PipelineSummary(BaseModel):
     computed_at: datetime
 
 
+class LOPerformanceRow(BaseModel):
+    """Performance metrics for a single loan officer."""
+
+    lo_id: str = Field(..., description="Loan officer user ID")
+    lo_name: str | None = Field(None, description="Loan officer display name (if available)")
+    active_count: int = Field(..., description="Applications in active pipeline stages")
+    closed_count: int = Field(..., description="Applications closed in the time period")
+    pull_through_rate: float = Field(..., description="Closed / total initiated by this LO (%)")
+    avg_days_to_underwriting: float | None = Field(
+        None, description="Avg days from Application to Underwriting submission"
+    )
+    avg_days_conditions_to_cleared: float | None = Field(
+        None, description="Avg days from condition issued to cleared (LO responsiveness)"
+    )
+    denial_rate: float = Field(..., description="Percentage of LO's decided applications denied")
+
+
+class LOPerformanceSummary(BaseModel):
+    """LO performance comparison table for CEO dashboard."""
+
+    loan_officers: list[LOPerformanceRow]
+    time_range_days: int
+    computed_at: datetime
+
+
 class DenialReason(BaseModel):
     """A single denial reason with count."""
 

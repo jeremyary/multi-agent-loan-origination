@@ -7,8 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import require_roles
-from ..schemas.analytics import DenialTrends, PipelineSummary
-from ..services.analytics import get_denial_trends, get_pipeline_summary
+from ..schemas.analytics import DenialTrends, LOPerformanceSummary, PipelineSummary
+from ..services.analytics import get_denial_trends, get_lo_performance, get_pipeline_summary
 
 router = APIRouter()
 
@@ -39,5 +39,22 @@ async def denial_trends(
     """Denial rate trends: overall rate, time-based trend, top reasons by product."""
     try:
         return await get_denial_trends(session, days=days, product=product)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/lo-performance",
+    response_model=LOPerformanceSummary,
+    dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.CEO))],
+)
+async def lo_performance(
+    days: int = Query(default=90, ge=1, le=365, description="Time range in days"),
+    product: str | None = Query(default=None, description="Filter by loan type"),
+    session: AsyncSession = Depends(get_db),
+) -> LOPerformanceSummary:
+    """LO performance metrics: volume, pull-through, turn times, denial rate per LO."""
+    try:
+        return await get_lo_performance(session, days=days, product=product)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

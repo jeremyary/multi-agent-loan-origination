@@ -7,10 +7,10 @@ tests cannot catch (JSONB extraction, GROUP BY, subquery joins, CASE).
 """
 
 import pytest
-from db.enums import ApplicationStage, DecisionType, LoanType
-from db.models import Application, AuditEvent, Decision
+from db.enums import ApplicationStage, ConditionSeverity, ConditionStatus, DecisionType, LoanType
+from db.models import Application, AuditEvent, Condition, Decision
 
-from src.services.analytics import get_denial_trends, get_pipeline_summary
+from src.services.analytics import get_denial_trends, get_lo_performance, get_pipeline_summary
 
 pytestmark = pytest.mark.integration
 
@@ -25,13 +25,14 @@ async def _seed_analytics_data(db_session):
 
     Returns dict with IDs for assertions.
     """
-    # 3 applications at different stages, different loan types
+    # 3 applications at different stages, different loan types, assigned to LOs
     app_closed = Application(
         stage=ApplicationStage.CLOSED,
         loan_type=LoanType.CONVENTIONAL_30,
         property_address="100 Closed Ln",
         loan_amount=300000,
         property_value=400000,
+        assigned_to="lo-alice",
     )
     app_uw = Application(
         stage=ApplicationStage.UNDERWRITING,
@@ -39,6 +40,7 @@ async def _seed_analytics_data(db_session):
         property_address="200 UW Ave",
         loan_amount=250000,
         property_value=300000,
+        assigned_to="lo-alice",
     )
     app_denied = Application(
         stage=ApplicationStage.DENIED,
@@ -46,6 +48,7 @@ async def _seed_analytics_data(db_session):
         property_address="300 Denied Rd",
         loan_amount=200000,
         property_value=250000,
+        assigned_to="lo-bob",
     )
     db_session.add_all([app_closed, app_uw, app_denied])
     await db_session.flush()
@@ -96,6 +99,18 @@ async def _seed_analytics_data(db_session):
         timestamp=base + datetime.timedelta(days=5),
     )
     db_session.add_all([evt_to_uw, evt_to_uw2])
+    await db_session.flush()
+
+    # Cleared condition on app_uw (for LO condition turn-time)
+    cond = Condition(
+        application_id=app_uw.id,
+        description="Provide bank statements",
+        severity=ConditionSeverity.PRIOR_TO_APPROVAL,
+        status=ConditionStatus.CLEARED,
+        issued_by="uw-test",
+        cleared_by="lo-alice",
+    )
+    db_session.add(cond)
     await db_session.flush()
 
     return {
@@ -211,3 +226,79 @@ class TestDenialTrendsIntegration:
         assert len(result.trend) >= 1
         total_from_trend = sum(p.total_decided for p in result.trend)
         assert total_from_trend == 3
+
+
+# ---------------------------------------------------------------------------
+# LO performance
+# ---------------------------------------------------------------------------
+
+
+class TestLOPerformanceIntegration:
+    """LO performance queries against real PostgreSQL."""
+
+    async def test_should_return_row_per_lo(self, db_session):
+        """One row per LO with assigned applications."""
+        await _seed_analytics_data(db_session)
+
+        result = await get_lo_performance(db_session, days=365)
+
+        lo_ids = {row.lo_id for row in result.loan_officers}
+        assert "lo-alice" in lo_ids
+        assert "lo-bob" in lo_ids
+        assert len(result.loan_officers) == 2
+
+    async def test_should_compute_active_and_closed_counts(self, db_session):
+        """Active/closed counts correct for each LO."""
+        await _seed_analytics_data(db_session)
+
+        result = await get_lo_performance(db_session, days=365)
+
+        alice = next(r for r in result.loan_officers if r.lo_id == "lo-alice")
+        # alice: app_closed (CLOSED) + app_uw (UNDERWRITING)
+        assert alice.active_count == 1  # underwriting is active
+        assert alice.closed_count == 1
+
+        bob = next(r for r in result.loan_officers if r.lo_id == "lo-bob")
+        # bob: app_denied (DENIED) -- not active, not closed
+        assert bob.active_count == 0
+        assert bob.closed_count == 0
+
+    async def test_should_compute_denial_rate_per_lo(self, db_session):
+        """Denial rate scoped to each LO's decided applications."""
+        await _seed_analytics_data(db_session)
+
+        result = await get_lo_performance(db_session, days=365)
+
+        alice = next(r for r in result.loan_officers if r.lo_id == "lo-alice")
+        # alice: 2 decisions (1 approved, 1 denied) -> 50%
+        assert alice.denial_rate == 50.0
+
+        bob = next(r for r in result.loan_officers if r.lo_id == "lo-bob")
+        # bob: 1 decision (denied) -> 100%
+        assert bob.denial_rate == 100.0
+
+    async def test_should_compute_condition_turn_time(self, db_session):
+        """Avg condition clearance time computed from real Condition rows."""
+        await _seed_analytics_data(db_session)
+
+        result = await get_lo_performance(db_session, days=365)
+
+        alice = next(r for r in result.loan_officers if r.lo_id == "lo-alice")
+        # Condition was created and cleared in the same flush, so ~0 days
+        assert alice.avg_days_conditions_to_cleared is not None
+        assert alice.avg_days_conditions_to_cleared >= 0.0
+
+    async def test_should_filter_by_product(self, db_session):
+        """Product filter restricts LO metrics to that loan type."""
+        await _seed_analytics_data(db_session)
+
+        result = await get_lo_performance(db_session, days=365, product="fha")
+
+        lo_ids = {row.lo_id for row in result.loan_officers}
+        # alice has one FHA app (app_uw), bob has one FHA app (app_denied)
+        assert "lo-alice" in lo_ids
+        assert "lo-bob" in lo_ids
+
+        alice = next(r for r in result.loan_officers if r.lo_id == "lo-alice")
+        # With FHA filter, alice's closed conv_30 app is excluded
+        assert alice.closed_count == 0

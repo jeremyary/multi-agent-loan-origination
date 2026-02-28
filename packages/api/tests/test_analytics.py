@@ -8,6 +8,7 @@ from db.enums import ApplicationStage, LoanType
 
 from src.services.analytics import (
     get_denial_trends,
+    get_lo_performance,
     get_pipeline_summary,
 )
 
@@ -336,6 +337,35 @@ class TestDenialTrends:
 
 
 # ---------------------------------------------------------------------------
+# LO performance -- service layer
+# ---------------------------------------------------------------------------
+
+
+class TestLOPerformance:
+    """Tests for get_lo_performance."""
+
+    @pytest.mark.asyncio
+    async def test_should_reject_invalid_product(self, mock_session):
+        """Invalid product string raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown product"):
+            await get_lo_performance(mock_session, days=90, product="nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_should_return_empty_when_no_los(self, mock_session):
+        """No assigned applications returns empty list."""
+        mock_session.execute = AsyncMock(
+            side_effect=_mock_execute_results(
+                [],  # no LOs with assigned apps
+            )
+        )
+
+        result = await get_lo_performance(mock_session, days=90)
+
+        assert result.loan_officers == []
+        assert result.time_range_days == 90
+
+
+# ---------------------------------------------------------------------------
 # REST endpoint tests (functional, with mock DB)
 # ---------------------------------------------------------------------------
 
@@ -443,6 +473,26 @@ class TestAnalyticsEndpointsFunctional:
         """GET /api/analytics/denial-trends?product=bogus returns 422."""
         client = self._make_client([])  # no DB calls expected
         response = client.get("/api/analytics/denial-trends", params={"product": "bogus"})
+        assert response.status_code == 422
+
+    def test_should_return_lo_performance(self):
+        """GET /api/analytics/lo-performance returns 200 with LO data."""
+        client = self._make_client(
+            _mock_execute_results(
+                [],  # no LOs (empty response is valid)
+            )
+        )
+        response = client.get("/api/analytics/lo-performance")
+        assert response.status_code == 200
+        body = response.json()
+        assert "loan_officers" in body
+        assert isinstance(body["loan_officers"], list)
+        assert body["time_range_days"] == 90
+
+    def test_should_reject_invalid_product_on_lo_performance(self):
+        """GET /api/analytics/lo-performance?product=bogus returns 422."""
+        client = self._make_client([])
+        response = client.get("/api/analytics/lo-performance", params={"product": "bogus"})
         assert response.status_code == 422
 
     def test_should_deny_non_ceo_roles(self):
