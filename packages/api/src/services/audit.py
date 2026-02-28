@@ -22,9 +22,28 @@ logger = logging.getLogger(__name__)
 AUDIT_LOCK_KEY = 900_001
 
 
-def _compute_hash(event_id: int, timestamp: str, event_data: dict | None) -> str:
-    """Compute SHA-256 hash of an audit event's key fields."""
-    payload = f"{event_id}|{timestamp}|{json.dumps(event_data, sort_keys=True, default=str)}"
+def _compute_hash(
+    event_id: int,
+    timestamp: str,
+    event_type: str,
+    user_id: str | None,
+    user_role: str | None,
+    application_id: int | None,
+    session_id: str | None,
+    event_data: dict | None,
+) -> str:
+    """Compute SHA-256 hash of an audit event's key fields.
+
+    Includes all audit fields for stronger tamper evidence:
+    - event_id, timestamp, event_type
+    - user_id, user_role, application_id, session_id
+    - event_data (JSON serialized)
+    """
+    payload = (
+        f"{event_id}|{timestamp}|{event_type}|"
+        f"{user_id or ''}|{user_role or ''}|{application_id or ''}|"
+        f"{session_id or ''}|{json.dumps(event_data, sort_keys=True, default=str)}"
+    )
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -65,7 +84,16 @@ async def write_audit_event(
     prev_event = result.scalar_one_or_none()
 
     if prev_event is not None:
-        prev_hash = _compute_hash(prev_event.id, str(prev_event.timestamp), prev_event.event_data)
+        prev_hash = _compute_hash(
+            prev_event.id,
+            str(prev_event.timestamp),
+            prev_event.event_type,
+            prev_event.user_id,
+            prev_event.user_role,
+            prev_event.application_id,
+            prev_event.session_id,
+            prev_event.event_data,
+        )
     else:
         prev_hash = "genesis"
 
@@ -106,7 +134,16 @@ async def verify_audit_chain(session: AsyncSession) -> dict:
             expected = "genesis"
         else:
             prev = events[i - 1]
-            expected = _compute_hash(prev.id, str(prev.timestamp), prev.event_data)
+            expected = _compute_hash(
+                prev.id,
+                str(prev.timestamp),
+                prev.event_type,
+                prev.user_id,
+                prev.user_role,
+                prev.application_id,
+                prev.session_id,
+                prev.event_data,
+            )
 
         if event.prev_hash != expected:
             return {
