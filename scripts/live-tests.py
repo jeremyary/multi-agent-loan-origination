@@ -303,7 +303,7 @@ async def test_documents(c: httpx.AsyncClient, app_id: int):
         ok("document has id", "id" in doc)
         ok("document has doc_type", "doc_type" in doc)
         ok("document has status", "status" in doc)
-        ok("document has filename", "filename" in doc)
+        ok("document has created_at", "created_at" in doc)
 
         # Get single document
         doc_id = doc["id"]
@@ -428,7 +428,7 @@ async def test_admin(c: httpx.AsyncClient):
     ok("GET /api/admin/seed returns 405", r.status_code == 405)
 
     # Audit by application (seeded app 95)
-    r = await c.get("/api/admin/audit/application/95")
+    r = await c.get("/api/audit/application/95")
     ok("GET audit/application/95 returns 200", r.status_code == 200)
     body = r.json()
     ok("audit response has application_id", body.get("application_id") == 95)
@@ -443,15 +443,15 @@ async def test_admin(c: httpx.AsyncClient):
         ok("audit event has event_type", "event_type" in evt)
 
     # Audit by session (requires session_id param)
-    r = await c.get("/api/admin/audit")
+    r = await c.get("/api/audit/session")
     ok("audit without session_id returns 422", r.status_code == 422)
 
-    r = await c.get("/api/admin/audit", params={"session_id": "nonexistent-session"})
+    r = await c.get("/api/audit/session", params={"session_id": "nonexistent-session"})
     ok("audit with unknown session returns 200 (empty)", r.status_code == 200)
     ok("empty session has count=0", r.json().get("count") == 0)
 
     # Audit chain verify
-    r = await c.get("/api/admin/audit/verify")
+    r = await c.get("/api/audit/verify")
     ok("GET audit/verify returns 200", r.status_code == 200)
     verify = r.json()
     ok("verify has status field", "status" in verify)
