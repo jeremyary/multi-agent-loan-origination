@@ -262,7 +262,7 @@ HMDA demographic data is isolated at four stages:
 
 **REQ-CC-06: CI lint check for HMDA isolation**
 
-A CI step verifies that no code outside `packages/api/src/summit_cap/services/compliance/` references the `hmda` schema or imports the `compliance_app` connection pool. This check uses `grep -r` and fails the build on violation.
+A CI step verifies that no code outside `packages/api/src/services/compliance/` references the `hmda` schema or imports the `compliance_app` connection pool. This check uses `grep -r` and fails the build on violation.
 
 **REQ-CC-07: Database-level HMDA access verification**
 

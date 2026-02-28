@@ -25,7 +25,7 @@ Error responses use `ErrorResponse` for all 4xx/5xx.
 
 ## 2. Shared Data Models
 
-### Python (Pydantic) -- `packages/api/src/summit_cap/schemas/`
+### Python (Pydantic) -- `packages/api/src/schemas/`
 
 These models are the contract. If you consume or produce data that crosses a boundary, use these exact shapes.
 

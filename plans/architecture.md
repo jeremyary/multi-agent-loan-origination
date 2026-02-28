@@ -12,7 +12,7 @@ Core principles:
 - **Role-scoped agents** -- Each persona gets an agent with a distinct tool set, system prompt, and data access boundary. No shared "super agent."
 - **Append-only auditability** -- Every AI action, data access, and human decision is captured in an immutable audit log that supports backward tracing.
 - **Configuration-driven extensibility** -- Agent definitions, tool registrations, model routing rules, and RBAC policies are declared in configuration, not scattered through code. A Quickstart user can add a persona by adding configuration, not by modifying framework code.
-- **PoC maturity, production structure** -- Implementation quality is PoC-appropriate (smoke tests, console errors acceptable), but the component boundaries, data model, and integration patterns are designed to support production hardening without rearchitecture.
+- **MVP maturity, production structure** -- Implementation quality is MVP-appropriate (smoke tests, console errors acceptable), but the component boundaries, data model, and integration patterns are designed to support production hardening without rearchitecture.
 
 ### 1.2 High-Level Component Diagram
 
@@ -98,7 +98,7 @@ Core principles:
 
 **F4 form fallback contingency:** The primary application intake experience is conversational-only (agent-driven). However, a structured form fallback is accepted as a contingency: if conversational-only proves too brittle for specific application sections (e.g., complex financial data entry), those sections may fall back to structured forms while preserving conversational guidance as the primary experience. The frontend architecture accommodates both paths -- the chat interface is the default, with optional form components that can be activated per-section if needed.
 
-**Interface with backend:** HTTP REST for data operations. WebSocket for streaming chat responses. SSE is a production upgrade path if WebSocket proves problematic in certain deployment environments, but the PoC uses WebSocket exclusively.
+**Interface with backend:** HTTP REST for data operations. WebSocket for streaming chat responses. SSE is a production upgrade path if WebSocket proves problematic in certain deployment environments, but the MVP uses WebSocket exclusively.
 
 ### 2.2 API Gateway (FastAPI)
 
@@ -164,7 +164,7 @@ Agent config changes are picked up per-conversation via hot-reload (see Section 
 
 1. **Input validation** -- Agent queries are validated for adversarial patterns before processing. Known injection patterns are detected and rejected. Rejected queries are logged to the audit trail.
 2. **Tool authorization at execution time** -- Implemented as a LangGraph pre-tool node that executes immediately before each tool invocation. The node reads the user's role from JWT claims in the session context (known staleness window: access token lifetime of 15 minutes). Authorization results are NOT cached across turns -- every tool call triggers a fresh check. On authorization failure: the tool returns an authorization error to the agent, the agent communicates the restriction to the user, and the attempt is recorded in the audit trail.
-3. **Output filtering** -- Agent responses are scanned before delivery to ensure no out-of-scope data is included. For the CEO agent, PII fields are verified as masked. For lending agents (LO, Underwriter), HMDA demographic data is verified as absent. The filter includes semantic checks for demographic proxy references (neighborhood-level demographic composition, proxy characteristics that correlate with protected classes). This is pattern-matching at PoC maturity; production would use ML-based semantic detection.
+3. **Output filtering** -- Agent responses are scanned before delivery to ensure no out-of-scope data is included. For the CEO agent, PII fields are verified as masked. For lending agents (LO, Underwriter), HMDA demographic data is verified as absent. The filter includes semantic checks for demographic proxy references (neighborhood-level demographic composition, proxy characteristics that correlate with protected classes). This is pattern-matching at MVP maturity; production would use ML-based semantic detection.
 
 **LangGraph state management:** Each agent conversation maintains state in a LangGraph checkpoint. Checkpoints are persisted to PostgreSQL for cross-session memory (F19). The checkpoint includes conversation history, collected application data (for the borrower agent), and tool call results.
 
@@ -205,7 +205,7 @@ Upload -> Store raw file -> Quality assessment -> Information extraction
 2. The exclusion is logged in the audit trail with the reason.
 3. The raw document is stored as-is (it may contain demographic data), but access to raw documents is role-controlled (CEO gets metadata only).
 
-**False negative mitigation:** If the demographic filter misses indirect demographic data (e.g., a document that references "applicant from a predominantly Hispanic neighborhood"), the agent output filter (Layer 4 of agent security, see Section 4.3) acts as a secondary defense -- even if demographic data enters the extraction pipeline, it is caught before reaching the user. The adversarial test suite includes test cases with indirect demographic references to validate both layers. This is a PoC-maturity limitation; production would use ML-based detection for higher recall.
+**False negative mitigation:** If the demographic filter misses indirect demographic data (e.g., a document that references "applicant from a predominantly Hispanic neighborhood"), the agent output filter (Layer 4 of agent security, see Section 4.3) acts as a secondary defense -- even if demographic data enters the extraction pipeline, it is caught before reaching the user. The adversarial test suite includes test cases with indirect demographic references to validate both layers. This is a MVP-maturity limitation; production would use ML-based detection for higher recall.
 
 **Quality assessment:** LLM-based assessment for common document issues: blurriness, incorrect time period, missing pages, unsigned documents, wrong document type. Quality flags are stored as document metadata.
 
@@ -243,7 +243,7 @@ Upload -> Store raw file -> Quality assessment -> Information extraction
 
 PostgreSQL 16 with the pgvector extension. See [ADR-0002: Database Selection](#adr-0002-database-selection).
 
-**Rationale summary:** A single PostgreSQL instance handles relational data (applications, users, conditions, documents), append-only audit events, conversation checkpoints, and vector embeddings for the compliance KB. This avoids the operational complexity of multiple databases while pgvector provides vector search capability that is sufficient for PoC-scale RAG (hundreds of compliance document chunks, not millions).
+**Rationale summary:** A single PostgreSQL instance handles relational data (applications, users, conditions, documents), append-only audit events, conversation checkpoints, and vector embeddings for the compliance KB. This avoids the operational complexity of multiple databases while pgvector provides vector search capability that is sufficient for MVP-scale RAG (hundreds of compliance document chunks, not millions).
 
 ### 3.2 Schema Overview
 
@@ -280,7 +280,7 @@ The schema is organized into logical domains. This is a high-level overview -- d
 - `kb_chunks` -- Document chunks with embeddings (pgvector column)
 
 **Analytics domain:**
-- Standard SQL views over the application and decision data for CEO dashboard queries. These are read-only aggregations, not separate tables. At PoC scale, standard views are sufficient. Materialized views are noted as a production optimization for when query volume or data size warrants cached aggregations.
+- Standard SQL views over the application and decision data for CEO dashboard queries. These are read-only aggregations, not separate tables. At MVP scale, standard views are sufficient. Materialized views are noted as a production optimization for when query volume or data size warrants cached aggregations.
 
 **Demo data domain:**
 - `demo_data_manifest` -- Tracks whether demo data is seeded, supports clean teardown. Demo data uses the same tables as live data -- no separate demo tables.
@@ -346,8 +346,8 @@ See [ADR-0006: Audit Trail Architecture](#adr-0006-audit-trail-architecture).
 - The `audit_events` table has no UPDATE or DELETE grants for the application database user. The application connects with a role that has INSERT and SELECT only on audit tables.
 - A database trigger rejects any UPDATE or DELETE attempted on `audit_events`, logging the attempt to a separate `audit_violations` table.
 - Sequential event IDs (bigserial) provide ordering guarantees.
-- A hash chain (each event includes a hash of the previous event's ID + content) provides tamper evidence at PoC level. This is not cryptographically rigorous but detects naive modification.
-- **Concurrency strategy:** A PostgreSQL advisory lock is acquired around audit inserts to ensure serial hash chain computation. At PoC scale (small number of concurrent users), advisory lock contention is negligible. The hash chain is a PoC-specific mechanism that would be **replaced** (not incrementally upgraded) for production -- a production system would use a fundamentally different tamper-evidence approach (e.g., database-level cryptographic verification or an external ledger).
+- A hash chain (each event includes a hash of the previous event's ID + content) provides tamper evidence at MVP level. This is not cryptographically rigorous but detects naive modification.
+- **Concurrency strategy:** A PostgreSQL advisory lock is acquired around audit inserts to ensure serial hash chain computation. At MVP scale (small number of concurrent users), advisory lock contention is negligible. The hash chain is a MVP-specific mechanism that would be **replaced** (not incrementally upgraded) for production -- a production system would use a fundamentally different tamper-evidence approach (e.g., database-level cryptographic verification or an external ledger).
 
 **Audit event schema (conceptual):**
 
@@ -386,7 +386,7 @@ Cross-session memory (F19) is implemented through LangGraph's checkpoint persist
 - **Post-retrieval verification:** After retrieving a checkpoint, the Conversation Service validates that the checkpoint's `user_id` matches the requesting user's ID. This catches any ORM misconfiguration or query builder error that might bypass the WHERE clause.
 - **ORM configuration:** The SQLAlchemy model for checkpoints does not define eager-loading relationships that cross user boundaries. No relationship to other users' checkpoints is modeled. Lazy loading is used for all checkpoint relationships to prevent accidental cross-user data loading.
 
-**Upgrade path:** At PoC maturity, full conversation history is stored. For production, the architecture supports migration to summarized or semantic memory by replacing the checkpoint serializer -- the storage interface remains the same.
+**Upgrade path:** At MVP maturity, full conversation history is stored. For production, the architecture supports migration to summarized or semantic memory by replacing the checkpoint serializer -- the storage interface remains the same.
 
 ## 4. Authentication and Authorization
 
@@ -477,7 +477,7 @@ The agent security architecture addresses three threat vectors:
 | Input validation | Prompt injection | Pattern detection on user input before agent processing. Known adversarial patterns (role-play attacks, instruction override attempts, system prompt extraction) are detected and rejected. Rejected inputs are logged. |
 | System prompt hardening | Prompt injection | Agent system prompts include explicit refusal instructions for out-of-scope requests. For lending agents: "You do not have access to demographic data. If asked, refuse and explain that HMDA data is isolated." |
 | Tool authorization | Tool misuse | A LangGraph pre-tool node checks `user_role in tool.allowed_roles` immediately before each invocation. Role is read from JWT claims (staleness bounded by 15-minute access token lifetime). Auth results are not cached across turns. On failure: tool returns authorization error, agent communicates restriction, audit trail records attempt. |
-| Output filtering | Data leakage | A post-processing step scans the agent response for patterns matching sensitive data (SSN format, HMDA data references) and semantic checks for demographic proxy references (neighborhood-level demographic composition, proxy characteristics). Matches trigger response redaction and audit logging. PoC uses pattern matching; production would use ML-based semantic detection. |
+| Output filtering | Data leakage | A post-processing step scans the agent response for patterns matching sensitive data (SSN format, HMDA data references) and semantic checks for demographic proxy references (neighborhood-level demographic composition, proxy characteristics). Matches trigger response redaction and audit logging. MVP uses pattern matching; production would use ML-based semantic detection. |
 | Fair lending guardrails | Bias/discrimination | Lending agents actively refuse to consider protected characteristics. Proxy discrimination awareness flags queries involving factors that correlate with protected classes (ZIP codes, neighborhood names). |
 
 ## 5. Knowledge Base Architecture
@@ -516,7 +516,7 @@ Search (at query time)
 
 **Tier precedence in search:** Results from all three tiers are retrieved by vector similarity. A tier boost factor is applied to the similarity score (tier 1 gets the highest boost), so that regulatory citations outrank guideline citations of similar semantic relevance. If a query returns conflicting information from different tiers, the response notes the conflict and defers to the higher tier.
 
-**Content management:** Source documents live in a dedicated directory (`data/compliance-kb/`) organized by tier. A CLI command rebuilds the vector index from source documents. This is a batch operation, not a real-time pipeline -- appropriate for PoC where compliance content changes infrequently.
+**Content management:** Source documents live in a dedicated directory (`data/compliance-kb/`) organized by tier. A CLI command rebuilds the vector index from source documents. This is a batch operation, not a real-time pipeline -- appropriate for MVP where compliance content changes infrequently.
 
 ### 5.2 OpenShift AI Integration Point
 
@@ -622,7 +622,7 @@ services:
 | `--profile observability` | + langfuse-web, langfuse-worker, redis, clickhouse | Adds observability |
 | `--profile full` | All services | Full stack |
 
-**Keycloak database:** Keycloak uses its embedded H2 database for PoC (not the application PostgreSQL). The pre-configured realm import file (`summit-cap-realm.json`) is loaded on Keycloak startup, making Keycloak's state fully reproducible without persistent storage. This avoids coupling Keycloak to the application database and simplifies the startup sequence.
+**Keycloak database:** Keycloak uses its embedded H2 database for MVP (not the application PostgreSQL). The pre-configured realm import file (`summit-cap-realm.json`) is loaded on Keycloak startup, making Keycloak's state fully reproducible without persistent storage. This avoids coupling Keycloak to the application database and simplifies the startup sequence.
 
 **Startup order:** PostgreSQL -> Redis -> ClickHouse -> Keycloak (independent, uses embedded H2) -> LangFuse -> LlamaStack -> API -> UI. Compose health checks enforce ordering.
 
@@ -671,7 +671,7 @@ Per stakeholder preference ("use where possible, showcase different aspects wher
 
 **HTTP/REST** is used for all non-streaming interactions between the frontend and the API gateway. Standard request-response pattern with JSON payloads and Pydantic validation.
 
-**Internal service calls** within the API process are direct Python function calls (not HTTP). The API gateway, agent layer, and domain services all run in the same FastAPI process. This avoids microservice overhead that is inappropriate for PoC maturity. The service boundaries are enforced by module structure and interface contracts, not by network boundaries.
+**Internal service calls** within the API process are direct Python function calls (not HTTP). The API gateway, agent layer, and domain services all run in the same FastAPI process. This avoids microservice overhead that is inappropriate for MVP maturity. The service boundaries are enforced by module structure and interface contracts, not by network boundaries.
 
 **Monorepo build system:** Turborepo + pnpm orchestrate build, test, and lint tasks across the `packages/` workspace (ui, api, db, configs). The Makefile wraps turbo commands (e.g., `make test` calls `turbo run test`). Turborepo provides task caching and parallel execution across packages. Python packages (`packages/api/`, `packages/db/`) use uv + hatchling as the build tooling; TypeScript packages (`packages/ui/`, `packages/configs/`) use pnpm.
 
@@ -699,7 +699,7 @@ Server -> Client: { "type": "done" }                               # completion 
 Server -> Client: { "type": "error", "message": "..." }            # error
 ```
 
-**Reconnection strategy:** The frontend reconnects automatically on WebSocket disconnection using exponential backoff. Conversation state is recoverable from the LangGraph checkpoint, so a dropped connection does not lose conversation context. On reconnection, the client sends the last known event ID to avoid duplicate messages. SSE is not used at PoC maturity; it is noted as a production upgrade path if WebSocket proves problematic in certain deployment environments (e.g., restrictive corporate proxies).
+**Reconnection strategy:** The frontend reconnects automatically on WebSocket disconnection using exponential backoff. Conversation state is recoverable from the LangGraph checkpoint, so a dropped connection does not lose conversation context. On reconnection, the client sends the last known event ID to avoid duplicate messages. SSE is not used at MVP maturity; it is noted as a production upgrade path if WebSocket proves problematic in certain deployment environments (e.g., restrictive corporate proxies).
 
 ### 8.3 Document Upload
 
@@ -711,7 +711,7 @@ Document upload uses multipart form POST to `/api/documents/upload`. The API gat
 5. Returns immediately with the document ID and "processing" status.
 6. Processing status is available via a polling endpoint (`GET /api/documents/{id}/status`). The frontend polls this endpoint to track document processing progress. Additionally, the Borrower agent has access to document status through the `document_status` tool, so processing results are surfaced naturally when the user next interacts with the chat.
 
-At PoC maturity, "async processing" is a simple background task within the FastAPI process (using `asyncio`), not a full message queue. The interface supports upgrading to a proper queue (Redis/Celery) for production.
+At MVP maturity, "async processing" is a simple background task within the FastAPI process (using `asyncio`), not a full message queue. The interface supports upgrading to a proper queue (Redis/Celery) for production.
 
 ### 8.4 Observability Integration
 
@@ -739,7 +739,7 @@ LangFuse traces are linked to application audit events through a shared `session
 
 ### 9.2 Error Handling
 
-**PoC-level error handling strategy:**
+**MVP-level error handling strategy:**
 - Domain service errors return structured error responses with error codes and human-readable messages.
 - Agent errors (LLM failures, tool failures) are caught and surfaced to the user as "I encountered an issue" messages through the chat interface, with full details logged.
 - LlamaStack/model serving errors trigger fallback messaging: "The AI service is temporarily unavailable."
