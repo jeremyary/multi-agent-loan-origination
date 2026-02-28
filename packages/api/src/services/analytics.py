@@ -202,7 +202,12 @@ async def get_denial_trends(
     # Base query: decisions in the time range, optionally filtered by product
     base_filter = [Decision.created_at >= cutoff]
     if product:
-        base_filter.append(Decision.application.has(Application.loan_type == LoanType(product)))
+        try:
+            loan_type = LoanType(product)
+        except ValueError:
+            valid = [lt.value for lt in LoanType]
+            raise ValueError(f"Unknown product '{product}'. Valid: {valid}") from None
+        base_filter.append(Decision.application.has(Application.loan_type == loan_type))
 
     # Total decisions and denials
     total_stmt = select(func.count(Decision.id)).where(*base_filter)

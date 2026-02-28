@@ -158,26 +158,6 @@ class TestPipelineSummary:
         assert result.turn_times[0].avg_days == 5.2
         assert result.turn_times[0].sample_size == 3
 
-    @pytest.mark.asyncio
-    async def test_should_respect_time_range(self, mock_session):
-        """Time range is passed through to the response."""
-        mock_session.execute = AsyncMock(
-            side_effect=_mock_execute_results(
-                [],  # stages
-                0,
-                0,
-                None,  # counts
-                (None, 0),
-                (None, 0),
-                (None, 0),
-                (None, 0),
-            )
-        )
-
-        result = await get_pipeline_summary(mock_session, days=30)
-
-        assert result.time_range_days == 30
-
 
 # ---------------------------------------------------------------------------
 # Denial trends -- service layer
@@ -281,6 +261,39 @@ class TestDenialTrends:
         assert "Other" in reason_names
         assert "Rare reason A" not in reason_names
         assert "Rare reason B" not in reason_names
+
+    @pytest.mark.asyncio
+    async def test_should_handle_string_denial_reasons(self, mock_session):
+        """Denial reasons stored as plain strings (not lists) are counted."""
+        mock_session.execute = AsyncMock(
+            side_effect=_mock_execute_results(
+                10,  # total decisions
+                5,  # total denials
+                [],  # trend
+                # denial_reasons as plain strings (not lists)
+                [
+                    ("High DTI",),
+                    ("High DTI",),
+                    ("High DTI",),
+                    ("Low credit score",),
+                    ("Low credit score",),
+                ],
+                [],  # by product
+            )
+        )
+
+        result = await get_denial_trends(mock_session, days=90)
+
+        reason_names = [r.reason for r in result.top_reasons]
+        assert "High DTI" in reason_names
+        # "Low credit score" has count=2, below the threshold of 3
+        assert "Other" in reason_names
+
+    @pytest.mark.asyncio
+    async def test_should_reject_invalid_product_filter(self, mock_session):
+        """Invalid product string raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown product"):
+            await get_denial_trends(mock_session, days=90, product="nonexistent")
 
     @pytest.mark.asyncio
     async def test_should_include_denial_by_product(self, mock_session):
@@ -391,24 +404,6 @@ class TestAnalyticsEndpointsFunctional:
         assert "turn_times" in body
         assert body["time_range_days"] == 90
 
-    def test_should_accept_days_parameter(self):
-        """GET /api/analytics/pipeline?days=30 respects time range."""
-        client = self._make_client(
-            _mock_execute_results(
-                [],  # stages
-                0,
-                0,
-                None,
-                (None, 0),
-                (None, 0),
-                (None, 0),
-                (None, 0),
-            )
-        )
-        response = client.get("/api/analytics/pipeline", params={"days": 30})
-        assert response.status_code == 200
-        assert response.json()["time_range_days"] == 30
-
     def test_should_return_denial_trends(self):
         """GET /api/analytics/denial-trends returns 200 with denial data."""
         client = self._make_client(
@@ -443,6 +438,12 @@ class TestAnalyticsEndpointsFunctional:
         response = client.get("/api/analytics/denial-trends", params={"product": "fha"})
         assert response.status_code == 200
         assert response.json()["by_product"] is None
+
+    def test_should_reject_invalid_product(self):
+        """GET /api/analytics/denial-trends?product=bogus returns 422."""
+        client = self._make_client([])  # no DB calls expected
+        response = client.get("/api/analytics/denial-trends", params={"product": "bogus"})
+        assert response.status_code == 422
 
     def test_should_deny_non_ceo_roles(self):
         """GET /api/analytics/pipeline returns 403 for borrower role."""

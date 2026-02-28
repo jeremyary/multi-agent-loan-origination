@@ -3,7 +3,7 @@
 
 from db import get_db
 from db.enums import UserRole
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import require_roles
@@ -37,4 +37,7 @@ async def denial_trends(
     session: AsyncSession = Depends(get_db),
 ) -> DenialTrends:
     """Denial rate trends: overall rate, time-based trend, top reasons by product."""
-    return await get_denial_trends(session, days=days, product=product)
+    try:
+        return await get_denial_trends(session, days=days, product=product)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
