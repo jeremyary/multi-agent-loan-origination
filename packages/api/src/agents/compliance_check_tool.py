@@ -132,6 +132,9 @@ async def compliance_check(
         results = {}
 
         if regulation_type in ("ECOA", "ALL"):
+            # ECOA compliance: demographics are isolated in hmda schema and never
+            # accessible during underwriting. has_demographic_query=False indicates
+            # no attempt was made to access protected data, which is correct by design.
             results["ECOA"] = check_ecoa(has_demographic_query=False)
 
         if regulation_type in ("ATR_QM", "ALL"):

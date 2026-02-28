@@ -13,12 +13,29 @@ from db.enums import ApplicationStage, DocumentType
 from src.agents.compliance_check_tool import compliance_check
 
 
-def _mock_session_with_fins(financials_rows):
-    """Create a mock session that returns given financials from execute()."""
+def _mock_session_with_fins(financials_rows, has_demographics=True):
+    """Create a mock session that returns given financials and demographics from execute().
+
+    Args:
+        financials_rows: List of mock financial rows to return.
+        has_demographics: If True, demographic query returns a record; if False, returns None.
+    """
     mock_session = AsyncMock()
+
+    # First execute() call: financials query
     mock_fin_result = MagicMock()
     mock_fin_result.scalars.return_value.all.return_value = financials_rows
-    mock_session.execute = AsyncMock(return_value=mock_fin_result)
+
+    # Second execute() call: demographics query
+    mock_demog_result = MagicMock()
+    if has_demographics:
+        mock_demog = MagicMock()  # Return a demographic record
+        mock_demog_result.scalar_one_or_none.return_value = mock_demog
+    else:
+        mock_demog_result.scalar_one_or_none.return_value = None
+
+    # Set up side_effect to return different results for sequential calls
+    mock_session.execute = AsyncMock(side_effect=[mock_fin_result, mock_demog_result])
     return mock_session
 
 
