@@ -61,7 +61,7 @@ class TestLoConversationHistory:
         assert resp.status_code == 403
 
     @patch(
-        "src.routes.loan_officer_chat.get_conversation_service",
+        "src.services.conversation.get_conversation_service",
     )
     def test_history_returns_data_shape(self, mock_get_svc):
         """LO gets back {"data": [...]} response."""

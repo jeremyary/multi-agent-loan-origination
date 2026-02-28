@@ -7,18 +7,22 @@ borrower_chat.py share identical event handling + audit writing logic.
 
 import json
 import logging
+import uuid
 
 import jwt as pyjwt
 from db.enums import UserRole
-from fastapi import WebSocket
+from fastapi import APIRouter, Depends, WebSocket
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 
+from ..agents.registry import get_agent
 from ..core.auth import build_data_scope
 from ..core.config import settings
-from ..middleware.auth import _decode_token, _resolve_role
+from ..middleware.auth import CurrentUser, _decode_token, _resolve_role, require_roles
 from ..observability import build_langfuse_config, flush_langfuse
 from ..schemas.auth import UserContext
+from ..schemas.conversation import ConversationHistoryResponse
 from ..services.audit import write_audit_event
+from ..services.conversation import ConversationService, get_conversation_service
 
 logger = logging.getLogger(__name__)
 
@@ -62,8 +66,8 @@ async def authenticate_websocket(
 
     try:
         role = _resolve_role(payload)
-    except Exception:
-        await ws.close(code=4001, reason="No recognized role")
+    except ValueError:
+        await ws.close(code=4003, reason="No recognized role assigned")
         return None
 
     if required_role is not None and role != required_role:
@@ -115,11 +119,11 @@ async def run_agent_stream(
         messages_fallback: Mutable list for local message tracking when
             checkpointer is unavailable. Pass ``None`` when using checkpointer.
     """
-    from db import get_db
+    from db.database import SessionLocal
 
     async def _audit(event_type: str, event_data: dict | None = None) -> None:
         try:
-            async for db_session in get_db():
+            async with SessionLocal() as db_session:
                 await write_audit_event(
                     db_session,
                     event_type=event_type,
@@ -250,7 +254,96 @@ async def run_agent_stream(
                     }
                 )
 
-    except Exception:
-        logger.debug("Client disconnected from chat")
+    except Exception as exc:
+        from fastapi import WebSocketDisconnect
+
+        if isinstance(exc, WebSocketDisconnect):
+            logger.debug("Client disconnected from chat")
+        else:
+            logger.error("Unexpected error in chat handler", exc_info=True)
+            raise
     finally:
         flush_langfuse()
+
+
+def create_authenticated_chat_router(
+    role: UserRole,
+    agent_name: str,
+    ws_path: str,
+    history_path: str,
+) -> APIRouter:
+    """Create a chat router with WebSocket endpoint and history GET.
+
+    Factory function to eliminate code duplication across borrower, loan officer,
+    and underwriter chat endpoints.
+
+    Args:
+        role: Required role for authentication.
+        agent_name: Agent name for registry lookup.
+        ws_path: WebSocket path (e.g., "/borrower/chat").
+        history_path: History endpoint path (e.g., "/borrower/conversations/history").
+
+    Returns:
+        Configured APIRouter with WebSocket and history endpoints.
+    """
+    router = APIRouter()
+
+    @router.websocket(ws_path)
+    async def chat_websocket(ws: WebSocket):
+        """Authenticated WebSocket endpoint for agent chat."""
+        await ws.accept()
+
+        user = await authenticate_websocket(ws, required_role=role)
+        if user is None:
+            return  # WS closed by authenticate_websocket
+
+        # Resolve checkpointer for conversation persistence
+        service = get_conversation_service()
+        use_checkpointer = service.is_initialized
+        checkpointer = service.checkpointer if use_checkpointer else None
+
+        try:
+            graph = get_agent(agent_name, checkpointer=checkpointer)
+        except Exception:
+            logger.exception("Failed to load %s agent", agent_name)
+            await ws.send_json(
+                {"type": "error", "content": "Our chat assistant is temporarily unavailable."}
+            )
+            await ws.close()
+            return
+
+        thread_id = ConversationService.get_thread_id(user.user_id, agent_name)
+        session_id = str(uuid.uuid4())
+
+        # Always use checkpointer when available; fallback to local list
+        messages_fallback: list | None = [] if not use_checkpointer else None
+
+        await run_agent_stream(
+            ws,
+            graph,
+            thread_id=thread_id,
+            session_id=session_id,
+            user_role=user.role.value,
+            user_id=user.user_id,
+            user_email=user.email or "",
+            user_name=user.name or "",
+            use_checkpointer=use_checkpointer,
+            messages_fallback=messages_fallback,
+        )
+
+    @router.get(
+        history_path,
+        response_model=ConversationHistoryResponse,
+        dependencies=[Depends(require_roles(role, UserRole.ADMIN))],
+    )
+    async def get_conversation_history_endpoint(user: CurrentUser) -> ConversationHistoryResponse:
+        """Return prior conversation messages for the authenticated user.
+
+        Used by the frontend to render chat history when the chat window opens.
+        """
+        service = get_conversation_service()
+        thread_id = ConversationService.get_thread_id(user.user_id, agent_name)
+        messages = await service.get_conversation_history(thread_id)
+        return ConversationHistoryResponse(data=messages)
+
+    return router

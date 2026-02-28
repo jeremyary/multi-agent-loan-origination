@@ -2,7 +2,7 @@
 Health endpoint tests
 """
 
-from helpers import assert_service_exists
+from .helpers import assert_service_exists
 
 
 def test_health_check_endpoint_exists(health_response):

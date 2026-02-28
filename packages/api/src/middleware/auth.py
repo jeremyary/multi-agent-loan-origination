@@ -111,7 +111,11 @@ async def _decode_token(token: str) -> TokenPayload:
 
 
 def _resolve_role(token_payload: TokenPayload) -> UserRole:
-    """Extract the primary role from realm_access.roles."""
+    """Extract the primary role from realm_access.roles.
+
+    Raises:
+        ValueError: If no recognized role is assigned.
+    """
     roles = token_payload.realm_access.get("roles", [])
 
     # Filter to roles we actually define (ignore Keycloak built-ins)
@@ -119,10 +123,7 @@ def _resolve_role(token_payload: TokenPayload) -> UserRole:
     user_roles = [r for r in roles if r in {role.value for role in known}]
 
     if not user_roles:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="No recognized role assigned",
-        )
+        raise ValueError("No recognized role assigned")
 
     if len(user_roles) > 1:
         logger.warning(
@@ -183,7 +184,14 @@ async def get_current_user(request: Request) -> UserContext:
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    role = _resolve_role(payload)
+    try:
+        role = _resolve_role(payload)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(exc),
+        ) from exc
+
     data_scope = build_data_scope(role, payload.sub)
 
     user = UserContext(
