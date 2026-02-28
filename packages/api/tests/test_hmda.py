@@ -4,6 +4,7 @@
 import subprocess
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -999,6 +1000,6 @@ def test_lint_hmda_isolation():
         ["bash", "scripts/lint-hmda-isolation.sh"],
         capture_output=True,
         text=True,
-        cwd="/home/jary/redhat/git/mortgage-ai",
+        cwd=str(Path(__file__).resolve().parents[3]),
     )
     assert result.returncode == 0, f"HMDA isolation lint failed:\n{result.stdout}\n{result.stderr}"
