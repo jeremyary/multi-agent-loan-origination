@@ -5,7 +5,6 @@ Handles rendering decisions (approve/deny/suspend), comparing with AI
 recommendations, and querying decision history.
 """
 
-import json
 import logging
 
 from db import AuditEvent, Decision
@@ -317,7 +316,7 @@ async def render_decision(
         decided_by=user.user_id,
         ai_agreement=ai_agreement,
         override_rationale=override_rationale if ai_agreement is False else None,
-        denial_reasons=json.dumps(denial_reasons) if denial_reasons else None,
+        denial_reasons=denial_reasons,
         credit_score_used=credit_score_used,
         credit_score_source=credit_score_source,
         contributing_factors=contributing_factors,
@@ -441,13 +440,6 @@ async def get_latest_decision(
 
 def _decision_to_dict(d: Decision) -> dict:
     """Convert a Decision ORM object to a dict."""
-    denial_reasons = None
-    if d.denial_reasons:
-        try:
-            denial_reasons = json.loads(d.denial_reasons)
-        except (json.JSONDecodeError, TypeError):
-            denial_reasons = [d.denial_reasons]
-
     return {
         "id": d.id,
         "application_id": d.application_id,
@@ -456,7 +448,7 @@ def _decision_to_dict(d: Decision) -> dict:
         "ai_recommendation": d.ai_recommendation,
         "ai_agreement": d.ai_agreement,
         "override_rationale": d.override_rationale,
-        "denial_reasons": denial_reasons,
+        "denial_reasons": d.denial_reasons,
         "credit_score_used": d.credit_score_used,
         "credit_score_source": d.credit_score_source,
         "contributing_factors": d.contributing_factors,

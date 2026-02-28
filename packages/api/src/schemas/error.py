@@ -24,3 +24,7 @@ class ErrorResponse(BaseModel):
         default="",
         description="Correlation ID for tracing this request in logs.",
     )
+    instance: str = Field(
+        default="",
+        description="URI reference identifying the specific occurrence of the problem.",
+    )

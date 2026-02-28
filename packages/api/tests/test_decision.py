@@ -1,7 +1,6 @@
 # This project was developed with assistance from AI tools.
 """Tests for decision service."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -68,7 +67,7 @@ def _mock_decision(
     d.ai_recommendation = ai_recommendation
     d.ai_agreement = ai_agreement
     d.override_rationale = None
-    d.denial_reasons = json.dumps(denial_reasons) if denial_reasons else None
+    d.denial_reasons = denial_reasons
     d.credit_score_used = credit_score_used
     d.credit_score_source = credit_score_source
     d.contributing_factors = contributing_factors
@@ -331,7 +330,7 @@ async def test_render_decision_deny(mock_get_app, mock_ai, mock_audit):
         obj.ai_recommendation = "Deny"
         obj.ai_agreement = True
         obj.override_rationale = None
-        obj.denial_reasons = json.dumps(["Insufficient income", "High DTI"])
+        obj.denial_reasons = ["Insufficient income", "High DTI"]
         obj.credit_score_used = 620
         obj.credit_score_source = "Equifax"
         obj.contributing_factors = None
@@ -394,7 +393,7 @@ async def test_render_decision_deny_from_conditional(mock_get_app, mock_ai, mock
         obj.ai_recommendation = None
         obj.ai_agreement = None
         obj.override_rationale = None
-        obj.denial_reasons = json.dumps(["Failed to clear conditions"])
+        obj.denial_reasons = ["Failed to clear conditions"]
         obj.credit_score_used = None
         obj.credit_score_source = None
         obj.contributing_factors = None

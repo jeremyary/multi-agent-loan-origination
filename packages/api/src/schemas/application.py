@@ -32,7 +32,12 @@ class ApplicationUpdate(BaseModel):
 
 
 class BorrowerSummary(BaseModel):
-    """Borrower info nested inside application responses."""
+    """Borrower info nested inside application responses.
+
+    Note: SSN masking is handled by PIIMaskingMiddleware based on role,
+    not at the schema level. CEO role sees masked SSN, all other roles
+    see full SSN per data scope rules.
+    """
 
     model_config = ConfigDict(from_attributes=True)
 

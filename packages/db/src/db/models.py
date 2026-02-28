@@ -21,6 +21,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from pgvector.sqlalchemy import Vector
@@ -187,6 +188,7 @@ class RateLock(Base):
     expiration_date = Column(DateTime(timezone=True), nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     application = relationship("Application", back_populates="rate_locks")
 
@@ -247,7 +249,7 @@ class Decision(Base):
     decided_by = Column(String(255), nullable=True)
     ai_agreement = Column(Boolean, nullable=True)
     override_rationale = Column(Text, nullable=True)
-    denial_reasons = Column(Text, nullable=True)
+    denial_reasons = Column(JSONB, nullable=True)
     credit_score_used = Column(Integer, nullable=True)
     credit_score_source = Column(String(100), nullable=True)
     contributing_factors = Column(Text, nullable=True)
@@ -452,7 +454,7 @@ class HmdaLoanData(Base):
     property_location = Column(Text, nullable=True)
     interest_rate = Column(Numeric(5, 3), nullable=True)
     total_fees = Column(Numeric(10, 2), nullable=True)
-    snapshot_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    snapshot_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     def __repr__(self):
