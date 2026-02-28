@@ -14,67 +14,15 @@ from src.services.decision import (
     propose_decision,
     render_decision,
 )
+from tests.factories import make_mock_app, make_mock_decision, make_uw_user
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-
-def _mock_app(stage="underwriting", id=100):
-    """Create a mock application with the given stage."""
-    from db.enums import ApplicationStage
-
-    app = MagicMock()
-    app.stage = ApplicationStage(stage)
-    app.id = id
-    app.loan_amount = None
-    app.property_value = None
-    app.loan_type = None
-    app.property_address = None
-    return app
-
-
-def _uw_user():
-    """Create a mock underwriter UserContext."""
-    user = MagicMock()
-    user.user_id = "uw-maria"
-    user.role = MagicMock()
-    user.role.value = "underwriter"
-    user.data_scope = MagicMock()
-    return user
-
-
-def _mock_decision(
-    id=1,
-    application_id=100,
-    decision_type="approved",
-    rationale="Strong profile",
-    ai_recommendation=None,
-    ai_agreement=None,
-    denial_reasons=None,
-    credit_score_used=None,
-    credit_score_source=None,
-    contributing_factors=None,
-):
-    """Create a mock Decision ORM object."""
-    from db.enums import DecisionType
-
-    d = MagicMock()
-    d.id = id
-    d.application_id = application_id
-    d.decision_type = DecisionType(decision_type)
-    d.rationale = rationale
-    d.ai_recommendation = ai_recommendation
-    d.ai_agreement = ai_agreement
-    d.override_rationale = None
-    d.denial_reasons = denial_reasons
-    d.credit_score_used = credit_score_used
-    d.credit_score_source = credit_score_source
-    d.contributing_factors = contributing_factors
-    d.decided_by = "uw-maria"
-    d.created_at = MagicMock()
-    d.created_at.isoformat.return_value = "2026-02-27T12:00:00+00:00"
-    return d
+_mock_app = make_mock_app
+_uw_user = make_uw_user
+_mock_decision = make_mock_decision
 
 
 # ---------------------------------------------------------------------------

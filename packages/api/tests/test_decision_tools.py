@@ -1,7 +1,6 @@
 # This project was developed with assistance from AI tools.
 """Tests for decision agent tools."""
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from src.agents.decision_tools import (
@@ -10,6 +9,7 @@ from src.agents.decision_tools import (
     uw_generate_le,
     uw_render_decision,
 )
+from tests.factories import make_mock_app, make_mock_decision
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -20,45 +20,8 @@ def _state(user_id="uw-maria", role="underwriter"):
     return {"user_id": user_id, "user_role": role}
 
 
-def _mock_app(stage="underwriting", id=100):
-    from decimal import Decimal
-
-    from db.enums import ApplicationStage, LoanType
-
-    app = MagicMock()
-    app.stage = ApplicationStage(stage)
-    app.id = id
-    app.loan_amount = Decimal("350000")
-    app.property_value = Decimal("450000")
-    app.loan_type = LoanType.CONVENTIONAL_30
-    app.property_address = "123 Main St, Denver, CO"
-    app.le_delivery_date = None
-    app.cd_delivery_date = None
-    app.application_borrowers = []
-    return app
-
-
-def _mock_decision(
-    id=1,
-    application_id=100,
-    decision_type="denied",
-    denial_reasons=None,
-    credit_score_used=None,
-    credit_score_source=None,
-    contributing_factors=None,
-):
-    from db.enums import DecisionType
-
-    d = MagicMock()
-    d.id = id
-    d.application_id = application_id
-    d.decision_type = DecisionType(decision_type)
-    d.rationale = "Test rationale"
-    d.denial_reasons = json.dumps(denial_reasons) if denial_reasons else None
-    d.credit_score_used = credit_score_used
-    d.credit_score_source = credit_score_source
-    d.contributing_factors = contributing_factors
-    return d
+_mock_app = make_mock_app
+_mock_decision = make_mock_decision
 
 
 # ---------------------------------------------------------------------------
@@ -423,6 +386,7 @@ async def test_draft_adverse_action_success(mock_session_cls, mock_audit):
 
     # Mock decision
     dec = _mock_decision(
+        decision_type="denied",
         denial_reasons=["Low credit", "High DTI"],
         credit_score_used=580,
         credit_score_source="Equifax",
@@ -479,6 +443,7 @@ async def test_draft_adverse_action_auto_find(mock_session_cls, mock_audit):
     app = _mock_app()
     dec = _mock_decision(
         id=42,
+        decision_type="denied",
         denial_reasons=["Insufficient income"],
         credit_score_used=620,
         credit_score_source="TransUnion",
