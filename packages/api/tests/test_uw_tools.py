@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from db.enums import ApplicationStage, UserRole
 
+from src.agents.risk_tools import compute_risk_factors
 from src.agents.underwriter_tools import (
-    _compute_risk_factors,
     _user_context_from_state,
     uw_application_detail,
     uw_preliminary_recommendation,
@@ -376,7 +376,7 @@ class TestUwApplicationDetail:
 
 
 # ---------------------------------------------------------------------------
-# _compute_risk_factors (pure function tests)
+# compute_risk_factors (pure function tests)
 # ---------------------------------------------------------------------------
 
 
@@ -407,9 +407,9 @@ class TestComputeRiskFactors:
         fins = [_make_fin(income=8000, debts=2500)]
         borrowers = [{"name": "Test", "is_primary": True, "employment_status": "w2_employee"}]
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["dti"]["value"] == 31.2
-        assert result["dti"]["rating"] == "Low"
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.dti["value"] == 31.2
+        assert result.dti["rating"] == "Low"
 
     def test_dti_co_borrower(self):
         """Combined income/debts across two borrowers."""
@@ -423,10 +423,10 @@ class TestComputeRiskFactors:
             {"name": "B", "is_primary": False, "employment_status": "w2_employee"},
         ]
 
-        result = _compute_risk_factors(app, fins, borrowers)
+        result = compute_risk_factors(app, fins, borrowers)
         # DTI = (1500+2000) / (5000+4000) = 3500/9000 = 38.9% -> Medium
-        assert result["dti"]["value"] == pytest.approx(38.9, abs=0.1)
-        assert result["dti"]["rating"] == "Medium"
+        assert result.dti["value"] == pytest.approx(38.9, abs=0.1)
+        assert result.dti["rating"] == "Medium"
 
     def test_credit_uses_lower_score(self):
         """Min of two borrowers' credit scores is used."""
@@ -434,9 +434,9 @@ class TestComputeRiskFactors:
         fins = [_make_fin(credit=750), _make_fin(credit=640)]
         borrowers = []
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["credit"]["value"] == 640
-        assert result["credit"]["rating"] == "Medium"
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.credit["value"] == 640
+        assert result.credit["rating"] == "Medium"
 
     def test_flags_high_dti(self):
         """DTI > 43% rated High."""
@@ -444,9 +444,9 @@ class TestComputeRiskFactors:
         fins = [_make_fin(income=5000, debts=2500)]  # 50%
         borrowers = []
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["dti"]["value"] == 50.0
-        assert result["dti"]["rating"] == "High"
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.dti["value"] == 50.0
+        assert result.dti["rating"] == "High"
 
     def test_flags_high_ltv(self):
         """LTV > 80% rated High."""
@@ -454,9 +454,9 @@ class TestComputeRiskFactors:
         fins = [_make_fin()]
         borrowers = []
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["ltv"]["value"] == pytest.approx(88.9, abs=0.1)
-        assert result["ltv"]["rating"] == "High"
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.ltv["value"] == pytest.approx(88.9, abs=0.1)
+        assert result.ltv["rating"] == "High"
 
     def test_flags_low_credit(self):
         """Credit < 620 rated High."""
@@ -464,9 +464,9 @@ class TestComputeRiskFactors:
         fins = [_make_fin(credit=580)]
         borrowers = []
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["credit"]["value"] == 580
-        assert result["credit"]["rating"] == "High"
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.credit["value"] == 580
+        assert result.credit["rating"] == "High"
 
     def test_compensating_factors(self):
         """Strong credit (>740) + elevated DTI triggers compensating factor."""
@@ -474,9 +474,9 @@ class TestComputeRiskFactors:
         fins = [_make_fin(income=5000, debts=2500, credit=760)]  # 50% DTI
         borrowers = []
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["dti"]["rating"] == "High"
-        assert any("Strong credit" in f for f in result["compensating_factors"])
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.dti["rating"] == "High"
+        assert any("Strong credit" in f for f in result.compensating_factors)
 
     def test_handles_missing_financials(self):
         """No financials -> warnings, None values."""
@@ -484,9 +484,9 @@ class TestComputeRiskFactors:
         fins = []
         borrowers = []
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["dti"]["value"] is None
-        assert len(result["warnings"]) > 0
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.dti["value"] is None
+        assert len(result.warnings) > 0
 
     def test_dti_boundary_at_43_is_medium(self):
         """DTI exactly 43% is Medium, not High (boundary test)."""
@@ -494,9 +494,9 @@ class TestComputeRiskFactors:
         fins = [_make_fin(income=10000, debts=4300)]  # 43%
         borrowers = []
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["dti"]["value"] == 43.0
-        assert result["dti"]["rating"] == "Medium"
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.dti["value"] == 43.0
+        assert result.dti["rating"] == "Medium"
 
     def test_ltv_boundary_at_80_is_medium(self):
         """LTV exactly 80% is Medium, not High (boundary test)."""
@@ -504,9 +504,9 @@ class TestComputeRiskFactors:
         fins = [_make_fin()]
         borrowers = []
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["ltv"]["value"] == 80.0
-        assert result["ltv"]["rating"] == "Medium"
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.ltv["value"] == 80.0
+        assert result.ltv["rating"] == "Medium"
 
     def test_income_stability_unemployed_is_high(self):
         """Unemployed borrower -> High stability risk."""
@@ -514,8 +514,8 @@ class TestComputeRiskFactors:
         fins = [_make_fin()]
         borrowers = [{"name": "Test", "is_primary": True, "employment_status": "unemployed"}]
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["income_stability"]["rating"] == "High"
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.income_stability["rating"] == "High"
 
     def test_income_stability_self_employed_is_medium(self):
         """Self-employed borrower -> Medium stability risk."""
@@ -523,8 +523,8 @@ class TestComputeRiskFactors:
         fins = [_make_fin()]
         borrowers = [{"name": "Test", "is_primary": True, "employment_status": "self_employed"}]
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["income_stability"]["rating"] == "Medium"
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.income_stability["rating"] == "Medium"
 
     def test_low_ltv_offsets_weak_credit(self):
         """Low LTV (<60%) + High credit risk -> compensating factor."""
@@ -532,10 +532,10 @@ class TestComputeRiskFactors:
         fins = [_make_fin(credit=590)]  # High risk
         borrowers = []
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert result["ltv"]["rating"] == "Low"
-        assert result["credit"]["rating"] == "High"
-        assert any("Low LTV" in f for f in result["compensating_factors"])
+        result = compute_risk_factors(app, fins, borrowers)
+        assert result.ltv["rating"] == "Low"
+        assert result.credit["rating"] == "High"
+        assert any("Low LTV" in f for f in result.compensating_factors)
 
     def test_high_reserves_compensating_factor(self):
         """Assets >50% of loan triggers compensating factor."""
@@ -543,8 +543,8 @@ class TestComputeRiskFactors:
         fins = [_make_fin(assets=150000)]  # 75% of loan
         borrowers = []
 
-        result = _compute_risk_factors(app, fins, borrowers)
-        assert any("High reserves" in f for f in result["compensating_factors"])
+        result = compute_risk_factors(app, fins, borrowers)
+        assert any("High reserves" in f for f in result.compensating_factors)
 
 
 # ---------------------------------------------------------------------------

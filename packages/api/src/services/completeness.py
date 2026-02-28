@@ -31,139 +31,52 @@ DOC_TYPE_LABELS: dict[DocumentType, str] = {
     DocumentType.INSURANCE: "Homeowner's Insurance",
 }
 
+# Common document sets (factored for reuse)
+_W2_DOCS = [DocumentType.W2, DocumentType.PAY_STUB, DocumentType.BANK_STATEMENT, DocumentType.ID]
+_W2_WITH_TAX = [
+    DocumentType.W2,
+    DocumentType.PAY_STUB,
+    DocumentType.TAX_RETURN,
+    DocumentType.BANK_STATEMENT,
+    DocumentType.ID,
+]
+_SELF_EMPLOYED_DOCS = [DocumentType.TAX_RETURN, DocumentType.BANK_STATEMENT, DocumentType.ID]
+_UNEMPLOYED_DOCS = [DocumentType.BANK_STATEMENT, DocumentType.ID]
+
 # Document requirements by loan_type and employment_status.
 # Key structure: DOCUMENT_REQUIREMENTS[loan_type_value][employment_status_value]
 # Falls back: specific -> loan_type + "_default" -> "_default" + "_default"
 DOCUMENT_REQUIREMENTS: dict[str, dict[str, list[DocumentType]]] = {
     "_default": {
-        "_default": [
-            DocumentType.W2,
-            DocumentType.PAY_STUB,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.W2_EMPLOYEE.value: [
-            DocumentType.W2,
-            DocumentType.PAY_STUB,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.SELF_EMPLOYED.value: [
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.RETIRED.value: [
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.UNEMPLOYED.value: [
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.OTHER.value: [
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
+        "_default": _W2_DOCS,
+        EmploymentStatus.W2_EMPLOYEE.value: _W2_DOCS,
+        EmploymentStatus.SELF_EMPLOYED.value: _SELF_EMPLOYED_DOCS,
+        EmploymentStatus.RETIRED.value: _SELF_EMPLOYED_DOCS,
+        EmploymentStatus.UNEMPLOYED.value: _UNEMPLOYED_DOCS,
+        EmploymentStatus.OTHER.value: _SELF_EMPLOYED_DOCS,
     },
     "fha": {
-        "_default": [
-            DocumentType.W2,
-            DocumentType.PAY_STUB,
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.W2_EMPLOYEE.value: [
-            DocumentType.W2,
-            DocumentType.PAY_STUB,
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.SELF_EMPLOYED.value: [
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.RETIRED.value: [
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
+        "_default": _W2_WITH_TAX,
+        EmploymentStatus.W2_EMPLOYEE.value: _W2_WITH_TAX,
+        EmploymentStatus.SELF_EMPLOYED.value: _SELF_EMPLOYED_DOCS,
+        EmploymentStatus.RETIRED.value: _SELF_EMPLOYED_DOCS,
     },
     "va": {
-        "_default": [
-            DocumentType.W2,
-            DocumentType.PAY_STUB,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.W2_EMPLOYEE.value: [
-            DocumentType.W2,
-            DocumentType.PAY_STUB,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.SELF_EMPLOYED.value: [
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
+        "_default": _W2_DOCS,
+        EmploymentStatus.W2_EMPLOYEE.value: _W2_DOCS,
+        EmploymentStatus.SELF_EMPLOYED.value: _SELF_EMPLOYED_DOCS,
     },
     "jumbo": {
-        "_default": [
-            DocumentType.W2,
-            DocumentType.PAY_STUB,
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.W2_EMPLOYEE.value: [
-            DocumentType.W2,
-            DocumentType.PAY_STUB,
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.SELF_EMPLOYED.value: [
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.RETIRED.value: [
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
+        "_default": _W2_WITH_TAX,
+        EmploymentStatus.W2_EMPLOYEE.value: _W2_WITH_TAX,
+        EmploymentStatus.SELF_EMPLOYED.value: _SELF_EMPLOYED_DOCS,
+        EmploymentStatus.RETIRED.value: _SELF_EMPLOYED_DOCS,
     },
     "usda": {
-        "_default": [
-            DocumentType.W2,
-            DocumentType.PAY_STUB,
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.W2_EMPLOYEE.value: [
-            DocumentType.W2,
-            DocumentType.PAY_STUB,
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.SELF_EMPLOYED.value: [
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
-        EmploymentStatus.RETIRED.value: [
-            DocumentType.TAX_RETURN,
-            DocumentType.BANK_STATEMENT,
-            DocumentType.ID,
-        ],
+        "_default": _W2_WITH_TAX,
+        EmploymentStatus.W2_EMPLOYEE.value: _W2_WITH_TAX,
+        EmploymentStatus.SELF_EMPLOYED.value: _SELF_EMPLOYED_DOCS,
+        EmploymentStatus.RETIRED.value: _SELF_EMPLOYED_DOCS,
     },
 }
 

@@ -179,13 +179,23 @@ async def test_render_decision_confirmed_approve(mock_session_cls, mock_render):
     comp_result.scalar_one_or_none.return_value = comp_event
     session.execute.return_value = comp_result
 
+    state = _state()
+    state["decision_proposals"] = {
+        "test-proposal-1": {
+            "application_id": 100,
+            "decision": "approve",
+            "rationale": "Strong financials",
+        },
+    }
+
     result = await uw_render_decision.ainvoke(
         {
             "application_id": 100,
             "decision": "approve",
             "rationale": "Strong financials",
             "confirmed": True,
-            "state": _state(),
+            "proposal_id": "test-proposal-1",
+            "state": state,
         }
     )
 
@@ -216,6 +226,15 @@ async def test_render_decision_confirmed_deny(mock_session_cls, mock_render):
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
+    state = _state()
+    state["decision_proposals"] = {
+        "test-proposal-2": {
+            "application_id": 100,
+            "decision": "deny",
+            "rationale": "Insufficient income",
+        },
+    }
+
     result = await uw_render_decision.ainvoke(
         {
             "application_id": 100,
@@ -223,7 +242,8 @@ async def test_render_decision_confirmed_deny(mock_session_cls, mock_render):
             "rationale": "Insufficient income",
             "denial_reasons": ["Insufficient income", "High DTI"],
             "confirmed": True,
-            "state": _state(),
+            "proposal_id": "test-proposal-2",
+            "state": state,
         }
     )
 
@@ -318,6 +338,15 @@ async def test_render_decision_confirmed_service_error(mock_session_cls, mock_re
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
     mock_session_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
+    state = _state()
+    state["decision_proposals"] = {
+        "test-proposal-3": {
+            "application_id": 100,
+            "decision": "deny",
+            "rationale": "test",
+        },
+    }
+
     result = await uw_render_decision.ainvoke(
         {
             "application_id": 100,
@@ -325,7 +354,8 @@ async def test_render_decision_confirmed_service_error(mock_session_cls, mock_re
             "rationale": "test",
             "denial_reasons": ["test"],
             "confirmed": True,
-            "state": _state(),
+            "proposal_id": "test-proposal-3",
+            "state": state,
         }
     )
 
@@ -566,8 +596,11 @@ async def test_draft_adverse_action_wrong_decision_type(mock_session_cls):
 
 @patch("src.agents.decision_tools.write_audit_event", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.get_rate_lock_status", new_callable=AsyncMock)
+@patch("src.agents.disclosure_tools.get_rate_lock_status", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
-async def test_generate_le_success(mock_session_cls, mock_rate_lock, mock_audit):
+async def test_generate_le_success(
+    mock_session_cls, mock_rate_lock_disclosure, mock_rate_lock, mock_audit
+):
     """uw_generate_le generates LE text with loan details."""
     session = AsyncMock()
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
@@ -591,6 +624,7 @@ async def test_generate_le_success(mock_session_cls, mock_rate_lock, mock_audit)
 
     session.execute = AsyncMock(side_effect=[app_result, ab_result, b_result])
     mock_rate_lock.return_value = {"locked_rate": 6.5, "status": "active"}
+    mock_rate_lock_disclosure.return_value = {"locked_rate": 6.5, "status": "active"}
 
     result = await uw_generate_le.ainvoke(
         {
@@ -637,9 +671,12 @@ async def test_generate_le_not_found(mock_session_cls):
 
 @patch("src.agents.decision_tools.write_audit_event", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.get_rate_lock_status", new_callable=AsyncMock)
+@patch("src.agents.disclosure_tools.get_rate_lock_status", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.get_outstanding_count", new_callable=AsyncMock)
 @patch("src.agents.decision_tools.SessionLocal")
-async def test_generate_cd_success(mock_session_cls, mock_cond, mock_rate_lock, mock_audit):
+async def test_generate_cd_success(
+    mock_session_cls, mock_cond, mock_rate_lock_disclosure, mock_rate_lock, mock_audit
+):
     """uw_generate_cd generates CD text when conditions cleared."""
     session = AsyncMock()
     mock_session_cls.return_value.__aenter__ = AsyncMock(return_value=session)
@@ -663,6 +700,7 @@ async def test_generate_cd_success(mock_session_cls, mock_cond, mock_rate_lock, 
 
     session.execute = AsyncMock(side_effect=[app_result, ab_result, b_result])
     mock_rate_lock.return_value = {"locked_rate": 6.5, "status": "active"}
+    mock_rate_lock_disclosure.return_value = {"locked_rate": 6.5, "status": "active"}
 
     result = await uw_generate_cd.ainvoke(
         {

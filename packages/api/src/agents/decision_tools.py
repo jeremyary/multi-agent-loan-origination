@@ -15,7 +15,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Annotated
 
-from db import ApplicationBorrower, Borrower, Decision
+from db import Decision
 from db.database import SessionLocal
 from db.enums import DecisionType
 from langchain_core.tools import tool
@@ -24,10 +24,10 @@ from sqlalchemy import select
 
 from ..services.application import get_application
 from ..services.audit import write_audit_event
-from ..services.calculator import compute_monthly_payment
 from ..services.condition import get_outstanding_count
 from ..services.decision import check_compliance_gate, propose_decision, render_decision
 from ..services.rate_lock import get_rate_lock_status
+from .disclosure_tools import generate_cd_text, generate_le_text, get_primary_borrower_name
 from .shared import format_enum_label, user_context_from_state
 
 logger = logging.getLogger(__name__)
@@ -35,26 +35,6 @@ logger = logging.getLogger(__name__)
 
 def _user_context_from_state(state: dict):
     return user_context_from_state(state, default_role="underwriter")
-
-
-async def _get_primary_borrower_name(session, application_id: int) -> str:
-    """Fetch the primary borrower's name for an application.
-
-    Returns "Borrower" if not found.
-    """
-    ab_stmt = select(ApplicationBorrower).where(
-        ApplicationBorrower.application_id == application_id,
-        ApplicationBorrower.is_primary.is_(True),
-    )
-    ab_result = await session.execute(ab_stmt)
-    ab = ab_result.scalar_one_or_none()
-    if ab:
-        b_stmt = select(Borrower).where(Borrower.id == ab.borrower_id)
-        b_result = await session.execute(b_stmt)
-        borrower = b_result.scalar_one_or_none()
-        if borrower:
-            return f"{borrower.first_name} {borrower.last_name}"
-    return "Borrower"
 
 
 def _format_proposal(result: dict) -> str:
@@ -91,14 +71,27 @@ def _format_proposal(result: dict) -> str:
         for i, reason in enumerate(result["denial_reasons"], 1):
             lines.append(f"    {i}. {reason}")
 
-    lines.extend(
-        [
-            "",
-            "This decision has NOT been recorded yet.",
-            "Present this proposal to the underwriter and ask them to confirm",
-            "before calling this tool again with confirmed=true.",
-        ]
-    )
+    # Add proposal_id if present
+    if result.get("proposal_id"):
+        lines.extend(
+            [
+                "",
+                f"PROPOSAL ID: {result['proposal_id']}",
+                "",
+                "This decision has NOT been recorded yet.",
+                "Present this proposal to the underwriter and ask them to confirm.",
+                f"To confirm, call this tool again with confirmed=true and proposal_id='{result['proposal_id']}'",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "This decision has NOT been recorded yet.",
+                "Present this proposal to the underwriter and ask them to confirm",
+                "before calling this tool again with confirmed=true.",
+            ]
+        )
 
     return "\n".join(lines)
 
@@ -140,6 +133,7 @@ async def uw_render_decision(
     decision: str,
     rationale: str,
     confirmed: bool = False,
+    proposal_id: str | None = None,
     denial_reasons: list[str] | None = None,
     credit_score_used: int | None = None,
     credit_score_source: str | None = None,
@@ -153,28 +147,35 @@ async def uw_render_decision(
 
     Phase 1 (confirmed=false, the default): Returns a PROPOSAL showing
     what the decision would do (decision type, stage transition, AI
-    agreement). No records are created. You MUST present this proposal
-    to the underwriter and wait for their explicit confirmation.
+    agreement). The proposal is stored in agent state with a unique
+    proposal_id. No database records are created. You MUST present
+    this proposal to the underwriter and wait for their explicit
+    confirmation.
 
     Phase 2 (confirmed=true): After the underwriter confirms, call
-    again with confirmed=true and the same parameters to execute
-    the decision. This creates the decision record, transitions the
-    application stage, and writes audit events.
+    again with confirmed=true and the proposal_id from Phase 1 to
+    execute the decision. This validates the proposal_id, creates
+    the decision record, transitions the application stage, and
+    writes audit events.
 
     IMPORTANT: Never set confirmed=true without first showing the
     proposal to the underwriter and receiving their explicit approval.
+    The proposal_id parameter is required when confirmed=true.
 
     Args:
         application_id: The loan application ID.
         decision: One of "approve", "deny", or "suspend".
         rationale: Explanation for the decision.
         confirmed: Set to true only after the underwriter confirms the proposal.
+        proposal_id: Required when confirmed=true. The ID from Phase 1 proposal.
         denial_reasons: Required for denials. List of specific reasons.
         credit_score_used: Credit score at time of decision (for denials).
         credit_score_source: Credit bureau source (for denials).
         contributing_factors: Factors that contributed to the decision.
         override_rationale: Explanation when overriding AI recommendation.
     """
+    import uuid
+
     user = _user_context_from_state(state)
     decision_lower = decision.strip().lower()
 
@@ -202,9 +203,64 @@ async def uw_render_decision(
             if "error" in result:
                 return result["error"]
 
+            # Generate proposal_id and store in state
+            proposal_id_generated = str(uuid.uuid4())
+
+            # Store proposal in state
+            if state is not None:
+                if "decision_proposals" not in state:
+                    state["decision_proposals"] = {}
+                state["decision_proposals"][proposal_id_generated] = {
+                    "application_id": application_id,
+                    "decision": decision_lower,
+                    "rationale": rationale,
+                    "denial_reasons": denial_reasons,
+                    "override_rationale": override_rationale,
+                }
+
+            # Add proposal_id to result for output
+            result["proposal_id"] = proposal_id_generated
+
             return _format_proposal(result)
 
-        # Phase 2: confirmed -- persist the decision
+        # Phase 2: confirmed -- validate proposal_id and persist
+        if proposal_id is None:
+            return (
+                "ERROR: proposal_id is required when confirmed=true. "
+                "You must first call this tool with confirmed=false to generate "
+                "a proposal, then call again with confirmed=true and the proposal_id."
+            )
+
+        # Validate proposal_id exists in state
+        if state is None or "decision_proposals" not in state:
+            return (
+                f"ERROR: No proposals found in agent state. The proposal_id '{proposal_id}' "
+                "is invalid or has expired. Please start over with confirmed=false."
+            )
+
+        proposal = state["decision_proposals"].get(proposal_id)
+        if proposal is None:
+            return (
+                f"ERROR: proposal_id '{proposal_id}' not found in agent state. "
+                "Please verify the proposal_id or start over with confirmed=false."
+            )
+
+        # Validate proposal matches current parameters
+        if proposal["application_id"] != application_id:
+            return (
+                f"ERROR: proposal_id '{proposal_id}' is for application "
+                f"#{proposal['application_id']}, but you are trying to confirm "
+                f"for application #{application_id}. These must match."
+            )
+
+        if proposal["decision"] != decision_lower:
+            return (
+                f"ERROR: proposal_id '{proposal_id}' is for decision "
+                f"'{proposal['decision']}', but you are trying to confirm "
+                f"'{decision_lower}'. These must match."
+            )
+
+        # Proceed with rendering the decision
         result = await render_decision(
             session,
             user,
@@ -217,6 +273,10 @@ async def uw_render_decision(
             contributing_factors=contributing_factors,
             override_rationale=override_rationale,
         )
+
+        # Clear the proposal from state after successful confirmation
+        if state is not None and "decision_proposals" in state:
+            state["decision_proposals"].pop(proposal_id, None)
 
     if result is None:
         return f"Application #{application_id} not found or you don't have access to it."
@@ -282,7 +342,7 @@ async def uw_draft_adverse_action(
             )
 
         # Get borrower info
-        borrower_name = await _get_primary_borrower_name(session, application_id)
+        borrower_name = await get_primary_borrower_name(session, application_id)
 
         # Parse denial reasons
         denial_reasons = []
@@ -389,85 +449,19 @@ async def uw_generate_le(
         if app is None:
             return f"Application #{application_id} not found or you don't have access to it."
 
-        # Get borrower info
-        borrower_name = await _get_primary_borrower_name(session, application_id)
-
-        # Get rate lock info
-        rate_lock = await get_rate_lock_status(session, user, application_id)
-
-        # Compute simulated values
-        loan_amount = float(app.loan_amount) if app.loan_amount else 0
-        property_value = float(app.property_value) if app.property_value else 0
-        rate = 6.875  # default simulated rate
-        if rate_lock and rate_lock.get("locked_rate"):
-            rate = float(rate_lock["locked_rate"])
-
-        loan_type = app.loan_type.value if app.loan_type else "conventional_30"
-        term_years = 15 if "15" in loan_type else 30
-        num_payments = term_years * 12
-
-        monthly_payment = compute_monthly_payment(loan_amount, rate, num_payments)
-
-        # Simulated closing costs
-        origination_fee = loan_amount * 0.01
-        appraisal = 550.0
-        title_insurance = loan_amount * 0.003
-        recording_fees = 150.0
-        total_closing = origination_fee + appraisal + title_insurance + recording_fees
-
-        today = datetime.now(UTC).strftime("%B %d, %Y")
-        lines = [
-            "LOAN ESTIMATE (SIMULATED)",
-            "=========================",
-            f"Date Issued: {today}",
-            f"Borrower: {borrower_name}",
-            f"Application: #{application_id}",
-            f"Property: {app.property_address or 'N/A'}",
-            "",
-            "LOAN TERMS:",
-            f"  Loan Amount: ${loan_amount:,.2f}",
-            f"  Interest Rate: {rate:.3f}%",
-            f"  Loan Type: {format_enum_label(loan_type)}",
-            f"  Term: {term_years} years ({num_payments} payments)",
-            f"  Monthly P&I: ${monthly_payment:,.2f}",
-            "",
-            "PROJECTED PAYMENTS:",
-            f"  Principal & Interest: ${monthly_payment:,.2f}/month",
-            "  Estimated taxes & insurance: Varies by location",
-            "",
-            "ESTIMATED CLOSING COSTS:",
-            f"  Origination fee (1%): ${origination_fee:,.2f}",
-            f"  Appraisal: ${appraisal:,.2f}",
-            f"  Title insurance: ${title_insurance:,.2f}",
-            f"  Recording fees: ${recording_fees:,.2f}",
-            f"  Total estimated: ${total_closing:,.2f}",
-        ]
-
-        if property_value > 0:
-            down_payment = property_value - loan_amount
-            ltv = loan_amount / property_value * 100
-            lines.extend(
-                [
-                    "",
-                    "CASH TO CLOSE:",
-                    f"  Property Value: ${property_value:,.2f}",
-                    f"  Down Payment: ${down_payment:,.2f}",
-                    f"  Estimated Closing Costs: ${total_closing:,.2f}",
-                    f"  Total Cash to Close: ${down_payment + total_closing:,.2f}",
-                    f"  LTV: {ltv:.1f}%",
-                ]
-            )
-
-        lines.extend(
-            [
-                "",
-                "DISCLAIMER: This Loan Estimate is simulated for demonstration",
-                "purposes and does not constitute an actual TRID Loan Estimate.",
-            ]
-        )
+        le_text = await generate_le_text(session, user, app, application_id)
 
         # Update LE delivery date
         app.le_delivery_date = datetime.now(UTC)
+
+        # Extract values for audit (redundant calc but simpler than returning from helper)
+        loan_amount = float(app.loan_amount) if app.loan_amount else 0
+        rate_lock = await get_rate_lock_status(session, user, application_id)
+        rate = 6.875
+        if rate_lock and rate_lock.get("locked_rate"):
+            rate = float(rate_lock["locked_rate"])
+        loan_type = app.loan_type.value if app.loan_type else "conventional_30"
+        term_years = 15 if "15" in loan_type else 30
 
         await write_audit_event(
             session,
@@ -479,13 +473,11 @@ async def uw_generate_le(
                 "loan_amount": loan_amount,
                 "rate": rate,
                 "term_years": term_years,
-                "monthly_payment": round(monthly_payment, 2),
-                "total_closing_costs": round(total_closing, 2),
             },
         )
         await session.commit()
 
-    return "\n".join(lines)
+    return le_text
 
 
 @tool
@@ -517,86 +509,19 @@ async def uw_generate_cd(
                 f"conditions before generating the CD."
             )
 
-        # Get borrower info
-        borrower_name = await _get_primary_borrower_name(session, application_id)
-
-        # Get rate lock info
-        rate_lock = await get_rate_lock_status(session, user, application_id)
-
-        # Compute values
-        loan_amount = float(app.loan_amount) if app.loan_amount else 0
-        property_value = float(app.property_value) if app.property_value else 0
-        rate = 6.875
-        if rate_lock and rate_lock.get("locked_rate"):
-            rate = float(rate_lock["locked_rate"])
-
-        loan_type = app.loan_type.value if app.loan_type else "conventional_30"
-        term_years = 15 if "15" in loan_type else 30
-        num_payments = term_years * 12
-
-        monthly_payment = compute_monthly_payment(loan_amount, rate, num_payments)
-
-        # Final closing costs (slightly different from LE for realism)
-        origination_fee = loan_amount * 0.01
-        appraisal = 550.0
-        title_insurance = loan_amount * 0.003
-        recording_fees = 175.0
-        transfer_tax = property_value * 0.001 if property_value else 0
-        total_closing = (
-            origination_fee + appraisal + title_insurance + recording_fees + transfer_tax
-        )
-
-        today = datetime.now(UTC).strftime("%B %d, %Y")
-        closing_date = app.closing_date.strftime("%B %d, %Y") if app.closing_date else today
-
-        lines = [
-            "CLOSING DISCLOSURE (SIMULATED)",
-            "==============================",
-            f"Date Issued: {today}",
-            f"Closing Date: {closing_date}",
-            f"Borrower: {borrower_name}",
-            f"Application: #{application_id}",
-            f"Property: {app.property_address or 'N/A'}",
-            "",
-            "LOAN TERMS:",
-            f"  Loan Amount: ${loan_amount:,.2f}",
-            f"  Interest Rate: {rate:.3f}%",
-            f"  Loan Type: {format_enum_label(loan_type)}",
-            f"  Term: {term_years} years ({num_payments} payments)",
-            f"  Monthly P&I: ${monthly_payment:,.2f}",
-            "",
-            "CLOSING COST DETAILS:",
-            f"  Origination fee (1%): ${origination_fee:,.2f}",
-            f"  Appraisal: ${appraisal:,.2f}",
-            f"  Title insurance: ${title_insurance:,.2f}",
-            f"  Recording fees: ${recording_fees:,.2f}",
-            f"  Transfer tax: ${transfer_tax:,.2f}",
-            f"  Total closing costs: ${total_closing:,.2f}",
-        ]
-
-        if property_value > 0:
-            down_payment = property_value - loan_amount
-            lines.extend(
-                [
-                    "",
-                    "CASH TO CLOSE:",
-                    f"  Purchase Price: ${property_value:,.2f}",
-                    f"  Down Payment: ${down_payment:,.2f}",
-                    f"  Total Closing Costs: ${total_closing:,.2f}",
-                    f"  Total Cash to Close: ${down_payment + total_closing:,.2f}",
-                ]
-            )
-
-        lines.extend(
-            [
-                "",
-                "DISCLAIMER: This Closing Disclosure is simulated for demonstration",
-                "purposes and does not constitute an actual TRID Closing Disclosure.",
-            ]
-        )
+        cd_text = await generate_cd_text(session, user, app, application_id)
 
         # Update CD delivery date
         app.cd_delivery_date = datetime.now(UTC)
+
+        # Extract values for audit
+        loan_amount = float(app.loan_amount) if app.loan_amount else 0
+        rate_lock = await get_rate_lock_status(session, user, application_id)
+        rate = 6.875
+        if rate_lock and rate_lock.get("locked_rate"):
+            rate = float(rate_lock["locked_rate"])
+        loan_type = app.loan_type.value if app.loan_type else "conventional_30"
+        term_years = 15 if "15" in loan_type else 30
 
         await write_audit_event(
             session,
@@ -608,10 +533,8 @@ async def uw_generate_cd(
                 "loan_amount": loan_amount,
                 "rate": rate,
                 "term_years": term_years,
-                "monthly_payment": round(monthly_payment, 2),
-                "total_closing_costs": round(total_closing, 2),
             },
         )
         await session.commit()
 
-    return "\n".join(lines)
+    return cd_text
