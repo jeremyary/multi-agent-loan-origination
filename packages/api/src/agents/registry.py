@@ -37,6 +37,7 @@ _AGENT_MODULES: dict[str, str] = {
     "borrower-assistant": ".borrower_assistant",
     "loan-officer-assistant": ".loan_officer_assistant",
     "underwriter-assistant": ".underwriter_assistant",
+    "ceo-assistant": ".ceo_assistant",
 }
 
 
