@@ -6,8 +6,6 @@ generation, denial_reasons JSON round-trip, and AI agreement detection
 against a real database -- the class of bugs that mocked tests cannot catch.
 """
 
-import json
-
 import pytest
 from db.enums import (
     ApplicationStage,
@@ -211,7 +209,7 @@ class TestRenderDecisionDeny:
         row = await db_session.execute(select(Decision).where(Decision.application_id == app_id))
         dec = row.scalar_one()
         assert dec.decision_type == DecisionType.DENIED
-        assert json.loads(dec.denial_reasons) == reasons
+        assert dec.denial_reasons == reasons
         assert dec.credit_score_used == 620
         assert dec.credit_score_source == "TransUnion"
         assert dec.contributing_factors == "Excessive revolving debt"
