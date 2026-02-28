@@ -18,6 +18,8 @@ from ..schemas.analytics import (
     DenialReason,
     DenialTrendPoint,
     DenialTrends,
+    LOPerformanceRow,
+    LOPerformanceSummary,
     PipelineSummary,
     StageCount,
     StageTurnTime,
@@ -348,6 +350,218 @@ async def _compute_top_denial_reasons(
         )
         for reason, count in sorted_reasons
     ]
+
+
+# Active pipeline stages (not terminal)
+_ACTIVE_STAGES = frozenset(
+    {
+        ApplicationStage.APPLICATION,
+        ApplicationStage.PROCESSING,
+        ApplicationStage.UNDERWRITING,
+        ApplicationStage.CONDITIONAL_APPROVAL,
+        ApplicationStage.CLEAR_TO_CLOSE,
+    }
+)
+
+
+async def get_lo_performance(
+    session: AsyncSession,
+    days: int = 90,
+    product: str | None = None,
+) -> LOPerformanceSummary:
+    """Compute per-LO performance metrics for CEO dashboard.
+
+    Args:
+        session: Database session.
+        days: Time range for closed/denied metrics.
+        product: Optional loan type filter.
+
+    Returns:
+        LOPerformanceSummary with one row per loan officer.
+    """
+    from db import Condition
+
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(days=days)
+
+    # Validate product filter early
+    loan_type_filter = None
+    if product:
+        try:
+            loan_type_filter = LoanType(product)
+        except ValueError:
+            valid = [lt.value for lt in LoanType]
+            raise ValueError(f"Unknown product '{product}'. Valid: {valid}") from None
+
+    # Build optional product filter clause
+    product_clause = []
+    if loan_type_filter:
+        product_clause = [Application.loan_type == loan_type_filter]
+
+    # Get all LOs that have any assigned applications
+    lo_stmt = (
+        select(Application.assigned_to)
+        .where(Application.assigned_to.isnot(None), *product_clause)
+        .group_by(Application.assigned_to)
+    )
+    lo_result = await session.execute(lo_stmt)
+    lo_ids = [row[0] for row in lo_result.all()]
+
+    rows: list[LOPerformanceRow] = []
+    for lo_id in lo_ids:
+        lo_filter = [Application.assigned_to == lo_id, *product_clause]
+
+        # Active count (current pipeline, not time-filtered)
+        active_stmt = select(func.count(Application.id)).where(
+            *lo_filter, Application.stage.in_(_ACTIVE_STAGES)
+        )
+        active_result = await session.execute(active_stmt)
+        active_count = active_result.scalar() or 0
+
+        # Closed count (in time period)
+        closed_stmt = select(func.count(Application.id)).where(
+            *lo_filter,
+            Application.stage == ApplicationStage.CLOSED,
+            Application.updated_at >= cutoff,
+        )
+        closed_result = await session.execute(closed_stmt)
+        closed_count = closed_result.scalar() or 0
+
+        # Total initiated by this LO (in time period) for pull-through
+        initiated_stmt = select(func.count(Application.id)).where(
+            *lo_filter, Application.created_at >= cutoff
+        )
+        initiated_result = await session.execute(initiated_stmt)
+        initiated = initiated_result.scalar() or 0
+
+        pull_through = (closed_count / initiated * 100) if initiated > 0 else 0.0
+
+        # Denial rate: denied / total decided (in time period)
+        decided_stmt = (
+            select(func.count(Decision.id))
+            .join(Application, Decision.application_id == Application.id)
+            .where(
+                Application.assigned_to == lo_id,
+                Decision.created_at >= cutoff,
+                *([Application.loan_type == loan_type_filter] if loan_type_filter else []),
+            )
+        )
+        decided_result = await session.execute(decided_stmt)
+        total_decided = decided_result.scalar() or 0
+
+        denied_stmt = (
+            select(func.count(Decision.id))
+            .join(Application, Decision.application_id == Application.id)
+            .where(
+                Application.assigned_to == lo_id,
+                Decision.created_at >= cutoff,
+                Decision.decision_type == DecisionType.DENIED,
+                *([Application.loan_type == loan_type_filter] if loan_type_filter else []),
+            )
+        )
+        denied_result = await session.execute(denied_stmt)
+        total_denied = denied_result.scalar() or 0
+
+        denial_rate = (total_denied / total_decided * 100) if total_decided > 0 else 0.0
+
+        # Avg days Application -> Underwriting (from audit events)
+        avg_to_uw = await _lo_avg_turn_time(
+            session,
+            lo_id,
+            cutoff,
+            ApplicationStage.APPLICATION,
+            ApplicationStage.UNDERWRITING,
+            product_clause,
+        )
+
+        # Avg days conditions issued -> cleared (from Condition timestamps)
+        avg_cond_stmt = (
+            select(
+                func.avg(
+                    func.extract("epoch", Condition.updated_at - Condition.created_at) / 86400.0
+                )
+            )
+            .join(Application, Condition.application_id == Application.id)
+            .where(
+                Application.assigned_to == lo_id,
+                Condition.status == "cleared",
+                Condition.updated_at >= cutoff,
+                *([Application.loan_type == loan_type_filter] if loan_type_filter else []),
+            )
+        )
+        avg_cond_result = await session.execute(avg_cond_stmt)
+        avg_cond_raw = avg_cond_result.scalar()
+        avg_cond = round(float(avg_cond_raw), 1) if avg_cond_raw is not None else None
+
+        rows.append(
+            LOPerformanceRow(
+                lo_id=lo_id,
+                lo_name=None,  # LO names come from Keycloak, not in DB
+                active_count=active_count,
+                closed_count=closed_count,
+                pull_through_rate=round(pull_through, 1),
+                avg_days_to_underwriting=avg_to_uw,
+                avg_days_conditions_to_cleared=avg_cond,
+                denial_rate=round(denial_rate, 1),
+            )
+        )
+
+    return LOPerformanceSummary(
+        loan_officers=rows,
+        time_range_days=days,
+        computed_at=now,
+    )
+
+
+async def _lo_avg_turn_time(
+    session: AsyncSession,
+    lo_id: str,
+    cutoff: datetime,
+    from_stage: ApplicationStage,
+    to_stage: ApplicationStage,
+    product_clause: list,
+) -> float | None:
+    """Avg days between two stage transitions for a specific LO's applications."""
+    from db import AuditEvent
+
+    to_events = (
+        select(
+            AuditEvent.application_id,
+            AuditEvent.timestamp.label("to_ts"),
+        )
+        .join(Application, AuditEvent.application_id == Application.id)
+        .where(
+            AuditEvent.event_type == "stage_transition",
+            AuditEvent.timestamp >= cutoff,
+            AuditEvent.event_data["to_stage"].as_string() == to_stage.value,
+            Application.assigned_to == lo_id,
+            *product_clause,
+        )
+        .subquery("to_events")
+    )
+
+    from_events = (
+        select(
+            AuditEvent.application_id,
+            AuditEvent.timestamp.label("from_ts"),
+        )
+        .where(
+            AuditEvent.event_type == "stage_transition",
+            AuditEvent.event_data["to_stage"].as_string() == from_stage.value,
+        )
+        .subquery("from_events")
+    )
+
+    avg_stmt = (
+        select(func.avg(func.extract("epoch", to_events.c.to_ts - from_events.c.from_ts) / 86400.0))
+        .select_from(to_events)
+        .join(from_events, to_events.c.application_id == from_events.c.application_id)
+        .where(to_events.c.to_ts > from_events.c.from_ts)
+    )
+
+    result = await session.execute(avg_stmt)
+    avg_raw = result.scalar()
+    return round(float(avg_raw), 1) if avg_raw is not None else None
 
 
 async def _compute_denial_by_product(
