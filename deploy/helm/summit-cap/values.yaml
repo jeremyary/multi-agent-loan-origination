@@ -66,6 +66,22 @@ secrets:
   # MinIO
   MINIO_ROOT_USER: "minio"
   MINIO_ROOT_PASSWORD: "miniosecret"
+
+  # LangFuse stack
+  NEXTAUTH_SECRET: "mysecret"
+  LANGFUSE_SALT: "mysalt"
+  LANGFUSE_ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+  LANGFUSE_INIT_ORG_ID: "summit-cap"
+  LANGFUSE_INIT_ORG_NAME: "Summit Cap Financial"
+  LANGFUSE_INIT_PROJECT_ID: "summit-cap-dev"
+  LANGFUSE_INIT_PROJECT_NAME: "Summit Cap Dev"
+  LANGFUSE_INIT_PROJECT_PUBLIC_KEY: "pk-lf-dev-public"
+  LANGFUSE_INIT_PROJECT_SECRET_KEY: "sk-lf-dev-secret"
+  LANGFUSE_INIT_USER_EMAIL: "admin@summitcap.dev"
+  LANGFUSE_INIT_USER_NAME: "Admin"
+  LANGFUSE_INIT_USER_PASSWORD: "password"
+  CLICKHOUSE_PASSWORD: "clickhouse"
+  REDIS_AUTH: "myredissecret"
 # OpenShift Routes configuration
 routes:
   enabled: true
@@ -183,6 +199,32 @@ minio:
     limits:
       memory: "512Mi"
       cpu: "500m"
+
+# LangFuse observability stack (redis + clickhouse auto-enabled)
+langfuse:
+  enabled: false
+  web:
+    image:
+      repository: langfuse/langfuse
+      tag: "3"
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "250m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+  worker:
+    image:
+      repository: langfuse/langfuse-worker
+      tag: "3"
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "100m"
+      limits:
+        memory: "512Mi"
+        cpu: "500m"
 
 # ServiceAccount
 serviceAccount:
