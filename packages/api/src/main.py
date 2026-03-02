@@ -29,6 +29,7 @@ from .routes import (
     health,
     hmda,
     loan_officer_chat,
+    model_monitoring,
     public,
     underwriter_chat,
 )
@@ -144,6 +145,7 @@ app.include_router(documents.router, prefix="/api", tags=["documents"])
 app.include_router(hmda.router, prefix="/api/hmda", tags=["hmda"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
+app.include_router(model_monitoring.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(audit.router, prefix="/api/audit", tags=["audit"])
 
 # Setup SQLAdmin dashboard at /admin

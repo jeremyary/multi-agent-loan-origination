@@ -26,6 +26,7 @@ from ..services.audit import (
     search_events,
     write_audit_event,
 )
+from ..services.model_monitoring import get_model_monitoring_summary
 from .shared import user_context_from_state
 
 
@@ -460,4 +461,196 @@ async def ceo_audit_search(
         )
         await session.commit()
 
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Model monitoring tools (S-5-F39)
+# ---------------------------------------------------------------------------
+
+
+@tool
+async def ceo_model_latency(
+    hours: int = 24,
+    model: str | None = None,
+    state: Annotated[dict, InjectedState] = {},
+) -> str:
+    """Get model latency percentiles (p50, p95, p99) and trend.
+
+    Args:
+        hours: Time range in hours (default 24).
+        model: Optional model name filter.
+    """
+    user = _user_context_from_state(state)
+    try:
+        summary = await get_model_monitoring_summary(hours=hours, model=model)
+    except Exception as e:
+        return f"Error fetching model monitoring data: {e}"
+
+    async with SessionLocal() as session:
+        await write_audit_event(
+            session,
+            event_type="query",
+            user_id=user.user_id,
+            user_role=user.role.value,
+            event_data={"tool": "ceo_model_latency", "hours": hours, "model": model},
+        )
+        await session.commit()
+
+    if not summary.langfuse_available:
+        return "Model monitoring unavailable (LangFuse not configured)."
+
+    lat = summary.latency
+    lines = [
+        f"Model Latency ({summary.time_range_hours}h window):",
+        f"  p50: {lat.p50_ms:.1f}ms",
+        f"  p95: {lat.p95_ms:.1f}ms",
+        f"  p99: {lat.p99_ms:.1f}ms",
+    ]
+    if lat.by_model:
+        lines.append("")
+        lines.append("By model:")
+        for m in lat.by_model:
+            lines.append(
+                f"  {m.model}: p50={m.p50_ms:.1f}ms, p95={m.p95_ms:.1f}ms ({m.call_count} calls)"
+            )
+    return "\n".join(lines)
+
+
+@tool
+async def ceo_model_token_usage(
+    hours: int = 24,
+    model: str | None = None,
+    state: Annotated[dict, InjectedState] = {},
+) -> str:
+    """Get token usage totals and per-model breakdown.
+
+    Args:
+        hours: Time range in hours (default 24).
+        model: Optional model name filter.
+    """
+    user = _user_context_from_state(state)
+    try:
+        summary = await get_model_monitoring_summary(hours=hours, model=model)
+    except Exception as e:
+        return f"Error fetching model monitoring data: {e}"
+
+    async with SessionLocal() as session:
+        await write_audit_event(
+            session,
+            event_type="query",
+            user_id=user.user_id,
+            user_role=user.role.value,
+            event_data={
+                "tool": "ceo_model_token_usage",
+                "hours": hours,
+                "model": model,
+            },
+        )
+        await session.commit()
+
+    if not summary.langfuse_available:
+        return "Model monitoring unavailable (LangFuse not configured)."
+
+    tok = summary.token_usage
+    lines = [
+        f"Token Usage ({summary.time_range_hours}h window):",
+        f"  Input tokens: {tok.input_tokens:,}",
+        f"  Output tokens: {tok.output_tokens:,}",
+        f"  Total tokens: {tok.total_tokens:,}",
+    ]
+    if tok.by_model:
+        lines.append("")
+        lines.append("By model:")
+        for m in tok.by_model:
+            lines.append(f"  {m.model}: {m.total_tokens:,} tokens ({m.call_count} calls)")
+    return "\n".join(lines)
+
+
+@tool
+async def ceo_model_errors(
+    hours: int = 24,
+    model: str | None = None,
+    state: Annotated[dict, InjectedState] = {},
+) -> str:
+    """Get model error rates and top error types.
+
+    Args:
+        hours: Time range in hours (default 24).
+        model: Optional model name filter.
+    """
+    user = _user_context_from_state(state)
+    try:
+        summary = await get_model_monitoring_summary(hours=hours, model=model)
+    except Exception as e:
+        return f"Error fetching model monitoring data: {e}"
+
+    async with SessionLocal() as session:
+        await write_audit_event(
+            session,
+            event_type="query",
+            user_id=user.user_id,
+            user_role=user.role.value,
+            event_data={"tool": "ceo_model_errors", "hours": hours, "model": model},
+        )
+        await session.commit()
+
+    if not summary.langfuse_available:
+        return "Model monitoring unavailable (LangFuse not configured)."
+
+    err = summary.errors
+    lines = [
+        f"Model Errors ({summary.time_range_hours}h window):",
+        f"  Total calls: {err.total_calls:,}",
+        f"  Error count: {err.error_count:,}",
+        f"  Error rate: {err.error_rate}%",
+    ]
+    if err.top_errors:
+        lines.append("")
+        lines.append("Top error types:")
+        for e in err.top_errors[:5]:
+            lines.append(f"  {e.error_type}: {e.count}")
+    return "\n".join(lines)
+
+
+@tool
+async def ceo_model_routing(
+    hours: int = 24,
+    model: str | None = None,
+    state: Annotated[dict, InjectedState] = {},
+) -> str:
+    """Get model routing distribution showing which models handle what percentage of calls.
+
+    Args:
+        hours: Time range in hours (default 24).
+        model: Optional model name filter.
+    """
+    user = _user_context_from_state(state)
+    try:
+        summary = await get_model_monitoring_summary(hours=hours, model=model)
+    except Exception as e:
+        return f"Error fetching model monitoring data: {e}"
+
+    async with SessionLocal() as session:
+        await write_audit_event(
+            session,
+            event_type="query",
+            user_id=user.user_id,
+            user_role=user.role.value,
+            event_data={"tool": "ceo_model_routing", "hours": hours, "model": model},
+        )
+        await session.commit()
+
+    if not summary.langfuse_available:
+        return "Model monitoring unavailable (LangFuse not configured)."
+
+    routing = summary.routing
+    lines = [
+        f"Model Routing ({summary.time_range_hours}h window):",
+        f"  Total calls: {routing.total_calls:,}",
+        "",
+        "Distribution:",
+    ]
+    for m in routing.models:
+        lines.append(f"  {m.model}: {m.call_count:,} calls ({m.percentage}%)")
     return "\n".join(lines)
