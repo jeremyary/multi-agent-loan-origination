@@ -110,6 +110,7 @@ class AgentState(MessagesState):
     user_email: str
     user_name: str
     tool_allowed_roles: dict[str, list[str]]
+    decision_proposals: dict
 
 
 def build_routed_graph(

@@ -189,16 +189,19 @@ class ExtractionService:
     @staticmethod
     def _extract_text_from_pdf_sync(file_data: bytes) -> str | None:
         """Synchronous PDF text extraction (runs in thread pool)."""
+        pdf = None
         try:
             pdf = fitz.open(stream=file_data, filetype="pdf")
             text_parts = []
             for page in pdf:
                 text_parts.append(page.get_text())
-            pdf.close()
             return " ".join(text_parts).strip()
         except Exception:
             logger.exception("Failed to open PDF with pymupdf")
             return None
+        finally:
+            if pdf is not None:
+                pdf.close()
 
     async def _pdf_first_page_to_image(self, file_data: bytes) -> bytes | None:
         """Render only the first page of a PDF as a PNG image.
@@ -213,18 +216,19 @@ class ExtractionService:
     @staticmethod
     def _pdf_first_page_to_image_sync(file_data: bytes) -> bytes | None:
         """Synchronous PDF-to-image rendering (runs in thread pool)."""
+        pdf = None
         try:
             pdf = fitz.open(stream=file_data, filetype="pdf")
             if len(pdf) == 0:
-                pdf.close()
                 return None
             pix = pdf[0].get_pixmap()
-            image = pix.tobytes("png")
-            pdf.close()
-            return image
+            return pix.tobytes("png")
         except Exception:
             logger.exception("Failed to render PDF first page to image")
             return None
+        finally:
+            if pdf is not None:
+                pdf.close()
 
     async def _extract_via_llm(self, text: str, doc_type: str) -> dict | None:
         """Send text to LLM, get structured extractions + quality flags."""

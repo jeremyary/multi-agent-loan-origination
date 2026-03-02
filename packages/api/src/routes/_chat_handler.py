@@ -18,6 +18,7 @@ from ..agents.registry import get_agent
 from ..core.auth import build_data_scope
 from ..core.config import settings
 from ..middleware.auth import CurrentUser, _decode_token, _resolve_role, require_roles
+from ..middleware.pii import _mask_pii_recursive
 from ..observability import build_langfuse_config, flush_langfuse
 from ..schemas.auth import UserContext
 from ..schemas.conversation import ConversationHistoryResponse
@@ -102,6 +103,7 @@ async def run_agent_stream(
     user_name: str = "",
     use_checkpointer: bool,
     messages_fallback: list | None,
+    pii_mask: bool = False,
 ) -> None:
     """Run the agent streaming loop over an accepted WebSocket.
 
@@ -120,6 +122,12 @@ async def run_agent_stream(
             checkpointer is unavailable. Pass ``None`` when using checkpointer.
     """
     from db.database import SessionLocal
+
+    async def _send(msg: dict) -> None:
+        """Send a JSON message over WebSocket, applying PII masking if needed."""
+        if pii_mask:
+            msg = _mask_pii_recursive(msg)
+        await ws.send_json(msg)
 
     async def _audit(event_type: str, event_data: dict | None = None) -> None:
         try:
@@ -142,13 +150,11 @@ async def run_agent_stream(
             try:
                 data = json.loads(raw)
             except json.JSONDecodeError:
-                await ws.send_json({"type": "error", "content": "Invalid JSON"})
+                await _send({"type": "error", "content": "Invalid JSON"})
                 continue
 
             if data.get("type") != "message" or not data.get("content"):
-                await ws.send_json(
-                    {"type": "error", "content": "Expected {type: message, content: ...}"}
-                )
+                await _send({"type": "error", "content": "Expected {type: message, content: ...}"})
                 continue
 
             user_text = data["content"]
@@ -187,7 +193,7 @@ async def run_agent_stream(
                     ):
                         chunk = event.get("data", {}).get("chunk")
                         if isinstance(chunk, AIMessageChunk) and chunk.content:
-                            await ws.send_json({"type": "token", "content": chunk.content})
+                            await _send({"type": "token", "content": chunk.content})
                             full_response += chunk.content
 
                     elif kind == "on_chain_end" and node == "input_shield":
@@ -195,7 +201,7 @@ async def run_agent_stream(
                         if isinstance(output, dict) and output.get("safety_blocked"):
                             for msg in output.get("messages", []):
                                 if hasattr(msg, "content") and msg.content:
-                                    await ws.send_json({"type": "token", "content": msg.content})
+                                    await _send({"type": "token", "content": msg.content})
                                     full_response = msg.content
                             await _audit("safety_block", {"shield": "input", "blocked": True})
 
@@ -231,7 +237,7 @@ async def run_agent_stream(
                             shield_msgs = output.get("messages", [])
                             if shield_msgs:
                                 override = shield_msgs[-1].content
-                                await ws.send_json({"type": "safety_override", "content": override})
+                                await _send({"type": "safety_override", "content": override})
                                 full_response = override
                                 await _audit(
                                     "safety_block",
@@ -242,11 +248,11 @@ async def run_agent_stream(
                 if not use_checkpointer and full_response:
                     messages_fallback.append(AIMessage(content=full_response))
 
-                await ws.send_json({"type": "done"})
+                await _send({"type": "done"})
 
             except Exception:
                 logger.exception("Agent invocation failed")
-                await ws.send_json(
+                await _send(
                     {
                         "type": "error",
                         "content": "Our chat assistant is temporarily unavailable. "
@@ -329,6 +335,7 @@ def create_authenticated_chat_router(
             user_name=user.name or "",
             use_checkpointer=use_checkpointer,
             messages_fallback=messages_fallback,
+            pii_mask=getattr(user.data_scope, "pii_mask", False),
         )
 
     @router.get(

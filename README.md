@@ -1,609 +1,214 @@
-# summit-cap
+# Summit Cap Financial -- Multi-Agent Loan Origination
 
-A ready-made template for creating new AI Quickstarts
+A Red Hat AI Quickstart demonstrating agentic AI applied to the mortgage lending lifecycle. Built for [Red Hat Summit](https://www.redhat.com/en/summit), this reference application showcases multi-agent AI systems on Red Hat AI / OpenShift AI using a realistic, regulated-industry business use case.
+
+Summit Cap Financial is a fictional mortgage lender headquartered in Denver, Colorado. The application covers the process from prospect inquiry through pre-qualification, application, underwriting, and approval -- with five distinct persona experiences sharing a common backend.
+
+> **Regulatory disclaimer:** All compliance content (HMDA, ECOA, TRID, ATR/QM, FCRA) is simulated for demonstration purposes and does not constitute legal or regulatory advice.
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 18+ and pnpm 9+
+- Python 3.11+ and [uv](https://docs.astral.sh/uv/)
+- Podman and podman-compose
+- An OpenAI-compatible LLM endpoint (e.g., LM Studio, vLLM, or OpenAI API key)
+
+### Setup
+
+```bash
+# 1. Install all dependencies (Node.js + Python)
+make setup
+
+# 2. Start database + supporting services
+make containers-up
+
+# 3. Run database migrations
+make db-upgrade
+
+# 4. Configure your LLM endpoint
+cp .env.example .env   # Edit LLM_BASE_URL and LLM_API_KEY
+
+# 5. Start development servers
+make dev
+```
+
+### Development URLs
+
+| Service | URL |
+|---------|-----|
+| Frontend (Vite) | http://localhost:5173 |
+| Storybook | http://localhost:6006 |
+| API Server | http://localhost:8000 |
+| API Docs (Swagger) | http://localhost:8000/docs |
+| Database | postgresql://localhost:5433 |
+| MinIO Console | http://localhost:9091 |
 
 ## Architecture
 
-This project is built with:
+```
+packages/
+  ui/     React 19 + Vite + TanStack Router/Query + shadcn/ui
+  api/    FastAPI + LangGraph agents + SQLAlchemy 2.0 (async)
+  db/     PostgreSQL 16 + pgvector + Alembic migrations
 
-- **Turborepo** - High-performance build system for the monorepo
-- **React + Vite** - Modern frontend with TanStack Router
-- **FastAPI** - Python backend with async support
-- **PostgreSQL** - Database with Alembic migrations
+Supporting services (via compose.yml):
+  PostgreSQL, MinIO (S3), Keycloak (OIDC), LangFuse (observability)
+```
+
+### Personas
+
+| Persona | Role | Agent | Key Capabilities |
+|---------|------|-------|-----------------|
+| Prospect | Unauthenticated | Public Assistant | Product info, affordability estimates |
+| Borrower | `borrower` | Borrower Assistant | Application intake, document upload, status tracking, condition response |
+| Loan Officer | `loan_officer` | LO Assistant | Pipeline management, application review, communication drafting, KB search |
+| Underwriter | `underwriter` | Underwriter Assistant | Risk assessment, compliance checks, condition management, decisions |
+| CEO | `ceo` | CEO Assistant | Pipeline analytics, audit trail, decision trace, model monitoring |
+
+### Key AI Patterns
+
+- **Multi-agent orchestration** -- five LangGraph agents with role-scoped tools and RBAC
+- **Compliance knowledge base** -- pgvector RAG with tiered boosting (federal > agency > internal)
+- **Fair lending guardrails** -- HMDA data isolation, demographic data stored in separate schema
+- **Model routing** -- complexity-based routing between fast/capable LLM tiers
+- **Comprehensive audit trail** -- hash-chained, append-only audit events with LangFuse correlation
+- **PII masking** -- middleware-based masking for CEO role (SSN, DOB, account numbers)
+- **Safety shields** -- input/output content filters with escalation detection
 
 ## Project Structure
 
 ```
 summit-cap/
 ├── packages/
-│   ├── ui/           # React frontend application
-│   ├── api/          # FastAPI backend service
-│   └── db/           # Database and migrations
-├── compose.yml       # Podman Compose configuration (all services)
-├── Makefile          # Makefile with common commands
-├── turbo.json        # Turborepo configuration
-└── package.json      # Root package configuration
+│   ├── ui/              # React frontend (pnpm)
+│   ├── api/             # FastAPI backend + agents (uv)
+│   └── db/              # Database models + migrations (uv)
+├── config/
+│   ├── agents/          # Agent YAML configurations
+│   └── keycloak/        # Keycloak realm export
+├── deploy/helm/         # Helm charts for OpenShift
+├── compose.yml          # Local development services
+├── Makefile             # Development commands
+└── turbo.json           # Turborepo pipeline config
 ```
 
-## Quick Start
+## Common Commands
 
-### Prerequisites
-- Node.js 18+
-- pnpm 9+
-- Python 3.11+
-- uv (Python package manager)
-- Podman and podman-compose (for database)
-
-### Development
-
-1. **Install all dependencies** (Node.js + Python):
-```bash
-make setup
-```
-
-   Or using pnpm directly:
-```bash
-pnpm setup
-```
-
-   Or install them separately:
-```bash
-pnpm install          # Install Node.js dependencies
-pnpm install:deps     # Install Python dependencies in API package
-```
-
-2. **Start the database** (using Makefile - recommended):
-```bash
-make db-start
-```
-
-   Or using pnpm:
-```bash
-pnpm db:start
-```
-
-3. **Run database migrations**:
-```bash
-make db-upgrade
-```
-
-   Or using pnpm:
-```bash
-pnpm db:migrate
-```
-
-4. **Start development servers**:
-```bash
-make dev
-```
-
-   Or using pnpm:
-```bash
-pnpm dev
-```
-
-### Available Commands
-
-**Using Makefile (Recommended)** - Works with any package manager (pnpm/npm/yarn):
-```bash
-make setup            # Install all dependencies
-make dev              # Start all development servers
-make build            # Build all packages
-make test             # Run tests across all packages
-make lint             # Check code formatting
-make db-start         # Start database container
-make db-stop          # Stop database container
-make db-logs          # View database logs
-make db-upgrade       # Run database migrations
-make containers-build # Build all containers
-make containers-up    # Start all containers (production-like)
-make containers-down  # Stop all containers
-make clean            # Clean build artifacts
-```
-
-**Using pnpm directly**:
 ```bash
 # Development
-pnpm dev              # Start all development servers
-pnpm build            # Build all packages
-pnpm test             # Run tests across all packages
-pnpm lint             # Check code formatting
-pnpm format           # Format code
+make setup              # Install all dependencies
+make dev                # Start dev servers (frontend + API)
+make containers-up      # Start database + services
+make db-upgrade         # Run migrations
 
-# Database
-pnpm db:start         # Start database containers
-pnpm db:stop          # Stop database containers  
-pnpm db:migrate       # Run database migrations
-pnpm db:migrate:new      # Create new migration
-pnpm compose:up       # Start all containers
-pnpm compose:down     # Stop all containers
-pnpm containers:build # Build all containers
-# Utilities
-pnpm clean            # Clean build artifacts (turbo prune)
+# Testing
+make test               # Run all tests
+cd packages/api && uv run pytest -v   # API tests directly
+
+# Code Quality
+make lint               # Lint all packages
+cd packages/api && uv run ruff check src/  # Python lint
+
+# Containers
+make containers-build   # Build all container images
+make containers-up      # Start all services
+make containers-down    # Stop all services
+make containers-logs    # View container logs
+
+# OpenShift Deployment
+make deploy             # Deploy via Helm
+make deploy-dev         # Deploy in dev mode
+make undeploy           # Remove deployment
+make status             # Show deployment status
 ```
 
-**Note**: The `compose.yml` file at the project root manages all containerized services (database, and future API/UI containers). Service names follow the format `[project-name]-[package]` (e.g., `my-chatbot-db`).
+## Environment Configuration
 
-## Development URLs
-
-- **Frontend App**: http://localhost:3000
-- **API Server**: http://localhost:8000
-- **API Documentation**: http://localhost:8000/docs
-- **Database**: postgresql://localhost:5432
-
-## Deployment
-
-This project supports multiple deployment strategies for different environments.
-
-### Container-Based Deployment (Podman Compose)
-
-For local testing or single-server deployments, use Podman Compose:
-
-```bash
-# Build all container images
-make containers-build
-
-# Start all services
-make containers-up
-
-# View logs
-make containers-logs
-
-# Stop all services
-make containers-down
-```
-
-**Note**: Before deploying, ensure you've:
-1. Built production-ready container images
-2. Configured environment variables in `.env` or `compose.yml`
-3. Run database migrations if deploying with a database
-
-### OpenShift/Helm Deployment
-
-For production OpenShift (or Kubernetes) deployments, use the included Helm charts.
-
-#### Prerequisites
-
-- OpenShift cluster (4.10+) or Kubernetes cluster (1.24+)
-- `oc` CLI configured to access your OpenShift cluster (or `kubectl` for Kubernetes)
-- `helm` CLI installed (v3.8+)
-- Container registry access (for pushing images)
-
-#### Building Container Images
-
-Before deploying to OpenShift, build and push your container images:
-
-```bash
-# Build API image (if API is enabled)
-cd packages/api
-podman build -t summit-cap-api:latest .
-podman tag summit-cap-api:latest registry.example.com/summit-cap-api:latest
-podman push registry.example.com/summit-cap-api:latest
-
-# Build UI image (if UI is enabled)
-cd packages/ui
-podman build -t summit-cap-ui:latest .
-podman tag summit-cap-ui:latest registry.example.com/summit-cap-ui:latest
-podman push registry.example.com/summit-cap-ui:latest
-```
-
-#### Deploying with Helm
-
-**Option 1: Using Makefile (Recommended)**
-
-The easiest way to deploy is using the provided Makefile targets:
-
-1. **Configure environment variables**:
-
-   Create a `.env` file in the project root:
-
-   ```env
-   POSTGRES_DB=summit-cap
-   POSTGRES_USER=your-db-user
-   POSTGRES_PASSWORD=your-secure-password
-   DATABASE_URL=postgresql+asyncpg://user:password@summit-cap-db:5432/summit-cap
-   DEBUG=false
-   ALLOWED_HOSTS=["*"]
-   VITE_API_BASE_URL=https://api.example.com
-   VITE_ENVIRONMENT=production
-   ```
-
-2. **Deploy to OpenShift**:
-
-   ```bash
-   # Production deployment
-   make deploy
-   
-   # Development deployment (single replica, no persistence)
-   make deploy-dev
-   
-   # Customize deployment
-   make deploy REGISTRY_URL=quay.io REPOSITORY=myorg IMAGE_TAG=v1.0.0
-   ```
-
-   **Note**: The Makefile automatically creates an OpenShift project if it doesn't exist. For Kubernetes, use `--namespace` instead of `--project` in Helm commands.
-
-**Option 2: Using Helm CLI Directly**
-
-For more control, use Helm CLI directly:
-
-1. **Configure environment variables**:
-
-   Export environment variables or create a `.env` file:
-
-   ```bash
-   export POSTGRES_DB="summit-cap"
-   export POSTGRES_USER="your-db-user"
-   export POSTGRES_PASSWORD="your-secure-password"
-   export DATABASE_URL="postgresql+asyncpg://user:password@summit-cap-db:5432/summit-cap"
-   export DEBUG="false"
-   export ALLOWED_HOSTS='["*"]'
-   export VITE_API_BASE_URL="https://api.example.com"
-   export VITE_ENVIRONMENT="production"
-   ```
-
-2. **Install the Helm chart**:
-
-   **For OpenShift** (recommended):
-   ```bash
-   cd deploy/helm/summit-cap
-   
-   # Create OpenShift project first
-   oc new-project summit-cap || oc project summit-cap
-   
-   # Install with default values
-   helm install summit-cap . \
-     --namespace summit-cap \
-     --set secrets.POSTGRES_DB="$POSTGRES_DB" \
-     --set secrets.POSTGRES_USER="$POSTGRES_USER" \
-     --set secrets.POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-     --set secrets.DATABASE_URL="$DATABASE_URL" \
-     --set secrets.DEBUG="$DEBUG" \
-     --set secrets.ALLOWED_HOSTS="$ALLOWED_HOSTS" \
-     --set secrets.VITE_API_BASE_URL="$VITE_API_BASE_URL"
-   ```
-
-   **For Kubernetes** (alternative):
-   ```bash
-   cd deploy/helm/summit-cap
-   
-   # Install with default values
-   helm install summit-cap . \
-     --namespace summit-cap \
-     --create-namespace \
-     --set secrets.POSTGRES_DB="$POSTGRES_DB" \
-     --set secrets.POSTGRES_USER="$POSTGRES_USER" \
-     --set secrets.POSTGRES_PASSWORD="$POSTGRES_PASSWORD" \
-     --set secrets.DATABASE_URL="$DATABASE_URL" \
-     --set secrets.DEBUG="$DEBUG" \
-     --set secrets.ALLOWED_HOSTS="$ALLOWED_HOSTS" \
-     --set secrets.VITE_API_BASE_URL="$VITE_API_BASE_URL"
-   ```
-
-3. **Update image references** (if using custom registry):
-
-   Using Makefile:
-   ```bash
-   make deploy REGISTRY_URL=registry.example.com REPOSITORY=myorg IMAGE_TAG=v1.0.0
-   ```
-
-   Or edit `deploy/helm/summit-cap/values.yaml` directly:
-
-   Edit `deploy/helm/summit-cap/values.yaml` and update image repository/tag:
-
-   ```yaml
-   api:
-     image:
-       repository: registry.example.com/summit-cap-api
-       tag: latest
-   ui:
-     image:
-       repository: registry.example.com/summit-cap-ui
-       tag: latest
-   ```
-
-4. **Run database migrations** (if database is enabled):
-
-   ```bash
-   # Migrations run automatically via an OpenShift/Kubernetes Job on first deployment
-   # To manually trigger migrations (OpenShift):
-   oc create job --from=cronjob/summit-cap-migration summit-cap-migration-manual -n summit-cap
-   
-   # Or using kubectl (Kubernetes):
-   kubectl create job --from=cronjob/summit-cap-migration summit-cap-migration-manual -n summit-cap
-   ```
-
-5. **Verify deployment**:
-
-   **Using OpenShift CLI** (`oc`):
-   ```bash
-   # Check pod status
-   oc get pods -n summit-cap
-   
-   # Check services
-   oc get svc -n summit-cap
-   
-   # Check routes (OpenShift)
-   oc get routes -n summit-cap
-   
-   # View logs
-   oc logs -n summit-cap -l app=summit-cap-api
-   oc logs -n summit-cap -l app=summit-cap-ui
-   oc logs -n summit-cap -l app=summit-cap-db
-   ```
-
-   **Using Kubernetes CLI** (`kubectl` - alternative):
-   ```bash
-   # Check pod status
-   kubectl get pods -n summit-cap
-   
-   # Check services
-   kubectl get svc -n summit-cap
-   
-   # View logs
-   kubectl logs -n summit-cap -l app=summit-cap-api
-   kubectl logs -n summit-cap -l app=summit-cap-ui
-   kubectl logs -n summit-cap -l app=summit-cap-db
-   ```
-
-#### Upgrading a Deployment
-
-Using Makefile:
-```bash
-# Upgrade with new image tag
-make deploy IMAGE_TAG=v1.1.0
-
-# Upgrade with custom values
-make deploy HELM_EXTRA_ARGS="--set api.replicas=3"
-```
-
-Using Helm CLI:
-```bash
-cd deploy/helm/summit-cap
-
-# Upgrade with new values
-helm upgrade summit-cap . \
-  --namespace summit-cap \
-  --reuse-values \
-  --set api.image.tag=v1.1.0
-```
-
-#### Uninstalling
-
-Using Makefile:
-```bash
-make undeploy
-```
-
-Using OpenShift CLI (`oc`):
-```bash
-helm uninstall summit-cap --namespace summit-cap
-oc delete project summit-cap
-```
-
-Using Kubernetes CLI (`kubectl` - alternative):
-```bash
-helm uninstall summit-cap --namespace summit-cap
-kubectl delete namespace summit-cap
-```
-
-### Environment Configuration
-
-#### Development
-
-Create a `.env` file in the project root for local development:
+Create a `.env` file in the project root:
 
 ```env
 # Database
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/summit-cap
-DB_ECHO=false
+DATABASE_URL=postgresql+asyncpg://user:password@localhost:5433/summit-cap
+
+# LLM
+LLM_BASE_URL=http://localhost:1234/v1
+LLM_API_KEY=lm-studio
+
 # API
 DEBUG=true
-ALLOWED_HOSTS=["http://localhost:5173"]
+AUTH_DISABLED=true
+ALLOWED_HOSTS=["http://localhost:5173","http://localhost:3000"]
+
 # UI
 VITE_API_BASE_URL=http://localhost:8000
-VITE_ENVIRONMENT=development
 ```
 
-#### Production
-
-For production deployments:
-
-1. **Use OpenShift Secrets** (recommended):
-   - Secrets are managed via Helm values.yaml
-   - Never commit secrets to version control
-   - OpenShift provides additional security features like secret rotation
-
-2. **Use environment-specific values files**:
-   ```bash
-   # Create production values
-   cp deploy/helm/summit-cap/values.yaml deploy/helm/summit-cap/values.prod.yaml
-   
-   # Deploy with production values
-   helm install summit-cap . -f values.prod.yaml
-   ```
-
-3. **Configure resource limits**:
-   Edit `deploy/helm/summit-cap/values.yaml` to adjust CPU/memory limits based on your workload.
-
-### Production Considerations
-
-- **Database Backups**: Set up regular backups for PostgreSQL if database is enabled
-- **Monitoring**: Configure health checks and monitoring for all services
-- **Scaling**: Adjust replica counts in Helm values.yaml based on load
-- **Security**: 
-  - Use strong passwords and API keys
-  - Enable TLS/HTTPS for production
-  - Configure network policies
-  - Review security contexts in Helm templates
-- **High Availability**: Consider multi-replica deployments for critical services
-- **Resource Management**: Set appropriate CPU/memory limits based on your workload
-
-### Troubleshooting
-
-**Pods not starting**:
-
-Using OpenShift CLI (`oc`):
-```bash
-oc describe pod <pod-name> -n summit-cap
-oc logs <pod-name> -n summit-cap
-oc get events -n summit-cap --sort-by='.lastTimestamp'
-```
-
-Using Kubernetes CLI (`kubectl` - alternative):
-```bash
-kubectl describe pod <pod-name> -n summit-cap
-kubectl logs <pod-name> -n summit-cap
-kubectl get events -n summit-cap --sort-by='.lastTimestamp'
-```
-
-**Database connection issues**:
-- Verify database service is running: `oc get svc -n summit-cap` (or `kubectl get svc -n summit-cap`)
-- Check DATABASE_URL format matches your database configuration
-- Verify secrets are correctly set: `oc get secret -n summit-cap` (or `kubectl get secret -n summit-cap`)
-
-**Image pull errors**:
-- Verify image registry credentials
-- Check image pull policy in values.yaml
-- Ensure images are pushed to the registry
-
-For more details, see the [Helm chart documentation](deploy/helm/summit-cap/README.md) (if available) or the [Helm values file](deploy/helm/summit-cap/values.yaml).
-
-## Extending the Template
-
-This section covers how to customize and extend the template for your project.
-
-### Renaming the Project
-
-After creating a repository from this template, rename the project to match your application:
+## Container Deployment
 
 ```bash
-# Replace all occurrences of the template name with your project name
-# Example: renaming to "my-chatbot"
+# Build and start all services (API, UI, DB, MinIO, Keycloak, LangFuse)
+make containers-build && make containers-up
 
-# On macOS/Linux:
-find . -type f -not -path './.git/*' -exec sed -i '' 's/summit-cap/my-chatbot/g' {} +
-
-# Rename the Helm chart directory
-mv deploy/helm/summit-cap deploy/helm/my-chatbot
+# Check service status
+podman-compose ps
 ```
 
-**Files affected:**
-- `package.json` (root and all packages)
-- `compose.yml` and `.env.example`
-- Helm chart files in `deploy/helm/`
-- Python config files (`pyproject.toml`, `alembic.ini`)
-- UI components (`header.tsx`, `hero.tsx`, `index.html`)
+## OpenShift / Kubernetes Deployment
 
-### Quick Reference
+See [deploy/helm/summit-cap/README.md](deploy/helm/summit-cap/README.md) for Helm chart documentation.
 
-| Task | Location | Documentation |
-|------|----------|---------------|
-| Add API endpoint | `packages/api/src/routes/` | [API README](packages/api/README.md#adding-new-endpoints) |
-| Add UI page | `packages/ui/src/routes/` | [UI README](packages/ui/README.md#adding-new-routes) |
-| Add UI component | `packages/ui/src/components/` | [UI README](packages/ui/README.md#adding-new-components) |
-| Add database model | `packages/db/src/db/` | [DB README](packages/db/README.md#adding-new-models) |
-| Create migration | Run `pnpm db:migrate:new -m "message"` | [DB README](packages/db/README.md#migration-workflow) |
-| Add API integration | `packages/ui/src/services/` + `hooks/` | [UI README](packages/ui/README.md#adding-api-integration) |
+```bash
+# Deploy to OpenShift
+make deploy
 
-### Adding a New API Endpoint
-
-1. **Create schema** in `packages/api/src/schemas/your_resource.py`
-2. **Create route** in `packages/api/src/routes/your_resource.py`
-3. **Register router** in `packages/api/src/main.py`
-4. **Add tests** in `packages/api/tests/test_your_resource.py`
-
-See the [API README](packages/api/README.md#adding-new-endpoints) for detailed examples.
-
-### Adding a New UI Page
-
-TanStack Router uses file-based routing. Create a file in `packages/ui/src/routes/`:
-
-```typescript
-// packages/ui/src/routes/about.tsx
-import { createFileRoute } from '@tanstack/react-router';
-
-export const Route = createFileRoute('/about')({
-  component: About,
-});
-
-function About() {
-  return <div>About page</div>;
-}
+# Development mode (single replica, no persistence)
+make deploy-dev
 ```
 
-The route tree regenerates automatically during development. See the [UI README](packages/ui/README.md#adding-new-routes) for dynamic routes and layouts.
+## Package Documentation
 
-### Adding a Database Model
+| Package | README | Key Topics |
+|---------|--------|------------|
+| API | [packages/api/README.md](packages/api/README.md) | Routes, agents, schemas, WebSocket protocol, testing |
+| UI | [packages/ui/README.md](packages/ui/README.md) | Components, routing, state management, Storybook |
+| DB | [packages/db/README.md](packages/db/README.md) | Models, migrations, connection management |
 
-1. **Define model** in `packages/db/src/db/models.py`
-2. **Generate migration**: `pnpm db:migrate:new -m "add your_table"`
-3. **Review migration** in `packages/db/alembic/versions/`
-4. **Apply migration**: `pnpm db:migrate`
+## Additional Documentation
 
-See the [DB README](packages/db/README.md#adding-new-models) for model patterns and best practices.
-
-### Connecting UI to API
-
-This project uses a **hooks/services pattern** for API integration:
-
-1. **Create Zod schema** in `packages/ui/src/schemas/` for response validation
-2. **Create service** in `packages/ui/src/services/` for API calls
-3. **Create hook** in `packages/ui/src/hooks/` wrapping TanStack Query
-4. **Use hook in component** (never call services directly)
-
-```
-Component → Hook → TanStack Query → Service → API
-```
-
-See the [UI README](packages/ui/README.md#hooks-and-services-pattern) for detailed examples.
-
-### Package Documentation
-
-Each package has detailed documentation:
-
-- **[API README](packages/api/README.md)** - FastAPI backend: routes, schemas, testing, configuration
-- **[UI README](packages/ui/README.md)** - React frontend: routing, components, state management, Storybook
-- **[DB README](packages/db/README.md)** - PostgreSQL: models, migrations, connection management
+| Document | Description |
+|----------|-------------|
+| [WebSocket Protocol](docs/websocket-protocol.md) | Chat endpoint paths, authentication, message types |
+| [Response Patterns](docs/response-patterns.md) | API response envelope conventions |
+| [Architecture](plans/architecture.md) | System architecture and design decisions |
+| [Demo Walkthrough](plans/demo-walkthrough.md) | Guided demo script for all five personas |
 
 ## Testing
 
-This project uses **Vitest** for UI testing and **Pytest** for API testing.
-
-### Running Tests
-
 ```bash
-# Run all tests across packages
-pnpm test
+# Run all tests
+make test
 
-# Run specific package tests
-pnpm --filter ui test       # UI tests (Vitest)
-pnpm --filter api test      # API tests (Pytest)
-
-# Watch mode (UI only)
-cd packages/ui && pnpm test
+# Package-specific
+cd packages/api && uv run pytest -v          # 991 tests
+cd packages/ui && pnpm test:run              # UI tests
 ```
 
-### Test Locations
+| Package | Framework | Location |
+|---------|-----------|----------|
+| API | pytest | `packages/api/tests/` |
+| UI | Vitest + RTL | `packages/ui/src/**/*.test.tsx` |
 
-| Package | Framework | Test Location |
-|---------|-----------|---------------|
-| UI | Vitest + React Testing Library | `packages/ui/src/**/*.test.tsx` (co-located) |
-| API | Pytest | `packages/api/tests/` |
+## Technology Stack
 
-### Writing Tests
-
-See the individual package READMEs for detailed testing guides:
-- [UI Testing Guide](packages/ui/README.md#testing)
-- [API Testing Guide](packages/api/README.md#testing-patterns)
-
-## Learn More
-
-- [Turborepo](https://turbo.build/) - Monorepo build system
-- [TanStack Router](https://tanstack.com/router) - Type-safe routing
-- [FastAPI](https://fastapi.tiangolo.com/) - Modern Python web framework
-- [Alembic](https://alembic.sqlalchemy.org/) - Database migrations
-
----
-
-Generated with [AI QuickStart CLI](https://github.com/TheiaSurette/quickstart-cli)
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19, Vite, TanStack Router/Query, Tailwind CSS, shadcn/ui |
+| Backend | FastAPI, LangGraph, SQLAlchemy 2.0 (async), Pydantic 2.x |
+| Database | PostgreSQL 16 + pgvector |
+| Identity | Keycloak (OIDC) |
+| Observability | LangFuse (self-hosted) |
+| Object Storage | MinIO (S3-compatible) |
+| Deployment | Helm, OpenShift / Kubernetes |
+| Build | Turborepo, uv (Python), pnpm (Node.js) |

@@ -508,10 +508,10 @@ Every P0 feature from the product plan is mapped to at least one story ID.
 | F23 | OpenShift deployment (Helm) | S-5-F23-01, S-5-F23-02, S-5-F23-03, S-5-F23-04, S-5-F23-05 | ✓ |
 | F24 | Loan officer communication drafting | S-3-F24-01, S-3-F24-02, S-3-F24-03 | ✓ |
 | F25 | HMDA data isolation (four-stage) | S-1-F25-01, S-1-F25-02, S-1-F25-03, S-1-F25-04, S-1-F25-05 | ✓ |
-| F26 | Agent adversarial defenses | S-4-F26-01, S-4-F26-02, S-4-F26-03, S-4-F26-04 | ✓ |
+| F26 | Agent adversarial defenses | S-4-F26-01, S-4-F26-02, S-4-F26-03, S-4-F26-04 | Deferred (see `plans/deferred/f26-adversarial-defenses.md`) |
 | F27 | Rate lock tracking | S-2-F27-01, S-2-F27-02, S-2-F27-03 | ✓ |
 | F28 | Borrower condition response | S-2-F28-01, S-2-F28-02, S-2-F28-03 | ✓ |
-| F38 | TrustyAI fairness metrics | S-4-F38-01, S-4-F38-02, S-4-F38-03, S-4-F38-04 | ✓ |
+| F38 | TrustyAI fairness metrics | S-4-F38-01, S-4-F38-02, S-4-F38-03, S-4-F38-04 | Deferred (see `plans/deferred/f38-trustyai-metrics.md`) |
 | F39 | Model monitoring overlay | S-5-F39-01, S-5-F39-02, S-5-F39-03, S-5-F39-04, S-5-F39-05 | ✓ |
 
 **All 30 P0 features are covered.**

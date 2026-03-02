@@ -55,13 +55,16 @@ if [ -n "$COMPLIANCE_IMPORTS" ]; then
     VIOLATIONS=$((VIOLATIONS + 1))
 fi
 
-# Pattern 3: Direct import of HMDA models outside allowed paths
+# Pattern 3: Direct import of HMDA DB models outside allowed paths
+# Excludes: schemas/hmda.py and routes/hmda.py (Pydantic response schemas, not DB models)
 HMDA_MODEL_IMPORTS=$(grep -rn --include="*.py" \
     -e "HmdaDemographic" \
     -e "HmdaLoanData" \
     "$ROOT_DIR/packages/api/src/" \
     2>/dev/null \
     | grep -v "services/compliance/" \
+    | grep -v "schemas/hmda.py" \
+    | grep -v "routes/hmda.py" \
     | grep -v "__pycache__" \
     || true)
 

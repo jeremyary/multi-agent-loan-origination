@@ -19,12 +19,6 @@ from ..core.config import Settings
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_CONTENT_TYPES = {
-    "application/pdf",
-    "image/jpeg",
-    "image/png",
-}
-
 
 class StorageService:
     """Thin wrapper around a boto3 S3 client."""

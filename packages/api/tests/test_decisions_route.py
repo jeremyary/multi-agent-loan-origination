@@ -13,7 +13,7 @@ def _mock_decisions():
         {
             "id": 1,
             "application_id": 100,
-            "decision_type": "approve",
+            "decision_type": "approved",
             "rationale": "Strong financials",
             "ai_recommendation": "Approve",
             "ai_agreement": True,
@@ -90,6 +90,7 @@ class TestGetDecision:
         assert resp.status_code == 200
         body = resp.json()
         assert body["data"]["id"] == 1
+        assert body["data"]["decision_type"] == "approved"
         assert body["data"]["rationale"] == "Strong financials"
 
     def test_get_decision_not_found(self, client):

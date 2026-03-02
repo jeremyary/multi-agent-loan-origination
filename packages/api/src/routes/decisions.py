@@ -24,6 +24,7 @@ router = APIRouter()
                 UserRole.LOAN_OFFICER,
                 UserRole.UNDERWRITER,
                 UserRole.CEO,
+                UserRole.BORROWER,
             )
         )
     ],
@@ -33,7 +34,11 @@ async def list_decisions(
     user: CurrentUser,
     session: AsyncSession = Depends(get_db),
 ) -> DecisionListResponse:
-    """List all decisions for an application."""
+    """List all decisions for an application.
+
+    Borrowers see decisions scoped to their own applications via data scope
+    filtering in the service layer.
+    """
     result = await get_decisions(session, user, application_id)
     if result is None:
         raise HTTPException(
@@ -62,6 +67,7 @@ async def list_decisions(
                 UserRole.LOAN_OFFICER,
                 UserRole.UNDERWRITER,
                 UserRole.CEO,
+                UserRole.BORROWER,
             )
         )
     ],

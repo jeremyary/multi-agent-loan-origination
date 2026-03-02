@@ -21,8 +21,7 @@ from starlette.responses import Response
 
 logger = logging.getLogger(__name__)
 
-# Fields to mask and their masking functions
-_PII_FIELD_MASKERS: dict[str, Any] = {}
+# Fields to mask and their masking functions (defined below after masker functions)
 
 
 def mask_ssn(value: str | None) -> str | None:
@@ -113,12 +112,13 @@ class PIIMaskingMiddleware(BaseHTTPMiddleware):
             return response
 
         # Read full body from the streaming response
-        body_bytes = b""
+        chunks: list[bytes] = []
         async for chunk in response.body_iterator:
             if isinstance(chunk, str):
-                body_bytes += chunk.encode("utf-8")
+                chunks.append(chunk.encode("utf-8"))
             else:
-                body_bytes += chunk
+                chunks.append(chunk)
+        body_bytes = b"".join(chunks)
 
         try:
             data = json.loads(body_bytes)
@@ -127,9 +127,11 @@ class PIIMaskingMiddleware(BaseHTTPMiddleware):
         except (json.JSONDecodeError, TypeError):
             new_body = body_bytes
 
+        headers = dict(response.headers)
+        headers.pop("content-length", None)
         return Response(
             content=new_body,
             status_code=response.status_code,
-            headers=dict(response.headers),
+            headers=headers,
             media_type=response.media_type,
         )

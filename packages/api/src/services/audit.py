@@ -329,11 +329,16 @@ async def export_events(
     application_id: int | None = None,
     days: int | None = None,
     limit: int = 10_000,
+    pii_mask: bool = False,
 ) -> tuple[str, str]:
     """Export audit events as JSON or CSV.
 
     Returns (content_string, media_type).
+    When ``pii_mask`` is True, PII fields in ``event_data`` are masked before
+    serialization (covers CSV path which bypasses the HTTP PII middleware).
     """
+    from ..middleware.pii import _mask_pii_recursive
+
     stmt = select(AuditEvent)
 
     if application_id is not None:
@@ -347,6 +352,9 @@ async def export_events(
     events = list(result.scalars().all())
 
     rows = [_event_to_export_row(e) for e in events]
+
+    if pii_mask:
+        rows = [_mask_pii_recursive(row) for row in rows]
 
     if fmt == "csv":
         buf = io.StringIO()

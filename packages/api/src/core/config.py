@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
 
     # -- CORS --
-    ALLOWED_HOSTS: list[str] = ["http://localhost:5173"]
+    ALLOWED_HOSTS: list[str] = ["http://localhost:5173", "http://localhost:3000"]
 
     # -- Database --
     DATABASE_URL: str = Field(

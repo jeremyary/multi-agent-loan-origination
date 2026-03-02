@@ -7,7 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..middleware.auth import CurrentUser, require_roles
-from ..schemas.hmda import HmdaCollectionRequest, HmdaCollectionResponse
+from ..schemas.hmda import (
+    HmdaCollectionRequest,
+    HmdaCollectionResponse,
+    HmdaDemographicConflict,
+)
 from ..services.compliance.hmda import collect_demographics
 
 router = APIRouter()
@@ -44,5 +48,6 @@ async def collect_hmda(
 
     response = HmdaCollectionResponse.model_validate(demographic)
     if conflicts:
-        response = response.model_copy(update={"conflicts": conflicts})
+        typed_conflicts = [HmdaDemographicConflict(**c) for c in conflicts]
+        response = response.model_copy(update={"conflicts": typed_conflicts})
     return response
