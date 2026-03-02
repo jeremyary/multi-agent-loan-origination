@@ -403,8 +403,8 @@ class TestModelMonitoringEndpoints:
         assert response.status_code == 422
 
 
-class TestModelMonitoringEndpointsFunctional:
-    """Functional tests for model-monitoring endpoints with mock service layer."""
+class TestModelMonitoringErrorHandling:
+    """Route-layer error handling tests (503 paths not covered by functional tests)."""
 
     @pytest.fixture(autouse=True)
     def _clean(self):
@@ -423,36 +423,6 @@ class TestModelMonitoringEndpointsFunctional:
 
         configure_app_for_persona(app, ceo(), make_mock_session())
         return TestClient(app)
-
-    @patch("src.services.model_monitoring.fetch_observations", new_callable=AsyncMock)
-    def test_should_return_summary_when_langfuse_unconfigured(self, mock_fetch):
-        """GET /api/analytics/model-monitoring returns langfuse_available=false."""
-        mock_fetch.return_value = None
-        client = self._make_client()
-
-        response = client.get("/api/analytics/model-monitoring")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["langfuse_available"] is False
-        assert body["latency"] is None
-        assert body["time_range_hours"] == 24
-
-    @patch("src.services.model_monitoring.fetch_observations", new_callable=AsyncMock)
-    def test_should_return_full_summary_with_data(self, mock_fetch):
-        """GET /api/analytics/model-monitoring returns all metric panels."""
-        mock_fetch.return_value = _make_observations(5)
-        client = self._make_client()
-
-        response = client.get("/api/analytics/model-monitoring")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert body["langfuse_available"] is True
-        assert body["latency"] is not None
-        assert body["token_usage"] is not None
-        assert body["errors"] is not None
-        assert body["routing"] is not None
 
     @patch("src.services.model_monitoring.fetch_observations", new_callable=AsyncMock)
     def test_should_return_503_on_langfuse_http_error(self, mock_fetch):
@@ -483,60 +453,6 @@ class TestModelMonitoringEndpointsFunctional:
         assert response.status_code == 503
 
     @patch("src.services.model_monitoring.fetch_observations", new_callable=AsyncMock)
-    def test_should_return_latency_sub_endpoint(self, mock_fetch):
-        """GET /api/analytics/model-monitoring/latency returns latency panel."""
-        mock_fetch.return_value = _make_observations(3)
-        client = self._make_client()
-
-        response = client.get("/api/analytics/model-monitoring/latency")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert "p50_ms" in body
-        assert "p95_ms" in body
-        assert "p99_ms" in body
-
-    @patch("src.services.model_monitoring.fetch_observations", new_callable=AsyncMock)
-    def test_should_return_tokens_sub_endpoint(self, mock_fetch):
-        """GET /api/analytics/model-monitoring/tokens returns token panel."""
-        mock_fetch.return_value = _make_observations(3)
-        client = self._make_client()
-
-        response = client.get("/api/analytics/model-monitoring/tokens")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert "input_tokens" in body
-        assert "output_tokens" in body
-        assert "total_tokens" in body
-
-    @patch("src.services.model_monitoring.fetch_observations", new_callable=AsyncMock)
-    def test_should_return_errors_sub_endpoint(self, mock_fetch):
-        """GET /api/analytics/model-monitoring/errors returns error panel."""
-        mock_fetch.return_value = _make_observations(3)
-        client = self._make_client()
-
-        response = client.get("/api/analytics/model-monitoring/errors")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert "total_calls" in body
-        assert "error_rate" in body
-
-    @patch("src.services.model_monitoring.fetch_observations", new_callable=AsyncMock)
-    def test_should_return_routing_sub_endpoint(self, mock_fetch):
-        """GET /api/analytics/model-monitoring/routing returns routing panel."""
-        mock_fetch.return_value = _make_observations(3)
-        client = self._make_client()
-
-        response = client.get("/api/analytics/model-monitoring/routing")
-
-        assert response.status_code == 200
-        body = response.json()
-        assert "models" in body
-        assert "total_calls" in body
-
-    @patch("src.services.model_monitoring.fetch_observations", new_callable=AsyncMock)
     def test_should_return_503_on_sub_endpoint_when_langfuse_unconfigured(self, mock_fetch):
         """GET /api/analytics/model-monitoring/latency returns 503 when LangFuse not configured."""
         mock_fetch.return_value = None
@@ -545,22 +461,3 @@ class TestModelMonitoringEndpointsFunctional:
         response = client.get("/api/analytics/model-monitoring/latency")
 
         assert response.status_code == 503
-
-    def test_should_deny_non_ceo_roles(self):
-        """GET /api/analytics/model-monitoring returns 403 for borrower role."""
-        from fastapi.testclient import TestClient
-
-        from src.core.config import settings
-        from src.main import app
-        from tests.functional.mock_db import configure_app_for_persona, make_mock_session
-        from tests.functional.personas import borrower_sarah
-
-        original = settings.AUTH_DISABLED
-        settings.AUTH_DISABLED = False
-        try:
-            configure_app_for_persona(app, borrower_sarah(), make_mock_session())
-            client = TestClient(app)
-            response = client.get("/api/analytics/model-monitoring")
-            assert response.status_code == 403
-        finally:
-            settings.AUTH_DISABLED = original
