@@ -97,6 +97,30 @@
         { "type": "password", "value": "admin", "temporary": false }
       ],
       "realmRoles": ["admin"]
+    },
+    {
+      "id": "d1a2b3c4-e5f6-7890-abcd-ef1234567807",
+      "username": "sarah.patel",
+      "enabled": true,
+      "email": "sarah.patel@summit-cap.com",
+      "firstName": "Sarah",
+      "lastName": "Patel",
+      "credentials": [
+        { "type": "password", "value": "demo", "temporary": false }
+      ],
+      "realmRoles": ["loan_officer"]
+    },
+    {
+      "id": "d1a2b3c4-e5f6-7890-abcd-ef1234567808",
+      "username": "marcus.williams",
+      "enabled": true,
+      "email": "marcus.williams@summit-cap.com",
+      "firstName": "Marcus",
+      "lastName": "Williams",
+      "credentials": [
+        { "type": "password", "value": "demo", "temporary": false }
+      ],
+      "realmRoles": ["loan_officer"]
     }
   ]
 }

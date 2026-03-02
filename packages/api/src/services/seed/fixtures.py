@@ -41,12 +41,19 @@ ADMIN_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567805"
 # Co-borrower (spouse of Sarah Mitchell)
 JENNIFER_MITCHELL_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567806"
 
+# Additional loan officers
+SARAH_PATEL_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567807"
+MARCUS_WILLIAMS_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567808"
+
 # Fictional borrowers (not in Keycloak -- only used for historical loan data)
 MICHAEL_JOHNSON_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567811"
 EMILY_RODRIGUEZ_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567812"
 ROBERT_KIM_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567813"
 LISA_WASHINGTON_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567814"
 THOMAS_NGUYEN_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567815"
+AMANDA_FOSTER_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567816"
+DANIEL_RAMIREZ_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567817"
+PATRICIA_CHANG_ID = "d1a2b3c4-e5f6-7890-abcd-ef1234567818"
 
 
 # ---------------------------------------------------------------------------
@@ -125,17 +132,41 @@ BORROWERS: list[dict] = [
         "ssn": "ENC:519-41-7763",
         "dob": datetime(1979, 7, 14, tzinfo=UTC),
     },
+    {
+        "keycloak_user_id": AMANDA_FOSTER_ID,
+        "first_name": "Amanda",
+        "last_name": "Foster",
+        "email": "amanda.foster@example.com",
+        "ssn": "ENC:637-28-5104",
+        "dob": datetime(1985, 4, 19, tzinfo=UTC),
+    },
+    {
+        "keycloak_user_id": DANIEL_RAMIREZ_ID,
+        "first_name": "Daniel",
+        "last_name": "Ramirez",
+        "email": "daniel.ramirez@example.com",
+        "ssn": "ENC:842-93-6271",
+        "dob": datetime(1991, 8, 2, tzinfo=UTC),
+    },
+    {
+        "keycloak_user_id": PATRICIA_CHANG_ID,
+        "first_name": "Patricia",
+        "last_name": "Chang",
+        "email": "patricia.chang@example.com",
+        "ssn": "ENC:215-76-3948",
+        "dob": datetime(1987, 12, 11, tzinfo=UTC),
+    },
 ]
 
 # ---------------------------------------------------------------------------
-# Active applications (8) -- assigned to james.torres (loan officer)
+# Active applications (10) -- distributed across 3 loan officers
 # ---------------------------------------------------------------------------
 
 # borrower_ref is the keycloak_user_id of the borrower; the seeder resolves
 # it to the borrower.id FK at insert time.
 
 ACTIVE_APPLICATIONS: list[dict] = [
-    # --- 3 in APPLICATION stage ---
+    # --- 4 in APPLICATION stage ---
     {
         "borrower_ref": SARAH_MITCHELL_ID,
         "co_borrower_refs": [JENNIFER_MITCHELL_ID],
@@ -166,7 +197,7 @@ ACTIVE_APPLICATIONS: list[dict] = [
         "property_address": "5678 Oak Avenue, Aurora, CO 80012",
         "loan_amount": Decimal("245000.00"),
         "property_value": Decimal("275000.00"),
-        "assigned_to": JAMES_TORRES_ID,
+        "assigned_to": SARAH_PATEL_ID,
         "created_at": _days_ago(10),
         "financials": {
             "gross_monthly_income": Decimal("6200.00"),
@@ -204,7 +235,29 @@ ACTIVE_APPLICATIONS: list[dict] = [
             },
         ],
     },
-    # --- 2 in UNDERWRITING stage ---
+    {
+        "borrower_ref": AMANDA_FOSTER_ID,
+        "stage": ApplicationStage.APPLICATION,
+        "loan_type": LoanType.ARM,
+        "property_address": "2100 Cherry Creek Drive, Denver, CO 80209",
+        "loan_amount": Decimal("360000.00"),
+        "property_value": Decimal("420000.00"),
+        "assigned_to": MARCUS_WILLIAMS_ID,
+        "created_at": _days_ago(5),
+        "financials": {
+            "gross_monthly_income": Decimal("9200.00"),
+            "monthly_debts": Decimal("2100.00"),
+            "total_assets": Decimal("78000.00"),
+            "credit_score": 735,
+            "dti_ratio": 0.228,
+        },
+        "documents": [
+            {"doc_type": DocumentType.W2, "status": DocumentStatus.UPLOADED},
+            {"doc_type": DocumentType.PAY_STUB, "status": DocumentStatus.UPLOADED},
+            {"doc_type": DocumentType.TAX_RETURN, "status": DocumentStatus.PENDING_REVIEW},
+        ],
+    },
+    # --- 3 in UNDERWRITING stage ---
     {
         "borrower_ref": ROBERT_KIM_ID,
         "stage": ApplicationStage.UNDERWRITING,
@@ -212,7 +265,7 @@ ACTIVE_APPLICATIONS: list[dict] = [
         "property_address": "2345 Birch Court, Boulder, CO 80301",
         "loan_amount": Decimal("475000.00"),
         "property_value": Decimal("550000.00"),
-        "assigned_to": JAMES_TORRES_ID,
+        "assigned_to": MARCUS_WILLIAMS_ID,
         "created_at": _days_ago(28),
         "financials": {
             "gross_monthly_income": Decimal("12000.00"),
@@ -286,6 +339,44 @@ ACTIVE_APPLICATIONS: list[dict] = [
             },
         ],
     },
+    {
+        "borrower_ref": DANIEL_RAMIREZ_ID,
+        "stage": ApplicationStage.UNDERWRITING,
+        "loan_type": LoanType.USDA,
+        "property_address": "4520 Prairie View Road, Greeley, CO 80634",
+        "loan_amount": Decimal("265000.00"),
+        "property_value": Decimal("280000.00"),
+        "assigned_to": SARAH_PATEL_ID,
+        "created_at": _days_ago(18),
+        "financials": {
+            "gross_monthly_income": Decimal("7100.00"),
+            "monthly_debts": Decimal("1950.00"),
+            "total_assets": Decimal("35000.00"),
+            "credit_score": 695,
+            "dti_ratio": 0.275,
+        },
+        "documents": [
+            {"doc_type": DocumentType.W2, "status": DocumentStatus.ACCEPTED},
+            {"doc_type": DocumentType.PAY_STUB, "status": DocumentStatus.ACCEPTED},
+            {"doc_type": DocumentType.BANK_STATEMENT, "status": DocumentStatus.ACCEPTED},
+            {"doc_type": DocumentType.TAX_RETURN, "status": DocumentStatus.PENDING_REVIEW},
+            {"doc_type": DocumentType.ID, "status": DocumentStatus.ACCEPTED},
+        ],
+        "conditions": [
+            {
+                "description": "USDA property eligibility verification required",
+                "severity": ConditionSeverity.PRIOR_TO_APPROVAL,
+                "status": ConditionStatus.OPEN,
+                "issued_by": MARIA_CHEN_ID,
+            },
+            {
+                "description": "Income must not exceed 115% of area median for USDA eligibility",
+                "severity": ConditionSeverity.PRIOR_TO_APPROVAL,
+                "status": ConditionStatus.RESPONDED,
+                "issued_by": MARIA_CHEN_ID,
+            },
+        ],
+    },
     # --- 2 in CONDITIONAL_APPROVAL stage ---
     {
         "borrower_ref": MICHAEL_JOHNSON_ID,
@@ -295,7 +386,7 @@ ACTIVE_APPLICATIONS: list[dict] = [
         "property_address": "3456 Cedar Boulevard, Cherry Hills Village, CO 80113",
         "loan_amount": Decimal("650000.00"),
         "property_value": Decimal("820000.00"),
-        "assigned_to": JAMES_TORRES_ID,
+        "assigned_to": SARAH_PATEL_ID,
         "created_at": _days_ago(42),
         "financials": {
             "gross_monthly_income": Decimal("18000.00"),
@@ -348,7 +439,7 @@ ACTIVE_APPLICATIONS: list[dict] = [
         "property_address": "7890 Spruce Way, Centennial, CO 80112",
         "loan_amount": Decimal("350000.00"),
         "property_value": Decimal("425000.00"),
-        "assigned_to": JAMES_TORRES_ID,
+        "assigned_to": MARCUS_WILLIAMS_ID,
         "created_at": _days_ago(35),
         "financials": {
             "gross_monthly_income": Decimal("10500.00"),
@@ -400,7 +491,7 @@ ACTIVE_APPLICATIONS: list[dict] = [
         "property_address": "4567 Aspen Ridge, Highlands Ranch, CO 80129",
         "loan_amount": Decimal("425000.00"),
         "property_value": Decimal("510000.00"),
-        "assigned_to": JAMES_TORRES_ID,
+        "assigned_to": SARAH_PATEL_ID,
         "created_at": _days_ago(60),
         "financials": {
             "gross_monthly_income": Decimal("8500.00"),
@@ -461,6 +552,7 @@ ACTIVE_APPLICATIONS: list[dict] = [
 
 # ---------------------------------------------------------------------------
 # Historical (closed) loans -- 20 total: 16 approved, 4 denied
+# Distributed across 3 loan officers; loan types include all 7 products.
 # ---------------------------------------------------------------------------
 
 _HISTORICAL_ADDRESSES = [
@@ -493,6 +585,16 @@ _HISTORICAL_BORROWER_REFS = [
     ROBERT_KIM_ID,
     LISA_WASHINGTON_ID,
     THOMAS_NGUYEN_ID,
+    AMANDA_FOSTER_ID,
+    DANIEL_RAMIREZ_ID,
+    PATRICIA_CHANG_ID,
+]
+
+# Loan officers cycle to give each LO a meaningful historical portfolio
+_HISTORICAL_LO_REFS = [
+    JAMES_TORRES_ID,
+    SARAH_PATEL_ID,
+    MARCUS_WILLIAMS_ID,
 ]
 
 HISTORICAL_LOANS: list[dict] = []
@@ -500,12 +602,15 @@ HISTORICAL_LOANS: list[dict] = []
 # 16 approved historical loans
 for i in range(16):
     _borrower_ref = _HISTORICAL_BORROWER_REFS[i % len(_HISTORICAL_BORROWER_REFS)]
+    _lo_ref = _HISTORICAL_LO_REFS[i % len(_HISTORICAL_LO_REFS)]
     _loan_types = [
         LoanType.CONVENTIONAL_30,
         LoanType.CONVENTIONAL_15,
         LoanType.FHA,
         LoanType.VA,
         LoanType.JUMBO,
+        LoanType.USDA,
+        LoanType.ARM,
     ]
     _created = _days_ago(180 - (i * 10))
     _loan_amount = Decimal(str(200000 + i * 25000))
@@ -537,7 +642,7 @@ for i in range(16):
             "property_address": _HISTORICAL_ADDRESSES[i],
             "loan_amount": _loan_amount,
             "property_value": _property_value,
-            "assigned_to": JAMES_TORRES_ID,
+            "assigned_to": _lo_ref,
             "created_at": _created,
             "financials": {
                 "gross_monthly_income": Decimal(str(7000 + i * 500)),
@@ -569,7 +674,7 @@ for i in range(16):
         }
     )
 
-# 4 denied historical loans
+# 4 denied historical loans -- spread across LOs and loan types
 _DENIAL_REASONS = [
     "Debt-to-income ratio exceeds 43% threshold. Monthly obligations are disproportionate to income.",
     "Credit score of 612 falls below minimum program requirement of 620.",
@@ -577,8 +682,16 @@ _DENIAL_REASONS = [
     "Property appraisal came in significantly below purchase price. LTV exceeds program limits.",
 ]
 
+_DENIAL_LOAN_TYPES = [
+    LoanType.CONVENTIONAL_30,
+    LoanType.FHA,
+    LoanType.USDA,
+    LoanType.ARM,
+]
+
 for i in range(4):
     _borrower_ref = _HISTORICAL_BORROWER_REFS[i % len(_HISTORICAL_BORROWER_REFS)]
+    _lo_ref = _HISTORICAL_LO_REFS[i % len(_HISTORICAL_LO_REFS)]
     _idx = 16 + i
     _created = _days_ago(150 - (i * 15))
     _loan_amount = Decimal(str(250000 + i * 30000))
@@ -589,11 +702,11 @@ for i in range(4):
         {
             "borrower_ref": _borrower_ref,
             "stage": ApplicationStage.DENIED,
-            "loan_type": LoanType.CONVENTIONAL_30,
+            "loan_type": _DENIAL_LOAN_TYPES[i],
             "property_address": _HISTORICAL_ADDRESSES[_idx],
             "loan_amount": _loan_amount,
             "property_value": _property_value,
-            "assigned_to": JAMES_TORRES_ID,
+            "assigned_to": _lo_ref,
             "created_at": _created,
             "financials": {
                 "gross_monthly_income": Decimal(str(5500 + i * 300)),
@@ -620,7 +733,7 @@ for i in range(4):
 
 
 # ---------------------------------------------------------------------------
-# HMDA demographics -- one per application (28 total: 8 active + 20 historical)
+# HMDA demographics -- one per application (30 total: 10 active + 20 historical)
 # ---------------------------------------------------------------------------
 
 # Distribution: ~40% White, ~20% Black, ~15% Hispanic, ~15% Asian, ~10% Other
@@ -628,22 +741,22 @@ for i in range(4):
 # These are applied in order to all applications (active first, then historical)
 
 _RACE_DIST = (
-    ["White"] * 11
+    ["White"] * 12
     + ["Black or African American"] * 6
-    + ["Asian"] * 4
+    + ["Asian"] * 5
     + ["Native Hawaiian or Other Pacific Islander"] * 2
     + ["American Indian or Alaska Native"] * 2
     + ["Two or More Races"] * 3
 )
 
-_ETHNICITY_DIST = ["Not Hispanic or Latino"] * 24 + ["Hispanic or Latino"] * 4
+_ETHNICITY_DIST = ["Not Hispanic or Latino"] * 26 + ["Hispanic or Latino"] * 4
 
-_SEX_DIST = ["Male"] * 14 + ["Female"] * 13 + ["Prefer not to say"] * 1
+_SEX_DIST = ["Male"] * 15 + ["Female"] * 14 + ["Prefer not to say"] * 1
 
-_AGE_DIST = ["25-34"] * 8 + ["35-44"] * 10 + ["45-54"] * 6 + ["55-64"] * 4
+_AGE_DIST = ["25-34"] * 9 + ["35-44"] * 11 + ["45-54"] * 6 + ["55-64"] * 4
 
 HMDA_DEMOGRAPHICS: list[dict] = []
-for i in range(28):
+for i in range(30):
     HMDA_DEMOGRAPHICS.append(
         {
             "application_index": i,  # resolved at seed time to actual application_id

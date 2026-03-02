@@ -53,21 +53,21 @@ def _make_app(user: UserContext = _ADMIN_USER):
 
 
 def test_fixture_borrower_count():
-    """Fixture defines 7 borrowers (1 real + 1 co-borrower + 5 fictional)."""
-    assert len(BORROWERS) == 7
+    """Fixture defines 10 borrowers (1 real + 1 co-borrower + 8 fictional)."""
+    assert len(BORROWERS) == 10
 
 
 def test_fixture_active_application_count():
-    """Fixture defines 8 active applications."""
-    assert len(ACTIVE_APPLICATIONS) == 8
+    """Fixture defines 10 active applications."""
+    assert len(ACTIVE_APPLICATIONS) == 10
 
 
 def test_fixture_active_stage_distribution():
-    """Active applications distributed: 3 application, 2 underwriting,
+    """Active applications distributed: 4 application, 3 underwriting,
     2 conditional_approval, 1 clear_to_close."""
     stages = [a["stage"] for a in ACTIVE_APPLICATIONS]
-    assert stages.count(ApplicationStage.APPLICATION) == 3
-    assert stages.count(ApplicationStage.UNDERWRITING) == 2
+    assert stages.count(ApplicationStage.APPLICATION) == 4
+    assert stages.count(ApplicationStage.UNDERWRITING) == 3
     assert stages.count(ApplicationStage.CONDITIONAL_APPROVAL) == 2
     assert stages.count(ApplicationStage.CLEAR_TO_CLOSE) == 1
 
@@ -82,8 +82,30 @@ def test_fixture_historical_loan_count():
 
 
 def test_fixture_hmda_demographics_count():
-    """Fixture defines 28 HMDA demographics (8 active + 20 historical)."""
-    assert len(HMDA_DEMOGRAPHICS) == 28
+    """Fixture defines 30 HMDA demographics (10 active + 20 historical)."""
+    assert len(HMDA_DEMOGRAPHICS) == 30
+
+
+def test_fixture_active_apps_use_multiple_loan_officers():
+    """Active applications are distributed across 3 loan officers."""
+    from src.services.seed.fixtures import (
+        JAMES_TORRES_ID,
+        MARCUS_WILLIAMS_ID,
+        SARAH_PATEL_ID,
+    )
+
+    los = {a["assigned_to"] for a in ACTIVE_APPLICATIONS}
+    assert los == {JAMES_TORRES_ID, SARAH_PATEL_ID, MARCUS_WILLIAMS_ID}
+
+
+def test_fixture_all_loan_types_represented():
+    """All 7 loan types appear across active + historical applications."""
+    from db.enums import LoanType
+
+    all_apps = ACTIVE_APPLICATIONS + HISTORICAL_LOANS
+    loan_types_used = {a["loan_type"] for a in all_apps}
+    for lt in LoanType:
+        assert lt in loan_types_used, f"{lt.value} not represented in seed data"
 
 
 def test_fixture_hmda_protected_class_representation():
@@ -147,7 +169,7 @@ async def test_seed_creates_borrowers():
     from db import Borrower
 
     borrower_adds = [o for o in added_objects if isinstance(o, Borrower)]
-    assert len(borrower_adds) == 7
+    assert len(borrower_adds) == 10
 
     from src.services.seed.fixtures import MICHAEL_JOHNSON_ID, SARAH_MITCHELL_ID
 
