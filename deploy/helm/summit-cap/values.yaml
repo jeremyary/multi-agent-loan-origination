@@ -1,4 +1,13 @@
 # Default values for summit-cap
+#
+# Override patterns:
+#   External DB:        --set database.enabled=false
+#                       --set secrets.DATABASE_URL=postgresql+asyncpg://...
+#   External Keycloak:  --set keycloak.enabled=false
+#                       --set secrets.KEYCLOAK_URL=https://...
+#   External MinIO/S3:  --set minio.enabled=false
+#                       --set secrets.S3_ENDPOINT=https://...
+#   Dev mode:           -f values-dev.yaml
 global:
   imageRegistry: quay.io
   imageRepository: summit-cap
@@ -6,7 +15,7 @@ global:
   imagePullPolicy: Always
   storageClass: ""
 
-# Secrets configuration - these values should be overridden with actual secrets
+# Secrets -- override these for real deployments via --set or external Secret
 secrets:
   # Database secrets
   POSTGRES_DB: "summit-cap"
