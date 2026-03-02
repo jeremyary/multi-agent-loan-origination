@@ -81,9 +81,9 @@ def log_observability_status() -> None:
     from .core.config import settings
 
     if settings.LANGFUSE_PUBLIC_KEY and settings.LANGFUSE_SECRET_KEY:
-        logger.warning(
+        logger.info(
             "LangFuse tracing: ACTIVE (host=%s)",
             settings.LANGFUSE_HOST or "https://cloud.langfuse.com",
         )
     else:
-        logger.warning("LangFuse tracing: DISABLED (keys not configured)")
+        logger.info("LangFuse tracing: DISABLED (keys not configured)")

@@ -21,6 +21,15 @@ class HmdaCollectionRequest(BaseModel):
     age_collected_method: str = Field(default="self_reported")
 
 
+class HmdaDemographicConflict(BaseModel):
+    """A single conflict detected during HMDA demographic collection."""
+
+    field: str
+    existing_value: str | None = None
+    new_value: str | None = None
+    resolution: str | None = None
+
+
 class HmdaCollectionResponse(BaseModel):
     """Response after collecting HMDA demographic data."""
 
@@ -30,5 +39,5 @@ class HmdaCollectionResponse(BaseModel):
     application_id: int
     borrower_id: int | None = None
     collected_at: datetime
-    conflicts: list[dict] | None = None
+    conflicts: list[HmdaDemographicConflict] | None = None
     status: str = "collected"

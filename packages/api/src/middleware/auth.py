@@ -19,7 +19,7 @@ from fastapi import Depends, HTTPException, Request, status
 
 from ..core.auth import build_data_scope
 from ..core.config import settings
-from ..schemas.auth import DataScope, TokenPayload, UserContext
+from ..schemas.auth import TokenPayload, UserContext
 
 logger = logging.getLogger(__name__)
 
@@ -143,23 +143,35 @@ __all__ = ["build_data_scope"]
 # FastAPI dependencies
 # ---------------------------------------------------------------------------
 
-_DISABLED_USER = UserContext(
-    user_id="dev-user",
-    role=UserRole.ADMIN,
-    email="dev@summit-cap.local",
-    name="Dev User",
-    data_scope=DataScope(full_pipeline=True),
-)
+_DEV_ROLE_MAP = {r.value: r for r in UserRole}
+
+
+def _build_dev_user(role: UserRole) -> UserContext:
+    """Build a dev user context for the given role."""
+    return UserContext(
+        user_id="dev-user",
+        role=role,
+        email="dev@summit-cap.local",
+        name=f"Dev {role.value.replace('_', ' ').title()}",
+        data_scope=build_data_scope(role, "dev-user"),
+    )
 
 
 async def get_current_user(request: Request) -> UserContext:
     """FastAPI dependency: validate JWT and return UserContext.
 
-    When AUTH_DISABLED=true, returns a dev admin user without token validation.
+    When AUTH_DISABLED=true, returns a dev user without token validation.
+    The role defaults to ADMIN but can be overridden with the ``X-Dev-Role``
+    header (e.g., ``X-Dev-Role: borrower``) for testing per-role UI views.
     """
     if settings.AUTH_DISABLED:
-        request.state.pii_mask = _DISABLED_USER.data_scope.pii_mask
-        return _DISABLED_USER
+        role_header = request.headers.get("x-dev-role")
+        if role_header and role_header.lower() in _DEV_ROLE_MAP:
+            dev_user = _build_dev_user(_DEV_ROLE_MAP[role_header.lower()])
+        else:
+            dev_user = _build_dev_user(UserRole.ADMIN)
+        request.state.pii_mask = dev_user.data_scope.pii_mask
+        return dev_user
 
     token = _extract_token(request)
     if not token:

@@ -23,8 +23,11 @@ src/
     borrower_chat.py   # Borrower WebSocket chat (authenticated) + history
     loan_officer_chat.py  # Loan officer WebSocket chat + history
     underwriter_chat.py   # Underwriter WebSocket chat + history
+    ceo_chat.py        # CEO WebSocket chat + history
     admin.py           # Admin endpoints (seed, audit, verification)
     hmda.py            # HMDA demographics collection (isolated schema)
+    analytics.py       # Pipeline, denial trends, LO performance analytics
+    model_monitoring.py   # Model latency, tokens, errors, routing metrics
     _chat_handler.py   # Shared WebSocket streaming logic
   schemas/             # Pydantic request/response models
   services/            # Business logic layer
@@ -39,6 +42,7 @@ src/
     underwriter_tools.py   # UW tools (queue, risk, conditions, application detail)
     decision_tools.py  # Decision tools (propose, confirm, LE/CD, adverse action)
     compliance_check_tool.py  # Compliance check tool (ECOA, ATR/QM, TRID)
+    ceo_tools.py       # CEO tools (pipeline summary, analytics, model monitoring)
   inference/           # LLM client, model routing, safety shields
 tests/
   test_*.py            # Unit tests
@@ -94,10 +98,23 @@ tests/
 - `GET /api/audit/verify` - Verify hash chain integrity (admin only)
 - `GET /api/audit/export?fmt=json|csv` - Export audit trail (admin + CEO + underwriter)
 
+### Analytics (admin + CEO)
+- `GET /api/analytics/pipeline?days=` - Pipeline summary metrics (application counts by status, stage distribution, urgency breakdown)
+- `GET /api/analytics/denial-trends?days=&product=` - Denial reason trends over time (filterable by product)
+- `GET /api/analytics/lo-performance?days=&product=` - Loan officer performance metrics (volume, cycle time, approval rates)
+
+### Model Monitoring (admin + CEO)
+- `GET /api/analytics/model-monitoring?hours=&model=` - Aggregated model metrics (filterable by time window and model name)
+- `GET /api/analytics/model-monitoring/latency` - Model response latency breakdown
+- `GET /api/analytics/model-monitoring/tokens` - Token usage by model and request type
+- `GET /api/analytics/model-monitoring/errors` - Model error rates and failure categories
+- `GET /api/analytics/model-monitoring/routing` - Model routing decisions and tier distribution
+
 ### Conversation History (authenticated)
 - `GET /api/borrower/conversations/history` - Borrower conversation history
 - `GET /api/loan-officer/conversations/history` - Loan officer conversation history
 - `GET /api/underwriter/conversations/history` - Underwriter conversation history
+- `GET /api/ceo/conversations/history` - CEO conversation history
 
 ## WebSocket Protocol
 
@@ -124,6 +141,12 @@ ws://host/api/loan-officer/chat?token=<jwt>
 ws://host/api/underwriter/chat?token=<jwt>
 ```
 
+**CEO Chat (authenticated):**
+```
+ws://host/api/ceo/chat?token=<jwt>
+```
+Requires `ceo` role. All responses apply PII masking.
+
 JWT passed via query parameter for all authenticated endpoints. Thread ID is deterministic (`user:{userId}:agent:{agent-name}`). Conversations persist via PostgreSQL checkpoint.
 
 When `AUTH_DISABLED=true`, returns a development user.
@@ -149,7 +172,7 @@ Tokens stream incrementally as the LLM generates responses. `done` signals end o
 
 ## Agents
 
-Four LangGraph agents, each with role-scoped tools and YAML config (`config/agents/`):
+Five LangGraph agents, each with role-scoped tools and YAML config (`config/agents/`):
 
 | Agent | Role | Tools |
 |-------|------|-------|
@@ -157,6 +180,7 @@ Four LangGraph agents, each with role-scoped tools and YAML config (`config/agen
 | `borrower-assistant` | borrower | Application intake, doc upload, status, disclosures |
 | `loan-officer-assistant` | loan_officer | Pipeline, workflow actions, communication drafting |
 | `underwriter-assistant` | underwriter | Queue, risk assessment, conditions, decisions, compliance checks |
+| `ceo-assistant` | ceo | Pipeline summary, denial trends, LO performance, application lookup, audit trail, decision trace, audit search, model latency, model token usage, model errors, model routing, product info |
 
 All agents share a common base graph (`agents/base.py`) with input/output safety shields, rule-based model routing (fast/capable tiers), and tool-level RBAC enforcement.
 

@@ -290,16 +290,14 @@ async def add_borrower(
     if dup_result.scalar_one_or_none() is not None:
         raise ValueError("Borrower already linked to this application")
 
-    # Create junction row
+    # Create junction row and write audit event in a single commit
     junction = ApplicationBorrower(
         application_id=application_id,
         borrower_id=borrower_id,
         is_primary=is_primary,
     )
     session.add(junction)
-    await session.commit()
 
-    # Write audit event
     await audit.write_audit_event(
         session,
         event_type="co_borrower_added",
@@ -363,11 +361,9 @@ async def remove_borrower(
     if junction.is_primary:
         raise ValueError("Cannot remove the primary borrower. Reassign primary first.")
 
-    # Delete junction row
+    # Delete junction row and write audit event in a single commit
     await session.delete(junction)
-    await session.commit()
 
-    # Write audit event
     await audit.write_audit_event(
         session,
         event_type="co_borrower_removed",

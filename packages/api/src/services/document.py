@@ -154,7 +154,7 @@ async def upload_document(
     filename: str,
     content_type: str,
     file_data: bytes,
-) -> Document:
+) -> Document | None:
     """Upload a document to S3 and create the DB record.
 
     1. Verify user has access to the application (via data scope query)

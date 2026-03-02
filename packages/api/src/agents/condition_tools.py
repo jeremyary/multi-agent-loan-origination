@@ -10,7 +10,6 @@ Design note -- session-per-tool-call:
     for rationale.
 """
 
-import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -28,8 +27,6 @@ from ..services.condition import (
     waive_condition,
 )
 from .shared import format_enum_label, user_context_from_state
-
-logger = logging.getLogger(__name__)
 
 _SEVERITY_MAP = {s.value: s for s in ConditionSeverity}
 

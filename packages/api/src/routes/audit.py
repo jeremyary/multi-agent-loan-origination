@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ..middleware.auth import require_roles
+from ..middleware.auth import CurrentUser, require_roles
 from ..schemas.audit import (
     AuditByApplicationResponse,
     AuditByDecisionResponse,
@@ -165,6 +165,7 @@ async def verify_audit(
     dependencies=[Depends(require_roles(UserRole.ADMIN, UserRole.CEO, UserRole.UNDERWRITER))],
 )
 async def audit_export(
+    user: CurrentUser,
     fmt: str = Query(default="json", pattern="^(json|csv)$", description="Export format"),
     application_id: int | None = Query(default=None, description="Filter by application"),
     days: int | None = Query(default=None, ge=1, le=365, description="Time range in days"),
@@ -173,20 +174,25 @@ async def audit_export(
 ) -> Response:
     """Export audit trail as CSV or JSON (S-5-F15-07).
 
-    PII masking is applied by the PIIMaskingMiddleware for CEO role.
+    PII masking is applied by the PIIMaskingMiddleware for JSON responses.
+    For CSV format, PII masking is applied in the service layer before serialization.
     """
+    pii_mask = getattr(user.data_scope, "pii_mask", False)
     content, media_type = await export_events(
         session,
         fmt=fmt,
         application_id=application_id,
         days=days,
         limit=limit,
+        pii_mask=pii_mask,
     )
 
     # Log the export event to the audit trail
     await write_audit_event(
         session,
         event_type="data_access",
+        user_id=user.user_id,
+        user_role=user.role.value,
         event_data={
             "action": "audit_export",
             "format": fmt,
