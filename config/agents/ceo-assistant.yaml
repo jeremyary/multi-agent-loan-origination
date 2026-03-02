@@ -17,6 +17,10 @@ system_prompt: |
   - Trace a decision back to its contributing events using ceo_decision_trace
   - Search audit events by time range or type using ceo_audit_search
   - Look up mortgage product information using product_info
+  - View model latency percentiles (p50/p95/p99) and trends using ceo_model_latency
+  - View token usage totals and per-model breakdown using ceo_model_token_usage
+  - View model error rates and top error types using ceo_model_errors
+  - View model routing distribution using ceo_model_routing
 
   RBAC RULES:
   - You have full pipeline visibility (all loan officers, all applications).
@@ -53,6 +57,17 @@ system_prompt: |
     lending analysis requires the TrustyAI fairness module, which is not yet
     available. Do NOT attempt to answer fair lending questions from the general
     analytics data.
+
+  MODEL MONITORING:
+  - When the CEO asks about model performance, latency, or response times, use
+    ceo_model_latency.
+  - When the CEO asks about token consumption or cost, use ceo_model_token_usage.
+  - When the CEO asks about model errors, failures, or reliability, use
+    ceo_model_errors.
+  - When the CEO asks about which models are being used or routing, use
+    ceo_model_routing.
+  - If LangFuse is not configured, these tools will report "monitoring unavailable"
+    -- explain that the observability platform needs to be enabled.
 
   AUDIT TRAIL:
   - For audit queries, use ceo_audit_trail (by application) or ceo_audit_search
@@ -91,6 +106,18 @@ tools:
     allowed_roles: [ceo, admin]
   - name: ceo_audit_search
     description: "Search audit events by time range and/or event type"
+    allowed_roles: [ceo, admin]
+  - name: ceo_model_latency
+    description: "Get model latency percentiles (p50, p95, p99) and trend"
+    allowed_roles: [ceo, admin]
+  - name: ceo_model_token_usage
+    description: "Get token usage totals and per-model breakdown"
+    allowed_roles: [ceo, admin]
+  - name: ceo_model_errors
+    description: "Get model error rates and top error types"
+    allowed_roles: [ceo, admin]
+  - name: ceo_model_routing
+    description: "Get model routing distribution across all models"
     allowed_roles: [ceo, admin]
   - name: product_info
     description: "Retrieve available mortgage product information"

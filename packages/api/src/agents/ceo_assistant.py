@@ -3,7 +3,8 @@
 
 Tools: ceo_pipeline_summary, ceo_denial_trends, ceo_lo_performance,
 ceo_application_lookup, ceo_audit_trail, ceo_decision_trace,
-ceo_audit_search, product_info.
+ceo_audit_search, ceo_model_latency, ceo_model_token_usage,
+ceo_model_errors, ceo_model_routing, product_info.
 """
 
 from typing import Any
@@ -16,6 +17,10 @@ from .ceo_tools import (
     ceo_decision_trace,
     ceo_denial_trends,
     ceo_lo_performance,
+    ceo_model_errors,
+    ceo_model_latency,
+    ceo_model_routing,
+    ceo_model_token_usage,
     ceo_pipeline_summary,
 )
 from .tools import product_info
@@ -33,6 +38,10 @@ def build_graph(config: dict[str, Any], checkpointer=None):
             ceo_audit_trail,
             ceo_decision_trace,
             ceo_audit_search,
+            ceo_model_latency,
+            ceo_model_token_usage,
+            ceo_model_errors,
+            ceo_model_routing,
             product_info,
         ],
         checkpointer=checkpointer,
