@@ -12,7 +12,7 @@ pytestmark = pytest.mark.integration
 
 
 async def test_seed_creates_borrowers(async_engine, truncate_all):
-    """7 borrowers after seed."""
+    """10 borrowers after seed."""
     from db.database import ComplianceSessionLocal, SessionLocal
     from db.models import Borrower
 
@@ -23,11 +23,11 @@ async def test_seed_creates_borrowers(async_engine, truncate_all):
 
     async with SessionLocal() as session:
         count = (await session.execute(select(func.count(Borrower.id)))).scalar()
-        assert count == 7
+        assert count == 10
 
 
 async def test_seed_creates_applications(async_engine, truncate_all):
-    """Expected total apps (8 active + 20 historical = 28)."""
+    """Expected total apps (10 active + 20 historical = 30)."""
     from db.database import ComplianceSessionLocal, SessionLocal
     from db.models import Application
 
