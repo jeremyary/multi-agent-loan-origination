@@ -47,7 +47,7 @@ def test_parse_empty_response_treated_as_safe():
     assert result.is_safe is True
 
 
-# -- Failure behavior (input=fail-closed, output=fail-open) --
+# -- Failure behavior (both fail-closed) --
 
 
 @pytest.mark.asyncio
@@ -65,8 +65,8 @@ async def test_input_check_fails_closed_on_llm_error():
 
 
 @pytest.mark.asyncio
-async def test_output_check_fails_open_on_llm_error():
-    """should return is_safe=True when output check errors."""
+async def test_output_check_fails_closed_on_llm_error():
+    """should return is_safe=False when output check errors (fail-closed)."""
     mock_llm = AsyncMock()
     mock_llm.ainvoke.side_effect = RuntimeError("timeout")
 
@@ -74,7 +74,8 @@ async def test_output_check_fails_open_on_llm_error():
     checker._llm = mock_llm
 
     result = await checker.check_output("q", "a")
-    assert result.is_safe is True
+    assert result.is_safe is False
+    assert result.explanation == "Safety check unavailable"
 
 
 # -- Prompt formatting (verify correct template is used) --

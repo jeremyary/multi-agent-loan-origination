@@ -6,9 +6,9 @@ inputs and agent outputs against 13 safety categories (S1-S13).  The same
 ChatOpenAI infrastructure used for inference models is reused here.
 
 Design principle: shields ON by default when SAFETY_MODEL is set, degrade
-gracefully (no-op + warning) when not configured.  Input checks fail-closed
-(block on error) to prevent unsafe content from reaching the system. Output
-checks fail-open (allow on error) so transient outages don't block responses.
+gracefully (no-op + warning) when not configured.  Both input and output
+checks fail-closed (block on error) -- in a regulated lending domain, the
+risk of delivering an unverified response outweighs transient availability.
 """
 
 import logging
@@ -178,10 +178,8 @@ class SafetyChecker:
             response = await self._llm.ainvoke(prompt)
             return self._parse_response(response.content)
         except Exception:
-            logger.warning(
-                "Safety output check failed, treating as safe (fail-open)", exc_info=True
-            )
-            return SafetyResult(is_safe=True, explanation="Check failed, fail-open")
+            logger.error("Safety output check failed, blocking output (fail-closed)", exc_info=True)
+            return SafetyResult(is_safe=False, explanation="Safety check unavailable")
 
 
 _checker_instance: SafetyChecker | None = None
