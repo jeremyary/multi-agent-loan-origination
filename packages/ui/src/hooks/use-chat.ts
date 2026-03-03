@@ -1,6 +1,7 @@
 // This project was developed with assistance from AI tools.
 
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { apiGet } from '@/lib/api-client';
 import { connectChat, type WsMessage, type ChatWs, type ConnectChatOptions } from '@/lib/ws';
 
 export interface ChatMessage {
@@ -19,10 +20,11 @@ interface ToolCall {
 
 interface UseChatOptions {
     path: string;
+    historyPath?: string;
     wsOptions?: ConnectChatOptions;
 }
 
-export function useChat({ path, wsOptions }: UseChatOptions) {
+export function useChat({ path, historyPath, wsOptions }: UseChatOptions) {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [isStreaming, setIsStreaming] = useState(false);
     const [isConnected, setIsConnected] = useState(false);
@@ -31,11 +33,44 @@ export function useChat({ path, wsOptions }: UseChatOptions) {
     const streamBufferRef = useRef('');
     const currentToolCallsRef = useRef<ToolCall[]>([]);
     const mountedRef = useRef(true);
+    const prevOptionsRef = useRef<string>('');
+
+    const loadHistory = useCallback(async () => {
+        if (!historyPath) return;
+        try {
+            const qs = wsOptions?.appId ? `?app_id=${wsOptions.appId}` : '';
+            const data = await apiGet<{ data: { role: string; content: string }[] }>(`${historyPath}${qs}`);
+            if (!mountedRef.current) return;
+            if (data.data.length > 0) {
+                setMessages(
+                    data.data.map((m) => ({
+                        id: crypto.randomUUID(),
+                        role: m.role as 'user' | 'assistant',
+                        content: m.content,
+                        timestamp: new Date(),
+                    })),
+                );
+            }
+        } catch {
+            // History unavailable -- start fresh
+        }
+    }, [historyPath, wsOptions?.appId]);
 
     const connect = useCallback(() => {
+        // Detect if options changed (reconnect scenario)
+        const optionsKey = JSON.stringify(wsOptions ?? {});
+        const optionsChanged = optionsKey !== prevOptionsRef.current;
+        prevOptionsRef.current = optionsKey;
+
+        if (optionsChanged && wsRef.current) {
+            wsRef.current.close();
+            wsRef.current = null;
+            setMessages([]);
+            setIsConnected(false);
+        }
+
         if (wsRef.current && wsRef.current.readyState() === WebSocket.OPEN) return;
 
-        // Close any previous connection cleanly
         if (wsRef.current) {
             wsRef.current.close();
             wsRef.current = null;
@@ -130,8 +165,6 @@ export function useChat({ path, wsOptions }: UseChatOptions) {
                         break;
 
                     case 'error':
-                        // Connection-level errors go to connectionError state,
-                        // server-sent errors go to messages
                         if (msg.content === 'WebSocket connection failed') {
                             setConnectionError(msg.content);
                         } else {
@@ -165,12 +198,16 @@ export function useChat({ path, wsOptions }: UseChatOptions) {
                 setIsConnected(true);
                 setConnectionError(null);
                 clearInterval(check);
+                // Load history once connected
+                if (optionsChanged) {
+                    loadHistory();
+                }
             }
             if (ws.readyState() === WebSocket.CLOSED) {
                 clearInterval(check);
             }
         }, 100);
-    }, [path, wsOptions]);
+    }, [path, wsOptions, loadHistory]);
 
     const disconnect = useCallback(() => {
         wsRef.current?.close();

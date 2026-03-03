@@ -57,11 +57,20 @@ const ROLE_CHAT_PATHS: Record<UserRole, string> = {
     ceo: '/api/ceo/chat',
 };
 
+const ROLE_HISTORY_PATHS: Record<UserRole, string | null> = {
+    prospect: null,
+    borrower: '/api/borrower/conversations/history',
+    loan_officer: '/api/loan-officer/conversations/history',
+    underwriter: '/api/underwriter/conversations/history',
+    ceo: '/api/ceo/conversations/history',
+};
+
 interface AuthContextValue {
     user: DevUser | null;
     token: string | null;
     isAuthenticated: boolean;
     chatPath: string;
+    historyPath: string | null;
     signIn: (role: UserRole) => void;
     signInWithCredentials: (email: string, password: string) => Promise<void>;
     signOut: () => void;
@@ -157,6 +166,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }, [apiHeaders]);
 
     const chatPath = user ? ROLE_CHAT_PATHS[user.role] : '/api/chat';
+    const historyPath = user ? ROLE_HISTORY_PATHS[user.role] : null;
 
     return (
         <AuthContext.Provider
@@ -165,6 +175,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 token,
                 isAuthenticated: user !== null && user.role !== 'prospect',
                 chatPath,
+                historyPath,
                 signIn,
                 signInWithCredentials,
                 signOut,

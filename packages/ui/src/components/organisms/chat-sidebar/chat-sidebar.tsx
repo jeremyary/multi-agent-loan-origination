@@ -1,10 +1,17 @@
 // This project was developed with assistance from AI tools.
 
 import { useState, useRef, useEffect, useMemo } from 'react';
+import { useLocation } from '@tanstack/react-router';
 import { MessageSquare, Send, Loader2, X } from 'lucide-react';
 import { useChat, type ChatMessage } from '@/hooks/use-chat';
 import { useAuth } from '@/contexts/auth-context';
 import { cn } from '@/lib/utils';
+
+function useCurrentAppId(): string | undefined {
+    const location = useLocation();
+    const match = location.pathname.match(/\/loan-officer\/(\d+)/);
+    return match?.[1];
+}
 
 function ChatBubble({ message }: { message: ChatMessage }) {
     const isUser = message.role === 'user';
@@ -50,12 +57,13 @@ function TypingIndicator() {
 }
 
 export function ChatSidebar() {
-    const { chatPath, user } = useAuth();
+    const { chatPath, historyPath, user } = useAuth();
+    const appId = useCurrentAppId();
     const wsOptions = useMemo(
-        () => user ? { devUserId: user.user_id, devEmail: user.email, devName: user.name } : undefined,
-        [user],
+        () => user ? { devUserId: user.user_id, devEmail: user.email, devName: user.name, appId } : undefined,
+        [user, appId],
     );
-    const { messages, isStreaming, isConnected, connectionError, sendMessage, connect } = useChat({ path: chatPath, wsOptions });
+    const { messages, isStreaming, isConnected, connectionError, sendMessage, connect } = useChat({ path: chatPath, historyPath: historyPath ?? undefined, wsOptions });
     const [input, setInput] = useState('');
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);

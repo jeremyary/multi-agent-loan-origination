@@ -12,7 +12,7 @@ import uuid
 
 import jwt as pyjwt
 from db.enums import UserRole
-from fastapi import APIRouter, Depends, WebSocket
+from fastapi import APIRouter, Depends, Query, WebSocket
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, SystemMessage
 
 from ..agents.registry import get_agent
@@ -420,7 +420,10 @@ def create_authenticated_chat_router(
             await ws.close()
             return
 
-        thread_id = ConversationService.get_thread_id(user.user_id, agent_name)
+        # Per-app threads for roles that manage multiple applications
+        app_id_param = ws.query_params.get("app_id")
+        app_id = int(app_id_param) if app_id_param else None
+        thread_id = ConversationService.get_thread_id(user.user_id, agent_name, app_id)
         session_id = str(uuid.uuid4())
 
         # Always use checkpointer when available; fallback to local list
@@ -449,13 +452,17 @@ def create_authenticated_chat_router(
         response_model=ConversationHistoryResponse,
         dependencies=[Depends(require_roles(role, UserRole.ADMIN))],
     )
-    async def get_conversation_history_endpoint(user: CurrentUser) -> ConversationHistoryResponse:
+    async def get_conversation_history_endpoint(
+        user: CurrentUser,
+        app_id: int | None = Query(default=None),
+    ) -> ConversationHistoryResponse:
         """Return prior conversation messages for the authenticated user.
 
         Used by the frontend to render chat history when the chat window opens.
+        Pass app_id for per-application conversation threads (LO/UW).
         """
         service = get_conversation_service()
-        thread_id = ConversationService.get_thread_id(user.user_id, agent_name)
+        thread_id = ConversationService.get_thread_id(user.user_id, agent_name, app_id)
         messages = await service.get_conversation_history(thread_id)
         return ConversationHistoryResponse(data=messages)
 
