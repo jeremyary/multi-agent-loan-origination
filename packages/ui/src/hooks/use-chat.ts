@@ -216,7 +216,7 @@ export function useChat({ path, historyPath, wsOptions }: UseChatOptions) {
     }, []);
 
     const sendMessage = useCallback(
-        (content: string) => {
+        (content: string, displayContent?: string) => {
             if (!content.trim()) return;
             if (!wsRef.current || wsRef.current.readyState() !== WebSocket.OPEN) {
                 connect();
@@ -232,7 +232,7 @@ export function useChat({ path, historyPath, wsOptions }: UseChatOptions) {
                 {
                     id: crypto.randomUUID(),
                     role: 'user',
-                    content,
+                    content: displayContent ?? content,
                     timestamp: new Date(),
                 },
             ]);
@@ -247,6 +247,7 @@ export function useChat({ path, historyPath, wsOptions }: UseChatOptions) {
         mountedRef.current = true;
         return () => {
             mountedRef.current = false;
+            prevOptionsRef.current = '';
             wsRef.current?.close();
         };
     }, []);

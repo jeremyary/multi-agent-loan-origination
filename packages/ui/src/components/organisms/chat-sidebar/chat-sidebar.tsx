@@ -85,7 +85,7 @@ export function ChatSidebar() {
             if (detail.message) {
                 setIsMobileOpen(true);
                 if (detail.autoSend && !isStreaming) {
-                    sendMessage(addAppContext(detail.message));
+                    sendMessage(addAppContext(detail.message), detail.message);
                 } else {
                     setInput(detail.message);
                     inputRef.current?.focus();
@@ -106,7 +106,8 @@ export function ChatSidebar() {
 
     const handleSend = () => {
         if (!input.trim() || isStreaming) return;
-        sendMessage(addAppContext(input));
+        const display = input;
+        sendMessage(addAppContext(input), display);
         setInput('');
     };
 
