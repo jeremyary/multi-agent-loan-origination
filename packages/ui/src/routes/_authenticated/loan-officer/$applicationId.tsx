@@ -605,6 +605,9 @@ function ConditionsTab({ appId }: { appId: number }) {
         );
     }
 
+    const isActionable = (status: string | null | undefined) =>
+        status === 'open' || status === 'responded' || status === 'escalated';
+
     return (
         <CardShell className="overflow-hidden p-0">
             <table className="w-full text-sm">
@@ -614,12 +617,18 @@ function ConditionsTab({ appId }: { appId: number }) {
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground">Severity</th>
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground">Due</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {items.map((cond: Condition) => (
                         <tr key={cond.id} className="border-b border-border last:border-0">
-                            <td className="px-4 py-3 font-medium text-foreground">{cond.description}</td>
+                            <td className="px-4 py-3">
+                                <p className="font-medium text-foreground">{cond.description}</p>
+                                {cond.response_text && (
+                                    <p className="mt-1 text-xs text-muted-foreground italic">Response: {cond.response_text}</p>
+                                )}
+                            </td>
                             <td className="px-4 py-3">
                                 {cond.severity && (
                                     <span className={cn('rounded-full px-2.5 py-0.5 text-xs font-medium', SEVERITY_COLORS[cond.severity] ?? 'bg-slate-100 text-slate-600')}>
@@ -635,6 +644,16 @@ function ConditionsTab({ appId }: { appId: number }) {
                                 )}
                             </td>
                             <td className="px-4 py-3 text-muted-foreground">{formatDate(cond.due_date)}</td>
+                            <td className="px-4 py-3">
+                                {isActionable(cond.status) ? (
+                                    <button
+                                        onClick={() => chatPrefill(`Respond to condition "${cond.description}" on application #${appId}.`)}
+                                        className="text-xs font-medium text-[#1e3a5f] hover:underline"
+                                    >
+                                        Respond
+                                    </button>
+                                ) : null}
+                            </td>
                         </tr>
                     ))}
                 </tbody>
