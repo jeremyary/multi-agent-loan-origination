@@ -14,6 +14,7 @@ export interface AuthUser {
     email: string;
 }
 
+// Dev user IDs must match config/keycloak/summit-cap-realm.json and seed fixtures
 export const DEV_USERS: Record<UserRole, AuthUser> = {
     prospect: {
         role: 'prospect',
@@ -23,27 +24,27 @@ export const DEV_USERS: Record<UserRole, AuthUser> = {
     },
     borrower: {
         role: 'borrower',
-        user_id: 'dev-borrower-1',
-        name: 'Maria Garcia',
-        email: 'maria.garcia@dev.summitcap.local',
+        user_id: 'd1a2b3c4-e5f6-7890-abcd-ef1234567801',
+        name: 'Sarah Mitchell',
+        email: 'sarah.mitchell@example.com',
     },
     loan_officer: {
         role: 'loan_officer',
         user_id: 'd1a2b3c4-e5f6-7890-abcd-ef1234567802',
         name: 'James Torres',
-        email: 'james.torres@dev.summitcap.local',
+        email: 'james.torres@summit-cap.com',
     },
     underwriter: {
         role: 'underwriter',
-        user_id: 'dev-uw-1',
-        name: 'Sarah Mitchell',
-        email: 'sarah.mitchell@dev.summitcap.local',
+        user_id: 'd1a2b3c4-e5f6-7890-abcd-ef1234567803',
+        name: 'Maria Chen',
+        email: 'maria.chen@summit-cap.com',
     },
     ceo: {
         role: 'ceo',
-        user_id: 'dev-ceo-1',
-        name: 'Robert Taylor',
-        email: 'robert.taylor@dev.summitcap.local',
+        user_id: 'd1a2b3c4-e5f6-7890-abcd-ef1234567804',
+        name: 'David Park',
+        email: 'david.park@summit-cap.com',
     },
 };
 
