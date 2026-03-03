@@ -27,10 +27,10 @@ const PERSONAS: {
 
 // Keycloak demo credentials (must match config/keycloak/summit-cap-realm.json)
 const KEYCLOAK_DEMO_USERS: Partial<Record<UserRole, { email: string; password: string }>> = {
-    borrower: { email: 'sarah.mitchell@example.com', password: 'demo' },
-    loan_officer: { email: 'james.torres@summit-cap.com', password: 'demo' },
-    underwriter: { email: 'maria.chen@summit-cap.com', password: 'demo' },
-    ceo: { email: 'david.park@summit-cap.com', password: 'demo' },
+    borrower: { email: 'sarah.mitchell@example.com', password: 'demo' }, // #notsecret
+    loan_officer: { email: 'james.torres@summit-cap.com', password: 'demo' }, // #notsecret
+    underwriter: { email: 'maria.chen@summit-cap.com', password: 'demo' }, // #notsecret
+    ceo: { email: 'david.park@summit-cap.com', password: 'demo' }, // #notsecret
 };
 
 const ROLE_REDIRECTS: Record<UserRole, string> = {
@@ -77,7 +77,7 @@ function SignIn() {
         } else {
             const devUser = DEV_USERS[role];
             setEmail(devUser.email);
-            setPassword('demo1234');
+            setPassword('demo1234'); // #notsecret
         }
         setError(null);
     }
