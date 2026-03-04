@@ -2,8 +2,9 @@
 """Mock credit bureau service for simulated soft/hard pulls.
 
 In production, this would be replaced with real API calls to
-Equifax/Experian/TransUnion. The mock generates deterministic data
-for seed borrowers and reproducible data for unknown borrowers.
+Equifax/Experian/TransUnion. The mock generates deterministic,
+reproducible data from borrower_id hashing. Seed borrowers get
+fixture-consistent data via keycloak_user_id lookup.
 
 Simulated for demonstration purposes -- not real credit data.
 """
@@ -13,86 +14,9 @@ import logging
 from decimal import Decimal
 
 from ..schemas.credit import HardPullResult, SoftPullResult, TradeLineDetail
+from .seed.fixtures import CREDIT_PROFILES
 
 logger = logging.getLogger(__name__)
-
-# Deterministic credit profiles for seed borrowers keyed by credit_score.
-# When a borrower's self-reported score matches a known fixture value,
-# the mock returns consistent supplementary data.
-_SEED_PROFILES: dict[int, dict] = {
-    742: {
-        "outstanding_accounts": 4,
-        "total_outstanding_debt": Decimal("45200.00"),
-        "derogatory_marks": 0,
-        "oldest_account_years": 12,
-    },
-    688: {
-        "outstanding_accounts": 6,
-        "total_outstanding_debt": Decimal("67800.00"),
-        "derogatory_marks": 1,
-        "oldest_account_years": 7,
-    },
-    735: {
-        "outstanding_accounts": 3,
-        "total_outstanding_debt": Decimal("38500.00"),
-        "derogatory_marks": 0,
-        "oldest_account_years": 10,
-    },
-    765: {
-        "outstanding_accounts": 5,
-        "total_outstanding_debt": Decimal("52000.00"),
-        "derogatory_marks": 0,
-        "oldest_account_years": 15,
-    },
-    710: {
-        "outstanding_accounts": 5,
-        "total_outstanding_debt": Decimal("58300.00"),
-        "derogatory_marks": 1,
-        "oldest_account_years": 8,
-    },
-    695: {
-        "outstanding_accounts": 7,
-        "total_outstanding_debt": Decimal("71200.00"),
-        "derogatory_marks": 2,
-        "oldest_account_years": 6,
-    },
-    780: {
-        "outstanding_accounts": 3,
-        "total_outstanding_debt": Decimal("28900.00"),
-        "derogatory_marks": 0,
-        "oldest_account_years": 18,
-    },
-    725: {
-        "outstanding_accounts": 4,
-        "total_outstanding_debt": Decimal("41500.00"),
-        "derogatory_marks": 0,
-        "oldest_account_years": 9,
-    },
-    612: {
-        "outstanding_accounts": 8,
-        "total_outstanding_debt": Decimal("89500.00"),
-        "derogatory_marks": 3,
-        "oldest_account_years": 5,
-    },
-    648: {
-        "outstanding_accounts": 7,
-        "total_outstanding_debt": Decimal("78200.00"),
-        "derogatory_marks": 2,
-        "oldest_account_years": 6,
-    },
-    655: {
-        "outstanding_accounts": 6,
-        "total_outstanding_debt": Decimal("72100.00"),
-        "derogatory_marks": 2,
-        "oldest_account_years": 7,
-    },
-    632: {
-        "outstanding_accounts": 9,
-        "total_outstanding_debt": Decimal("95300.00"),
-        "derogatory_marks": 4,
-        "oldest_account_years": 4,
-    },
-}
 
 
 def _hash_to_int(value: int, modulus: int, salt: str = "") -> int:
@@ -149,23 +73,27 @@ class CreditBureauService:
     def soft_pull(
         self,
         borrower_id: int,
-        credit_score_hint: int | None = None,
+        keycloak_user_id: str | None = None,
     ) -> SoftPullResult:
         """Simulate a soft credit pull.
 
         Args:
             borrower_id: Internal borrower ID.
-            credit_score_hint: Self-reported score from financials. If it matches
-                a seed profile, deterministic data is returned.
+            keycloak_user_id: If provided, looks up seed fixture data for
+                deterministic demo results. Falls back to hash-based
+                generation for unknown users.
 
         Returns:
             SoftPullResult with credit data.
         """
-        if credit_score_hint and credit_score_hint in _SEED_PROFILES:
-            profile = _SEED_PROFILES[credit_score_hint]
+        if keycloak_user_id and keycloak_user_id in CREDIT_PROFILES:
+            profile = CREDIT_PROFILES[keycloak_user_id]
             return SoftPullResult(
-                credit_score=credit_score_hint,
-                **profile,
+                credit_score=profile["credit_score"],
+                outstanding_accounts=profile["outstanding_accounts"],
+                total_outstanding_debt=profile["total_outstanding_debt"],
+                derogatory_marks=profile["derogatory_marks"],
+                oldest_account_years=profile["oldest_account_years"],
             )
 
         profile = _generate_profile(borrower_id)
@@ -180,18 +108,18 @@ class CreditBureauService:
     def hard_pull(
         self,
         borrower_id: int,
-        credit_score_hint: int | None = None,
+        keycloak_user_id: str | None = None,
     ) -> HardPullResult:
         """Simulate a hard credit pull.
 
         Args:
             borrower_id: Internal borrower ID.
-            credit_score_hint: Self-reported score from financials.
+            keycloak_user_id: If provided, looks up seed fixture data.
 
         Returns:
             HardPullResult with full credit data including trade lines.
         """
-        soft = self.soft_pull(borrower_id, credit_score_hint)
+        soft = self.soft_pull(borrower_id, keycloak_user_id)
 
         num_accounts = soft.outstanding_accounts
         trade_lines = _generate_trade_lines(borrower_id, num_accounts)
