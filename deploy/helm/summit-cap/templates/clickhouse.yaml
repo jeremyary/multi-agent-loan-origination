@@ -20,10 +20,6 @@ spec:
         app.kubernetes.io/component: clickhouse
     spec:
       serviceAccountName: {{ include "summit-cap.serviceAccountName" . }}
-      securityContext:
-        runAsUser: 101
-        runAsGroup: 101
-        fsGroup: 101
       containers:
         - name: clickhouse
           image: docker.io/clickhouse/clickhouse-server:24

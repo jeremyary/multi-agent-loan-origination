@@ -17,11 +17,11 @@ COPY packages/ ./packages/
 # Note: We copy all packages, but only build UI
 # This ensures workspace dependencies (eslint-config, prettier-config) are available
 
-# Install pnpm if not present
-RUN corepack enable && corepack prepare pnpm@latest --activate || npm install -g pnpm
+# Enable corepack (uses packageManager field from package.json)
+RUN corepack enable
 
 # Install dependencies from root (workspace support)
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Build the UI application (vite only -- storybook is dev-only, not needed in the image)
 WORKDIR /app/packages/ui
