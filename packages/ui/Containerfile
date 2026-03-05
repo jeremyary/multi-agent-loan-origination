@@ -8,7 +8,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Copy root package files (for workspace setup)
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml* .npmrc* ./
 
 # Copy workspace config packages (UI depends on them)
 # Copy all packages to support workspace dependencies
