@@ -20,14 +20,17 @@ spec:
         app.kubernetes.io/component: clickhouse
     spec:
       serviceAccountName: {{ include "summit-cap.serviceAccountName" . }}
-      securityContext:
-        runAsUser: 101
-        runAsGroup: 101
-        fsGroup: 101
       containers:
         - name: clickhouse
-          image: clickhouse/clickhouse-server:24
+          image: docker.io/clickhouse/clickhouse-server:24
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: http
               containerPort: 8123
@@ -64,10 +67,10 @@ spec:
             periodSeconds: 5
           resources:
             requests:
-              memory: "256Mi"
+              memory: "512Mi"
               cpu: "100m"
             limits:
-              memory: "512Mi"
+              memory: "1536Mi"
               cpu: "500m"
   volumeClaimTemplates:
     - metadata:

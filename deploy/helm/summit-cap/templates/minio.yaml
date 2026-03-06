@@ -18,10 +18,14 @@ spec:
         {{- include "summit-cap.minio.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "summit-cap.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: minio
           image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           command:
             - sh
             - -c
@@ -104,10 +108,6 @@ spec:
       targetPort: api
       protocol: TCP
       name: api
-    - port: 9001
-      targetPort: console
-      protocol: TCP
-      name: console
   selector:
     {{- include "summit-cap.minio.selectorLabels" . | nindent 4 }}
 {{- end }}

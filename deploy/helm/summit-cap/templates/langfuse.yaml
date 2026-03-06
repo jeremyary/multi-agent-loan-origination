@@ -8,6 +8,8 @@ metadata:
   labels:
     {{- include "summit-cap.labels" . | nindent 4 }}
     app.kubernetes.io/component: langfuse-web
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"StatefulSet","name":"{{ .Values.database.name }}"},{"apiVersion":"apps/v1","kind":"StatefulSet","name":"clickhouse"},{"apiVersion":"apps/v1","kind":"StatefulSet","name":"redis"}]'
 spec:
   replicas: 1
   selector:
@@ -21,9 +23,13 @@ spec:
         app.kubernetes.io/component: langfuse-web
     spec:
       serviceAccountName: {{ include "summit-cap.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       initContainers:
         - name: wait-for-deps
           image: postgres:16-alpine
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           command:
             - /bin/sh
             - -c
@@ -46,13 +52,25 @@ spec:
         - name: langfuse-web
           image: "{{ .Values.langfuse.web.image.repository }}:{{ .Values.langfuse.web.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
             - name: http
               containerPort: 3000
               protocol: TCP
           env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: POSTGRES_PASSWORD
             - name: DATABASE_URL
-              value: "postgresql://{{ .Values.secrets.POSTGRES_USER }}:{{ .Values.secrets.POSTGRES_PASSWORD }}@{{ $dbName }}:5432/langfuse"
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ $dbName }}:5432/langfuse"
             - name: HOSTNAME
               value: "0.0.0.0"
             - name: NEXTAUTH_URL
@@ -119,17 +137,17 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: LANGFUSE_INIT_USER_PASSWORD
-            - name: CLICKHOUSE_MIGRATION_URL
-              value: "clickhouse://clickhouse:{{ .Values.secrets.CLICKHOUSE_PASSWORD }}@clickhouse:9000/default"
-            - name: CLICKHOUSE_URL
-              value: "http://clickhouse:8123"
-            - name: CLICKHOUSE_USER
-              value: clickhouse
             - name: CLICKHOUSE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: CLICKHOUSE_PASSWORD
+            - name: CLICKHOUSE_MIGRATION_URL
+              value: "clickhouse://clickhouse:$(CLICKHOUSE_PASSWORD)@clickhouse:9000/default"
+            - name: CLICKHOUSE_URL
+              value: "http://clickhouse:8123"
+            - name: CLICKHOUSE_USER
+              value: clickhouse
             - name: CLICKHOUSE_CLUSTER_ENABLED
               value: "false"
             - name: REDIS_HOST
@@ -201,6 +219,8 @@ metadata:
   labels:
     {{- include "summit-cap.labels" . | nindent 4 }}
     app.kubernetes.io/component: langfuse-worker
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"StatefulSet","name":"{{ .Values.database.name }}"},{"apiVersion":"apps/v1","kind":"StatefulSet","name":"clickhouse"},{"apiVersion":"apps/v1","kind":"StatefulSet","name":"redis"}]'
 spec:
   replicas: 1
   selector:
@@ -214,13 +234,27 @@ spec:
         app.kubernetes.io/component: langfuse-worker
     spec:
       serviceAccountName: {{ include "summit-cap.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: langfuse-worker
           image: "{{ .Values.langfuse.worker.image.repository }}:{{ .Values.langfuse.worker.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: POSTGRES_PASSWORD
             - name: DATABASE_URL
-              value: "postgresql://{{ .Values.secrets.POSTGRES_USER }}:{{ .Values.secrets.POSTGRES_PASSWORD }}@{{ $dbName }}:5432/langfuse"
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ $dbName }}:5432/langfuse"
             - name: NEXTAUTH_URL
               value: "http://langfuse-web:3000"
             - name: NEXTAUTH_SECRET
@@ -285,17 +319,17 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: LANGFUSE_INIT_USER_PASSWORD
-            - name: CLICKHOUSE_MIGRATION_URL
-              value: "clickhouse://clickhouse:{{ .Values.secrets.CLICKHOUSE_PASSWORD }}@clickhouse:9000/default"
-            - name: CLICKHOUSE_URL
-              value: "http://clickhouse:8123"
-            - name: CLICKHOUSE_USER
-              value: clickhouse
             - name: CLICKHOUSE_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: CLICKHOUSE_PASSWORD
+            - name: CLICKHOUSE_MIGRATION_URL
+              value: "clickhouse://clickhouse:$(CLICKHOUSE_PASSWORD)@clickhouse:9000/default"
+            - name: CLICKHOUSE_URL
+              value: "http://clickhouse:8123"
+            - name: CLICKHOUSE_USER
+              value: clickhouse
             - name: CLICKHOUSE_CLUSTER_ENABLED
               value: "false"
             - name: REDIS_HOST

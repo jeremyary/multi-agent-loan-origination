@@ -26,10 +26,14 @@ spec:
         {{- include "summit-cap.keycloak.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "summit-cap.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: keycloak
           image: "{{ .Values.keycloak.image.repository }}:{{ .Values.keycloak.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           args:
             - start-dev
             - --import-realm
@@ -52,6 +56,10 @@ spec:
                   name: {{ include "summit-cap.fullname" . }}-secret
                   key: KC_BOOTSTRAP_ADMIN_PASSWORD
             - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_PROXY_HEADERS
+              value: "xforwarded"
+            - name: KC_HTTP_ENABLED
               value: "true"
           volumeMounts:
             - name: realm-config

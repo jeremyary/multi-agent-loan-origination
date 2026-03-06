@@ -103,5 +103,133 @@ spec:
     {{- end }}
   {{- end }}
   wildcardPolicy: None
+---
+# Docs Route - serve OpenAPI docs
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.api.name }}-docs-route
+  labels:
+    {{- include "summit-cap.api.labels" . | nindent 4 }}
+  {{- with .Values.routes.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.routes.sharedHost }}
+  host: {{ .Values.routes.sharedHost }}
+  {{- else if .Values.routes.api.host }}
+  host: {{ .Values.routes.api.host }}
+  {{- else if .Values.routes.ui.host }}
+  host: {{ .Values.routes.ui.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ .Values.api.name }}
+    weight: 100
+  port:
+    targetPort: http
+  path: /docs
+  {{- if .Values.routes.api.tls.enabled }}
+  tls:
+    termination: {{ .Values.routes.api.tls.termination | default "edge" }}
+    {{- if .Values.routes.api.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.routes.api.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  {{- end }}
+  wildcardPolicy: None
+---
+# Admin Route - serve SQLAdmin panel
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.api.name }}-admin-route
+  labels:
+    {{- include "summit-cap.api.labels" . | nindent 4 }}
+  {{- with .Values.routes.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.routes.sharedHost }}
+  host: {{ .Values.routes.sharedHost }}
+  {{- else if .Values.routes.api.host }}
+  host: {{ .Values.routes.api.host }}
+  {{- else if .Values.routes.ui.host }}
+  host: {{ .Values.routes.ui.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ .Values.api.name }}
+    weight: 100
+  port:
+    targetPort: http
+  path: /admin
+  {{- if .Values.routes.api.tls.enabled }}
+  tls:
+    termination: {{ .Values.routes.api.tls.termination | default "edge" }}
+    {{- if .Values.routes.api.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.routes.api.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}
+{{- if .Values.langfuse.enabled }}
+---
+# LangFuse Route - observability UI
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: langfuse-route
+  labels:
+    {{- include "summit-cap.labels" . | nindent 4 }}
+    app.kubernetes.io/component: langfuse-web
+  {{- with .Values.routes.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.routes.sharedHost }}
+  host: {{ printf "langfuse-%s" .Values.routes.sharedHost }}
+  {{- end }}
+  to:
+    kind: Service
+    name: langfuse-web
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
+{{- end }}
+{{- if .Values.keycloak.enabled }}
+---
+# Keycloak Route - browser-accessible OIDC endpoint
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.keycloak.name }}-route
+  labels:
+    {{- include "summit-cap.keycloak.labels" . | nindent 4 }}
+  {{- with .Values.routes.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- $kcHost := printf "keycloak-%s.%s" .Release.Namespace (trimPrefix (printf "%s-%s." .Release.Name .Release.Namespace) .Values.routes.sharedHost | default "") }}
+  {{- if .Values.routes.sharedHost }}
+  host: {{ printf "keycloak-%s" .Values.routes.sharedHost }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ .Values.keycloak.name }}
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+  wildcardPolicy: None
 {{- end }}
 {{- end }}
