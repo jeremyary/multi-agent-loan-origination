@@ -26,24 +26,21 @@ test.describe("Borrower Disclosures", () => {
         expect(isAllDone || hasPending).toBeTruthy();
     });
 
-    // C-2: Replace silent if-guard with explicit test.skip so CI reports a skip
-    // rather than a silent pass when all disclosures are already acknowledged in seed data.
     test("should open disclosure modal on Review & Acknowledge click", async ({ page }) => {
         const reviewButton = page.getByRole("button", {
             name: "Review & Acknowledge",
         });
-        test.skip((await reviewButton.count()) === 0, "No pending disclosures in seed data");
+        await expect(reviewButton.first()).toBeVisible({ timeout: 10_000 });
 
         await reviewButton.first().click();
         await expect(dashboard.disclosureModal).toBeVisible();
     });
 
-    // C-2: Same skip pattern for the close modal test.
     test("should close disclosure modal via close button", async ({ page }) => {
         const reviewButton = page.getByRole("button", {
             name: "Review & Acknowledge",
         });
-        test.skip((await reviewButton.count()) === 0, "No pending disclosures in seed data");
+        await expect(reviewButton.first()).toBeVisible({ timeout: 10_000 });
 
         await reviewButton.first().click();
         await expect(dashboard.disclosureModal).toBeVisible();

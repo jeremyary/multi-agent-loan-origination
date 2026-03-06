@@ -39,6 +39,27 @@ from .schemas.error import ErrorResponse
 logger = logging.getLogger(__name__)
 
 
+async def _auto_seed() -> None:
+    """Seed demo data on startup if not already seeded (or config hash changed)."""
+    import logging
+
+    from db.database import ComplianceSessionLocal, SessionLocal
+
+    from .services.seed.seeder import seed_demo_data
+
+    logger = logging.getLogger(__name__)
+    try:
+        async with SessionLocal() as session:
+            async with ComplianceSessionLocal() as compliance_session:
+                result = await seed_demo_data(session, compliance_session, force=False)
+                if result.get("status") == "already_seeded":
+                    logger.info("Demo data already seeded (hash: %s)", result.get("config_hash"))
+                else:
+                    logger.info("Demo data seeded: %s", result)
+    except Exception:
+        logger.warning("Auto-seed failed (non-fatal)", exc_info=True)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     """Application startup/shutdown lifecycle."""
@@ -52,6 +73,7 @@ async def lifespan(_app: FastAPI):
     await conversation_service.initialize(settings.DATABASE_URL)
     init_storage_service(settings)
     init_extraction_service()
+    await _auto_seed()
     yield
     await conversation_service.shutdown()
 

@@ -18,11 +18,8 @@ test.describe("Borrower Dashboard Cards", () => {
         await expect(appHeading.or(noApp).first()).toBeVisible();
     });
 
-    // C-2: Replace silent if-guard with explicit test.skip so CI reports a skip
-    // rather than a silent pass when there is no active application in seed data.
     test("should show stage stepper with highlighted current step", async ({ page }) => {
-        const hasApp = await page.getByText(/Application #/).isVisible();
-        test.skip(!hasApp, "No active application in seed data");
+        await expect(page.getByText(/Application #/)).toBeVisible({ timeout: 10_000 });
 
         // Stage stepper has ring-highlighted dot for current stage
         await expect(page.locator(".ring-4").first()).toBeVisible();
@@ -61,10 +58,8 @@ test.describe("Borrower Dashboard Cards", () => {
         await expect(summaryHeading).toBeVisible();
     });
 
-    // C-2: Replace silent if-guard with explicit test.skip.
     test("should show loan amount in summary card", async ({ page }) => {
-        const hasApp = await page.getByText(/Application #/).isVisible();
-        test.skip(!hasApp, "No active application in seed data");
+        await expect(page.getByText(/Application #/)).toBeVisible({ timeout: 10_000 });
 
         // Summary card should display a formatted currency value
         const summaryCard = page.getByRole("heading", { name: "Application Summary" }).locator("../..");

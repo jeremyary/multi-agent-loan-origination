@@ -32,8 +32,7 @@ test.describe("Loan Officer Pipeline", () => {
     test("should filter table by search input", async ({ page }) => {
         await expect(pipeline.tableRows.first()).toBeVisible({ timeout: 10_000 });
         const initialCount = await pipeline.tableRows.count();
-        // C-2: Replace early `return` with explicit skip so CI captures the skip reason.
-        test.skip(initialCount === 0, "No pipeline rows in seed data");
+        expect(initialCount).toBeGreaterThan(0);
 
         // Get the first borrower name for a positive search
         const firstName = await pipeline.tableRows.first().locator("p.font-medium").textContent();
