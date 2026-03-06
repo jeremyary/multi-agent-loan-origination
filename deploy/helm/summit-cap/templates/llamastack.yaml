@@ -16,10 +16,14 @@ spec:
         {{- include "summit-cap.llamastack.selectorLabels" . | nindent 8 }}
     spec:
       serviceAccountName: {{ include "summit-cap.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: llamastack
           image: "{{ .Values.llamastack.image.repository }}:{{ .Values.llamastack.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
             - name: http
               containerPort: 8321

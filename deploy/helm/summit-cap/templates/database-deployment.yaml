@@ -25,6 +25,8 @@ spec:
         - name: postgres
           image: "docker.io/{{ .Values.database.image.repository }}:{{ .Values.database.image.tag }}"
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
           ports:
             - name: postgres
               containerPort: 5432

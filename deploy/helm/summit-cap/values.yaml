@@ -7,7 +7,6 @@
 #                       --set secrets.KEYCLOAK_URL=https://...
 #   External MinIO/S3:  --set minio.enabled=false
 #                       --set secrets.S3_ENDPOINT=https://...
-#   Dev mode:           -f values-dev.yaml
 global:
   imageRegistry: quay.io
   imageRepository: summit-cap
@@ -120,10 +119,10 @@ api:
   replicas: 1
   resources:
     requests:
-      memory: "512Mi"
-      cpu: "250m"
+      memory: "256Mi"
+      cpu: "200m"
     limits:
-      memory: "1Gi"
+      memory: "768Mi"
       cpu: "1000m"
   healthCheck:
     enabled: true
@@ -143,11 +142,11 @@ ui:
   replicas: 1
   resources:
     requests:
-      memory: "128Mi"
-      cpu: "100m"
+      memory: "32Mi"
+      cpu: "50m"
     limits:
-      memory: "256Mi"
-      cpu: "500m"
+      memory: "128Mi"
+      cpu: "250m"
   healthCheck:
     enabled: true
     path: /
@@ -172,7 +171,7 @@ database:
       memory: "256Mi"
       cpu: "100m"
     limits:
-      memory: "512Mi"
+      memory: "1Gi"
       cpu: "500m"
 # Keycloak configuration
 keycloak:
@@ -186,7 +185,7 @@ keycloak:
       memory: "512Mi"
       cpu: "250m"
     limits:
-      memory: "1Gi"
+      memory: "1536Mi"
       cpu: "1000m"
 
 # MinIO configuration
@@ -201,10 +200,10 @@ minio:
     size: 10Gi
   resources:
     requests:
-      memory: "256Mi"
+      memory: "128Mi"
       cpu: "100m"
     limits:
-      memory: "512Mi"
+      memory: "384Mi"
       cpu: "500m"
 
 # LangFuse observability stack (redis + clickhouse auto-enabled)
@@ -252,7 +251,7 @@ llamastack:
       memory: "256Mi"
       cpu: "100m"
     limits:
-      memory: "512Mi"
+      memory: "768Mi"
       cpu: "500m"
 
 # Seed data (demo data for demos / dev environments)
