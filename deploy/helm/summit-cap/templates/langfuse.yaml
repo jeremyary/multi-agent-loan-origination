@@ -8,6 +8,8 @@ metadata:
   labels:
     {{- include "summit-cap.labels" . | nindent 4 }}
     app.kubernetes.io/component: langfuse-web
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"StatefulSet","name":"{{ .Values.database.name }}"},{"apiVersion":"apps/v1","kind":"StatefulSet","name":"clickhouse"},{"apiVersion":"apps/v1","kind":"StatefulSet","name":"redis"}]'
 spec:
   replicas: 1
   selector:
@@ -217,6 +219,8 @@ metadata:
   labels:
     {{- include "summit-cap.labels" . | nindent 4 }}
     app.kubernetes.io/component: langfuse-worker
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"StatefulSet","name":"{{ .Values.database.name }}"},{"apiVersion":"apps/v1","kind":"StatefulSet","name":"clickhouse"},{"apiVersion":"apps/v1","kind":"StatefulSet","name":"redis"}]'
 spec:
   replicas: 1
   selector:

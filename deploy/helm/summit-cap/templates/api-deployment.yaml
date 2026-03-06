@@ -5,6 +5,8 @@ metadata:
   name: {{ .Values.api.name }}
   labels:
     {{- include "summit-cap.api.labels" . | nindent 4 }}
+  annotations:
+    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"StatefulSet","name":"{{ .Values.database.name }}"},{"apiVersion":"apps/v1","kind":"Deployment","name":"{{ .Values.keycloak.name }}"},{"apiVersion":"apps/v1","kind":"Deployment","name":"{{ .Values.minio.name }}"}]'
 spec:
   replicas: {{ .Values.api.replicas }}
   selector:
