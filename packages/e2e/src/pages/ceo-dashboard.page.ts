@@ -9,9 +9,6 @@ export class CeoDashboardPage {
     readonly heading: Locator;
     readonly subtitle: Locator;
 
-    // Refresh button
-    readonly refreshButton: Locator;
-
     // Pipeline Overview card
     readonly pipelineCard: Locator;
     readonly pullThroughRate: Locator;
@@ -49,9 +46,7 @@ export class CeoDashboardPage {
         this.page = page;
 
         this.heading = page.getByRole("heading", { name: "Executive Dashboard" });
-        this.subtitle = page.getByText("Summit Cap Financial");
-
-        this.refreshButton = page.getByRole("button", { name: "Refresh" });
+        this.subtitle = page.getByText("Portfolio Health & Operations");
 
         this.pipelineCard = page.getByText("Pipeline Overview");
         this.pullThroughRate = page.getByText("Pull-Through Rate");

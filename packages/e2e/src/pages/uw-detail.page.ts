@@ -53,7 +53,7 @@ export class UWDetailPage {
         this.breadcrumb = page.getByRole("navigation");
 
         this.riskAssessmentHeading = page.getByText("Risk Assessment").first();
-        this.runAssessmentButton = page.getByRole("button", { name: /Run Assessment|Re-run/ });
+        this.runAssessmentButton = page.getByRole("button", { name: /Run Assessment|Re-run/ }).first();
         this.creditMetric = page.getByText("Credit").first();
         this.capacityMetric = page.getByText(/Capacity|DTI/).first();
         this.collateralMetric = page.getByText(/Collateral|LTV/).first();

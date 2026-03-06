@@ -88,7 +88,7 @@ test.describe("Chat Panel", () => {
         // Send a message so the trash button appears
         await textarea.fill("Message to be cleared");
         await page.locator('button[aria-label="Send message"]').click();
-        await expect(page.getByText("Message to be cleared")).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByText("Message to be cleared").first()).toBeVisible({ timeout: 5_000 });
 
         // Trash button should now be visible
         await expect(clearButton).toBeVisible();
@@ -97,7 +97,7 @@ test.describe("Chat Panel", () => {
         await clearButton.click();
 
         // The message should be gone and empty state should return
-        await expect(page.getByText("Message to be cleared")).not.toBeVisible();
+        await expect(page.getByText("Message to be cleared")).toHaveCount(0);
         await expect(page.getByText("How can I help?")).toBeVisible({ timeout: 5_000 });
     });
 

@@ -370,12 +370,19 @@ async def seed_demo_data(
         RuntimeError: If already seeded and force=False.
     """
     manifest = await _check_manifest(session)
+    current_hash = compute_config_hash()
     if manifest and not force:
-        return {
-            "status": "already_seeded",
-            "seeded_at": manifest.seeded_at.isoformat(),
-            "config_hash": manifest.config_hash,
-        }
+        if manifest.config_hash == current_hash:
+            return {
+                "status": "already_seeded",
+                "seeded_at": manifest.seeded_at.isoformat(),
+                "config_hash": manifest.config_hash,
+            }
+        # Config changed -- force re-seed
+        logger.info(
+            "Config hash changed (%s -> %s), re-seeding", manifest.config_hash, current_hash
+        )
+        force = True
 
     if manifest and force:
         await _clear_demo_data(session, compliance_session)

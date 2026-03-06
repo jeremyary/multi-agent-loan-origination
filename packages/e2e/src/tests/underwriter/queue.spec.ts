@@ -39,7 +39,7 @@ test.describe("Underwriter Queue", () => {
     test("should filter table by search input", async () => {
         await expect(queue.tableRows.first()).toBeVisible({ timeout: 10_000 });
         const initialCount = await queue.tableRows.count();
-        test.skip(initialCount === 0, "No queue rows in seed data");
+        expect(initialCount).toBeGreaterThan(0);
 
         // Get the first borrower name for a positive search
         const firstName = await queue.tableRows.first().locator("p.font-medium").textContent();

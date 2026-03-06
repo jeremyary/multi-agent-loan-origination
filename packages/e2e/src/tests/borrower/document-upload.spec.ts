@@ -56,12 +56,12 @@ test.describe("Borrower Document Upload", () => {
         }
     });
 
-    // C-2: Replace silent if-guard with explicit test.skip so CI reports a skip
-    // rather than a silent pass when no documents exist in seed data.
     test("should display document status badges", async ({ page }) => {
-        const docRows = page.locator(".divide-y > div");
-        const count = await docRows.count();
-        test.skip(count === 0, "No documents in seed data -- upload a document first");
+        const docsHeading = page.getByRole("heading", { name: "Documents" });
+        await expect(docsHeading).toBeVisible();
+        const docsCard = docsHeading.locator("../..");
+        const docRows = docsCard.locator(".divide-y > div");
+        await expect(docRows.first()).toBeVisible({ timeout: 10_000 });
 
         // Each doc row should have a status badge (rounded-full span)
         await expect(docRows.first().locator("span.rounded-full")).toBeVisible();
