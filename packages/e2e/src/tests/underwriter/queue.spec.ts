@@ -23,8 +23,8 @@ test.describe("Underwriter Queue", () => {
     });
 
     test("should display queue table with application rows", async () => {
-        const hasRows = await queue.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in queue -- empty database");
+        // Wait for table data to load
+        await expect(queue.tableRows.first()).toBeVisible({ timeout: 10_000 });
         const rowCount = await queue.tableRows.count();
         expect(rowCount).toBeGreaterThan(0);
     });
@@ -37,8 +37,7 @@ test.describe("Underwriter Queue", () => {
     });
 
     test("should filter table by search input", async () => {
-        const hasRows = await queue.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in queue -- empty database");
+        await expect(queue.tableRows.first()).toBeVisible({ timeout: 10_000 });
         const initialCount = await queue.tableRows.count();
         test.skip(initialCount === 0, "No queue rows in seed data");
 
@@ -55,8 +54,7 @@ test.describe("Underwriter Queue", () => {
     });
 
     test("should filter table by urgency dropdown", async ({ page }) => {
-        const hasRows = await queue.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in queue -- empty database");
+        await expect(queue.tableRows.first()).toBeVisible({ timeout: 10_000 });
         const countBefore = await queue.tableRows.count();
 
         await queue.urgencyFilter.selectOption({ label: "Critical" });
@@ -71,8 +69,7 @@ test.describe("Underwriter Queue", () => {
     });
 
     test("should sort table by clicking column header", async () => {
-        const hasRows = await queue.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in queue -- empty database");
+        await expect(queue.tableRows.first()).toBeVisible({ timeout: 10_000 });
 
         // Click the "Loan Amount" column header to sort
         const loanAmountHeader = queue.columnHeaders.filter({ hasText: "Loan Amount" });
@@ -83,16 +80,16 @@ test.describe("Underwriter Queue", () => {
     });
 
     test("should navigate to detail when clicking a row", async ({ page }) => {
-        const hasRows = await queue.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in queue -- empty database");
+        await expect(queue.tableRows.first()).toBeVisible({ timeout: 10_000 });
+        const rowCount = await queue.tableRows.count();
+        if (rowCount === 0) return;
 
         await queue.tableRows.first().click();
         await expect(page).toHaveURL(/\/underwriter\/\d+/);
     });
 
     test("should show pending review count in footer", async () => {
-        const hasRows = await queue.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in queue -- empty database");
+        await expect(queue.tableRows.first()).toBeVisible({ timeout: 10_000 });
         await expect(queue.showingCount).toBeVisible();
     });
 });

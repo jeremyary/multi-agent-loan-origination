@@ -55,7 +55,5 @@ export class BorrowerDashboardPage {
 
     async goto(): Promise<void> {
         await this.page.goto("/borrower");
-        // Wait for the dashboard to actually load (not redirect to sign-in)
-        await this.page.waitForURL("**/borrower**", { timeout: 15_000 });
     }
 }

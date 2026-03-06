@@ -2,7 +2,7 @@
 
 import { test, expect } from "@playwright/test";
 import { SignInPage } from "../../pages/sign-in.page";
-import { getPassword, IS_DEV_AUTH } from "../../helpers/env";
+import { getPassword } from "../../helpers/env";
 
 test.describe("Route Guards", () => {
     test("should redirect unauthenticated user from /borrower to /sign-in", async ({ page }) => {
@@ -18,12 +18,8 @@ test.describe("Route Guards", () => {
 
         await page.goto("/loan-officer");
 
-        // Dev auth redirects to persona's home; Keycloak logs out and redirects to sign-in
-        if (IS_DEV_AUTH) {
-            await expect(page).toHaveURL(/\/borrower/);
-        } else {
-            await expect(page).toHaveURL(/\/sign-in/);
-        }
+        // Should be redirected back to borrower's home
+        await expect(page).toHaveURL(/\/borrower/);
     });
 
     test("should redirect LO away from /borrower", async ({ page }) => {
@@ -34,11 +30,7 @@ test.describe("Route Guards", () => {
 
         await page.goto("/borrower");
 
-        // Dev auth redirects to persona's home; Keycloak logs out and redirects to sign-in
-        if (IS_DEV_AUTH) {
-            await expect(page).toHaveURL(/\/loan-officer/);
-        } else {
-            await expect(page).toHaveURL(/\/sign-in/);
-        }
+        // Should be redirected back to LO's home
+        await expect(page).toHaveURL(/\/loan-officer/);
     });
 });

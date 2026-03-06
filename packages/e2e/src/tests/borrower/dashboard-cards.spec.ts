@@ -54,10 +54,7 @@ test.describe("Borrower Dashboard Cards", () => {
         await expect(rateLock.or(prequal).first()).toBeVisible();
     });
 
-    test("should display application summary when application exists", async ({ page }) => {
-        const hasApp = await page.getByText(/Application #/).isVisible();
-        test.skip(!hasApp, "No active application in seed data");
-
+    test("should display application summary with loan details", async ({ page }) => {
         const summaryHeading = page.getByRole("heading", {
             name: "Application Summary",
         });

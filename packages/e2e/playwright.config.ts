@@ -104,5 +104,11 @@ export default defineConfig({
             },
         },
 
+        // Placeholder tests -- sign in as UW/CEO directly (no stored auth)
+        {
+            name: "placeholders",
+            testMatch: "placeholders/**/*.spec.ts",
+            use: { ...devices["Desktop Chrome"] },
+        },
     ],
 });

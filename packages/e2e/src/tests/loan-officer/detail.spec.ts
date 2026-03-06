@@ -12,12 +12,8 @@ test.describe("Loan Officer Application Detail", () => {
         const pipeline = new LOPipelinePage(page);
         await pipeline.goto();
 
-        // Wait for heading to confirm page loaded
-        await expect(page.getByRole("heading", { name: "Pipeline" })).toBeVisible({ timeout: 10_000 });
-
-        // Skip entire suite if no applications in the pipeline
-        const hasRows = await pipeline.tableRows.first().isVisible({ timeout: 5_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in pipeline -- empty database");
+        // Wait for table data to load
+        await expect(pipeline.tableRows.first()).toBeVisible({ timeout: 10_000 });
 
         await pipeline.tableRows.first().click();
         await page.waitForURL(/\/loan-officer\/\d+/);

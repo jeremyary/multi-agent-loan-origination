@@ -24,8 +24,7 @@ test.describe("Loan Officer Pipeline", () => {
 
     test("should display pipeline table with application rows", async () => {
         // Wait for table data to load (async fetch)
-        const hasRows = await pipeline.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in pipeline -- empty database");
+        await expect(pipeline.tableRows.first()).toBeVisible({ timeout: 10_000 });
         const rowCount = await pipeline.tableRows.count();
         expect(rowCount).toBeGreaterThan(0);
     });
@@ -51,8 +50,7 @@ test.describe("Loan Officer Pipeline", () => {
     });
 
     test("should filter table by stage dropdown", async ({ page }) => {
-        const hasRows = await pipeline.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in pipeline -- empty database");
+        await expect(pipeline.tableRows.first()).toBeVisible({ timeout: 10_000 });
         const countBefore = await pipeline.tableRows.count();
 
         // Select a specific stage
@@ -70,16 +68,16 @@ test.describe("Loan Officer Pipeline", () => {
     });
 
     test("should navigate to detail when clicking a row", async ({ page }) => {
-        const hasRows = await pipeline.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in pipeline -- empty database");
+        await expect(pipeline.tableRows.first()).toBeVisible({ timeout: 10_000 });
+        const rowCount = await pipeline.tableRows.count();
+        if (rowCount === 0) return;
 
         await pipeline.tableRows.first().click();
         await expect(page).toHaveURL(/\/loan-officer\/\d+/);
     });
 
     test("should filter table by urgency dropdown", async ({ page }) => {
-        const hasRows = await pipeline.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in pipeline -- empty database");
+        await expect(pipeline.tableRows.first()).toBeVisible({ timeout: 10_000 });
         const countBefore = await pipeline.tableRows.count();
 
         // Select Critical urgency -- client-side filter
@@ -99,8 +97,7 @@ test.describe("Loan Officer Pipeline", () => {
     });
 
     test("should sort table by clicking column header", async ({ page }) => {
-        const hasRows = await pipeline.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in pipeline -- empty database");
+        await expect(pipeline.tableRows.first()).toBeVisible({ timeout: 10_000 });
 
         // Click the "Loan Amount" column header to sort
         const loanAmountHeader = pipeline.columnHeaders.filter({ hasText: "Loan Amount" });
@@ -111,8 +108,7 @@ test.describe("Loan Officer Pipeline", () => {
     });
 
     test("should filter stalled applications via checkbox", async ({ page }) => {
-        const hasRows = await pipeline.tableRows.first().isVisible({ timeout: 10_000 }).catch(() => false);
-        test.skip(!hasRows, "No applications in pipeline -- empty database");
+        await expect(pipeline.tableRows.first()).toBeVisible({ timeout: 10_000 });
         const countBefore = await pipeline.tableRows.count();
 
         await pipeline.stalledCheckbox.check();
