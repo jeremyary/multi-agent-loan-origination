@@ -57,8 +57,6 @@ spec:
               containerPort: 3000
               protocol: TCP
           env:
-            - name: DATABASE_URL
-              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ $dbName }}:5432/langfuse"
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
@@ -69,6 +67,8 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ $dbName }}:5432/langfuse"
             - name: HOSTNAME
               value: "0.0.0.0"
             - name: NEXTAUTH_URL
@@ -135,17 +135,17 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: LANGFUSE_INIT_USER_PASSWORD
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: CLICKHOUSE_PASSWORD
             - name: CLICKHOUSE_MIGRATION_URL
               value: "clickhouse://clickhouse:$(CLICKHOUSE_PASSWORD)@clickhouse:9000/default"
             - name: CLICKHOUSE_URL
               value: "http://clickhouse:8123"
             - name: CLICKHOUSE_USER
               value: clickhouse
-            - name: CLICKHOUSE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $secretName }}
-                  key: CLICKHOUSE_PASSWORD
             - name: CLICKHOUSE_CLUSTER_ENABLED
               value: "false"
             - name: REDIS_HOST
@@ -239,8 +239,6 @@ spec:
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
           env:
-            - name: DATABASE_URL
-              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ $dbName }}:5432/langfuse"
             - name: POSTGRES_USER
               valueFrom:
                 secretKeyRef:
@@ -251,6 +249,8 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: POSTGRES_PASSWORD
+            - name: DATABASE_URL
+              value: "postgresql://$(POSTGRES_USER):$(POSTGRES_PASSWORD)@{{ $dbName }}:5432/langfuse"
             - name: NEXTAUTH_URL
               value: "http://langfuse-web:3000"
             - name: NEXTAUTH_SECRET
@@ -315,17 +315,17 @@ spec:
                 secretKeyRef:
                   name: {{ $secretName }}
                   key: LANGFUSE_INIT_USER_PASSWORD
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: CLICKHOUSE_PASSWORD
             - name: CLICKHOUSE_MIGRATION_URL
               value: "clickhouse://clickhouse:$(CLICKHOUSE_PASSWORD)@clickhouse:9000/default"
             - name: CLICKHOUSE_URL
               value: "http://clickhouse:8123"
             - name: CLICKHOUSE_USER
               value: clickhouse
-            - name: CLICKHOUSE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ $secretName }}
-                  key: CLICKHOUSE_PASSWORD
             - name: CLICKHOUSE_CLUSTER_ENABLED
               value: "false"
             - name: REDIS_HOST
