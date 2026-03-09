@@ -36,11 +36,86 @@ This quickstart demonstrates production-ready AI patterns including RBAC-scoped 
 
 ### See it in action
 
-Demo video coming soon.
+Demo video inclusion/timeline TBD.
 
 ### Architecture diagrams
 
-Architecture diagram coming soon. Diagrams will be located in `docs/images/`.
+#### System architecture
+
+```mermaid
+graph TB
+    subgraph Client
+        UI[React UI<br>localhost:3000]
+    end
+
+    subgraph API["FastAPI Backend — localhost:8000"]
+        REST[REST Endpoints]
+        WS[WebSocket Chat]
+        AUTH[JWT Auth Middleware]
+        PII[PII Masking Middleware]
+        ROUTER[Agent Router]
+    end
+
+    subgraph Agents["LangGraph Agents"]
+        PA[Public Assistant]
+        BA[Borrower Assistant]
+        LOA[LO Assistant]
+        UWA[Underwriter Assistant]
+        CEOA[CEO Assistant]
+    end
+
+    subgraph Data
+        DB[(PostgreSQL 16<br>+ pgvector)]
+        COMP[(Compliance DB<br>HMDA isolation)]
+        MINIO[(MinIO<br>S3 Documents)]
+    end
+
+    subgraph External
+        LLM[LLM Endpoint<br>OpenAI-compatible]
+    end
+
+    subgraph Observability["Observability — optional"]
+        LF[LangFuse]
+        KC[Keycloak<br>OIDC]
+    end
+
+    UI -->|HTTP + WebSocket| API
+    AUTH --> ROUTER
+    WS --> AUTH
+    REST --> AUTH
+    PII --> REST
+    ROUTER --> PA & BA & LOA & UWA & CEOA
+    PA & BA & LOA & UWA & CEOA -->|astream_events| LLM
+    PA & BA & LOA & UWA & CEOA --> DB
+    UWA --> COMP
+    BA & LOA --> MINIO
+    AUTH -.->|OIDC| KC
+    PA & BA & LOA & UWA & CEOA -.->|traces| LF
+```
+
+#### Agent request flow
+
+```mermaid
+graph LR
+    USER([User Message]) --> IS[Input Shield<br>Llama Guard]
+    IS -->|blocked| SAFE_RESP([Safety Response])
+    IS -->|pass| CLASSIFY[Classify<br>Rule-based]
+
+    CLASSIFY -->|simple| FAST[Agent Fast<br>Small Model]
+    CLASSIFY -->|complex| CAPABLE[Agent Capable<br>Large Model + Tools]
+
+    FAST -->|low confidence| CAPABLE
+    FAST -->|confident| OS[Output Shield]
+
+    CAPABLE -->|tool call| TA[Tool Auth<br>RBAC Check]
+    TA -->|denied| CAPABLE
+    TA -->|allowed| TOOLS[Execute Tool]
+    TOOLS --> CAPABLE
+    CAPABLE -->|done| OS
+
+    OS -->|blocked| SAFE_RESP
+    OS -->|pass| DONE([Stream to Client])
+```
 
 ## Requirements
 
