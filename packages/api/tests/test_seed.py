@@ -193,15 +193,16 @@ async def test_seed_creates_borrowers():
 @pytest.mark.asyncio
 async def test_seed_idempotent():
     """Second call without force returns early, no duplicates."""
+    from src.services.seed.fixtures import compute_config_hash
     from src.services.seed.seeder import seed_demo_data
 
     session = AsyncMock()
     compliance_session = AsyncMock()
 
-    # Existing manifest
+    # Existing manifest -- hash must match current fixtures to trigger early return
     manifest = MagicMock()
     manifest.seeded_at = datetime(2026, 1, 1, 0, 0, 0)
-    manifest.config_hash = "abc123"
+    manifest.config_hash = compute_config_hash()
 
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = manifest
