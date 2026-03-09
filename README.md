@@ -67,7 +67,7 @@ Demo video inclusion/timeline TBD.
 
 - OpenShift cluster with OpenShift AI installed
 - Persistent volume claims for PostgreSQL and MinIO storage
-- See the [documentation site](https://jeremyary.github.io/multi-agent-loan-origination/) for detailed cluster requirements
+- See the [documentation site](https://rh-ai-quickstart.github.io/multi-agent-loan-origination/) for detailed cluster requirements
 
 ### Minimum software requirements
 
@@ -136,7 +136,7 @@ make status      # Show deployment status
 make undeploy    # Remove deployment
 ```
 
-See the [documentation site](https://jeremyary.github.io/multi-agent-loan-origination/) for detailed OpenShift deployment configuration, resource requirements, and troubleshooting.
+See the [documentation site](https://rh-ai-quickstart.github.io/multi-agent-loan-origination/) for detailed OpenShift deployment configuration, resource requirements, and troubleshooting.
 
 ### Delete
 
@@ -155,7 +155,7 @@ make undeploy   # Remove Helm deployment
 
 ## References
 
-- [Documentation Site](https://jeremyary.github.io/multi-agent-loan-origination/)
+- [Documentation Site](https://rh-ai-quickstart.github.io/multi-agent-loan-origination/)
 - [API Documentation](http://localhost:8000/docs) (available when running locally)
 - [Red Hat AI Quickstart Catalog](https://github.com/rh-ai-quickstart)
 - Package READMEs:

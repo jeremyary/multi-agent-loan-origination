@@ -6,8 +6,8 @@
 
 site_name: Mortgage AI
 site_description: Multi-Agent Loan Origination - Red Hat AI Quickstart
-repo_url: https://github.com/jeremyary/multi-agent-loan-origination
-repo_name: jeremyary/multi-agent-loan-origination
+repo_url: https://github.com/rh-ai-quickstart/multi-agent-loan-origination
+repo_name: rh-ai-quickstart/multi-agent-loan-origination
 edit_uri: edit/main/docs/
 
 theme:
