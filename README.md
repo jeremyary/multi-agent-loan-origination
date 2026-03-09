@@ -25,16 +25,16 @@ Summit Cap Financial is a fictional mortgage lender headquartered in Denver, Col
 # 1. Install all dependencies (Node.js + Python)
 make setup
 
-# 2. Start database + supporting services
-make run
+# 2. Configure your environment
+cp .env.example .env   # Edit LLM_BASE_URL, LLM_API_KEY, and model names
 
-# 3. Run database migrations
+# 3. Start database + MinIO
+make db-start
+
+# 4. Run database migrations
 make db-upgrade
 
-# 4. Configure your LLM endpoint
-cp .env.example .env   # Edit LLM_BASE_URL and LLM_API_KEY
-
-# 5. Start development servers
+# 5. Start development servers (API + UI, with hot reload)
 make dev
 ```
 
@@ -102,8 +102,8 @@ summit-cap/
 ```bash
 # Development
 make setup              # Install all dependencies
-make dev                # Start dev servers (frontend + API)
-make run                # Start all services with compose
+make dev                # Start dev servers (frontend + API with hot reload)
+make db-start           # Start database + MinIO containers
 make db-upgrade         # Run migrations
 
 # Testing
@@ -116,12 +116,12 @@ cd packages/api && uv run ruff check src/  # Python lint
 
 # Containers
 make containers-build   # Build all container images
-make run                # Start minimal stack (db + minio + api + ui)
+make run-minimal        # Start default stack (db + minio + api + ui)
+make run                # Start full stack (all services)
 make run-auth           # Add Keycloak
 make run-ai             # Add LlamaStack
 make run-obs            # Add observability (LangFuse)
-podman-compose --profile full up -d  # Start all services
-make containers-down    # Stop all services
+make stop               # Stop all containers
 make containers-logs    # View container logs
 
 # OpenShift Deployment
@@ -132,21 +132,17 @@ make status             # Show deployment status
 
 ## Environment Configuration
 
-Create a `.env` file in the project root:
+Copy `.env.example` and adjust for your setup. The key settings to change:
 
 ```env
-# Database
-DATABASE_URL=postgresql+asyncpg://user:password@localhost:5433/summit-cap
-
-# LLM
+# LLM endpoint (LM Studio, vLLM, or OpenAI)
 LLM_BASE_URL=http://localhost:1234/v1
-LLM_API_KEY=lm-studio
-
-# API
-DEBUG=true
-AUTH_DISABLED=true
-ALLOWED_HOSTS=["http://localhost:3000"]
+LLM_API_KEY=not-needed
+LLM_MODEL_FAST=qwen3-30b-a3b
+LLM_MODEL_CAPABLE=qwen3-30b-a3b
 ```
+
+See `.env.example` for all available settings (database, auth, safety shields, LangFuse).
 
 ## Container Deployment
 
@@ -156,20 +152,19 @@ The `compose.yml` supports multiple profiles for different deployment scenarios:
 # Build images
 make containers-build
 
-# Start minimal stack (db + minio + api + ui)
-make run  # or: podman-compose up -d
+# Start default stack (db + minio + api + ui)
+make run-minimal  # or: podman-compose up -d
 
-# Add authentication (+ Keycloak)
-make run-auth  # or: podman-compose --profile auth up -d
+# Start full stack (all services)
+make run  # or: podman-compose --profile full up -d
 
-# Add AI services (+ LlamaStack)
-make run-ai  # or: podman-compose --profile ai up -d
+# Add individual profiles to the default stack
+make run-auth  # + Keycloak
+make run-ai    # + LlamaStack
+make run-obs   # + Redis + ClickHouse + LangFuse
 
-# Add observability (+ Redis + ClickHouse + LangFuse)
-make run-obs  # or: podman-compose --profile observability up -d
-
-# Start everything
-podman-compose --profile full up -d
+# Stop all containers
+make stop
 
 # Check service status
 podman-compose ps

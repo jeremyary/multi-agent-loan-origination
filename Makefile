@@ -163,7 +163,7 @@ clean:
 # -- Database ----------------------------------------------------------------
 
 db-start:
-	$(COMPOSE) up -d summit-cap-db
+	$(COMPOSE) up -d summit-cap-db minio
 
 db-stop:
 	$(COMPOSE) stop summit-cap-db
