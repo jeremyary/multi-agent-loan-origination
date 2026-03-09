@@ -115,14 +115,8 @@ make lint               # Lint all packages
 cd packages/api && uv run ruff check src/  # Python lint
 
 # Containers
-make containers-build   # Build all container images
-make run-minimal        # Start default stack (db + minio + api + ui)
 make run                # Start full stack (all services)
-make run-auth           # Add Keycloak
-make run-ai             # Add LlamaStack
-make run-obs            # Add observability (LangFuse)
 make stop               # Stop all containers
-make containers-logs    # View container logs
 
 # OpenShift Deployment
 make deploy             # Deploy via Helm
@@ -146,29 +140,15 @@ See `.env.example` for all available settings (database, auth, safety shields, L
 
 ## Container Deployment
 
-The `compose.yml` supports multiple profiles for different deployment scenarios:
-
 ```bash
-# Build images
-make containers-build
-
-# Start default stack (db + minio + api + ui)
-make run-minimal  # or: podman-compose up -d
-
-# Start full stack (all services)
-make run  # or: podman-compose --profile full up -d
-
-# Add individual profiles to the default stack
-make run-auth  # + Keycloak
-make run-ai    # + LlamaStack
-make run-obs   # + Redis + ClickHouse + LangFuse
+# Start all services (db, minio, api, ui, keycloak, langfuse, llamastack)
+make run
 
 # Stop all containers
 make stop
-
-# Check service status
-podman-compose ps
 ```
+
+Run `make help` for additional targets (individual profiles, image builds, logs).
 
 ## OpenShift / Kubernetes Deployment
 
