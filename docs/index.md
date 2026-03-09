@@ -11,7 +11,7 @@ This reference application demonstrates how to build multi-agent AI systems on R
 
 ## What is This Application?
 
-The application uses a fictional mortgage lender (Acme FinTech Company) to model the end-to-end mortgage lending process, covering:
+The application uses a fictional mortgage lender to model the end-to-end mortgage lending process, covering:
 
 - Prospect inquiry and pre-qualification
 - Borrower application and document submission
