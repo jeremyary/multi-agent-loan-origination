@@ -10,7 +10,7 @@ Summit Cap Financial is a fictional mortgage lender headquartered in Denver, Col
 
 > **Regulatory disclaimer:** All compliance content (HMDA, ECOA, TRID, ATR/QM, FCRA) is simulated for demonstration purposes and does not constitute legal or regulatory advice.
 
-## Quick Start
+## Getting Started
 
 ### Prerequisites
 
