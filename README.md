@@ -22,20 +22,11 @@ Summit Cap Financial is a fictional mortgage lender headquartered in Denver, Col
 ### Setup
 
 ```bash
-# 1. Install all dependencies (Node.js + Python)
-make setup
-
-# 2. Configure your environment
-cp .env.example .env   # Edit LLM_BASE_URL, LLM_API_KEY, and model names
-
-# 3. Start database + MinIO
-make db-start
-
-# 4. Run database migrations
-make db-upgrade
-
-# 5. Start development servers (API + UI, with hot reload)
-make dev
+make setup                # Install dependencies
+cp .env.example .env      # Configure LLM endpoint and model names
+make db-start             # Start Postgres + MinIO
+make db-upgrade           # Run migrations
+make dev                  # Start API + UI dev servers
 ```
 
 ### Development URLs
