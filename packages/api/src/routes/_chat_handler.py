@@ -5,6 +5,7 @@ Extracts the streaming loop and WebSocket authentication so both chat.py and
 borrower_chat.py share identical event handling + audit writing logic.
 """
 
+import asyncio
 import json
 import logging
 import re
@@ -198,6 +199,114 @@ async def run_agent_stream(
         except Exception:
             logger.warning("Failed to write audit event %s", event_type, exc_info=True)
 
+    # Track the current agent task so we can cancel it on WS disconnect
+    agent_task: asyncio.Task | None = None
+
+    async def _run_agent(user_text: str, input_messages: list) -> str:
+        """Run the agent graph and stream events back to the client.
+
+        Returns the full (unfiltered) response text.
+        """
+        config = {
+            **build_langfuse_config(session_id=session_id),
+            "configurable": {"thread_id": thread_id},
+        }
+
+        full_response = ""
+        think_filter = ThinkTagFilter()
+        async for event in graph.astream_events(
+            {
+                "messages": input_messages,
+                "user_role": user_role,
+                "user_id": user_id,
+                "user_email": user_email,
+                "user_name": user_name,
+            },
+            config=config,
+            version="v2",
+        ):
+            kind = event.get("event")
+            node = event.get("metadata", {}).get("langgraph_node")
+
+            if kind == "on_chat_model_stream" and node in (
+                "agent",
+                "agent_fast",
+                "agent_capable",
+            ):
+                chunk = event.get("data", {}).get("chunk")
+                if isinstance(chunk, AIMessageChunk) and chunk.content:
+                    clean = think_filter.feed(chunk.content)
+                    if clean:
+                        clean = clean.replace("**", "")
+                        await _send({"type": "token", "content": clean})
+                    full_response += chunk.content
+
+            elif kind == "on_chain_end" and node == "input_shield":
+                output = event.get("data", {}).get("output")
+                if isinstance(output, dict) and output.get("safety_blocked"):
+                    for msg in output.get("messages", []):
+                        if hasattr(msg, "content") and msg.content:
+                            await _send({"type": "token", "content": msg.content})
+                            full_response = msg.content
+                    await _audit("safety_block", {"shield": "input", "blocked": True})
+
+            elif kind == "on_chain_end" and node == "tool_auth":
+                output = event.get("data", {}).get("output")
+                if isinstance(output, dict):
+                    auth_msgs = output.get("messages", [])
+                    if auth_msgs:
+                        logger.info("Tool auth denied for session %s", session_id)
+                        await _audit(
+                            "tool_auth_denied",
+                            {
+                                "message": auth_msgs[-1].content
+                                if hasattr(auth_msgs[-1], "content")
+                                else str(auth_msgs[-1]),
+                            },
+                        )
+
+            elif kind == "on_tool_end":
+                tool_output = event.get("data", {}).get("output")
+                tool_name = event.get("name", "unknown")
+                await _audit(
+                    "agent_tool_called",
+                    {
+                        "tool_name": tool_name,
+                        "result_length": len(str(tool_output)) if tool_output else 0,
+                    },
+                )
+
+            elif kind == "on_chain_end" and node == "output_shield":
+                output = event.get("data", {}).get("output")
+                if isinstance(output, dict):
+                    shield_msgs = output.get("messages", [])
+                    if shield_msgs:
+                        override = shield_msgs[-1].content
+                        await _send({"type": "safety_override", "content": override})
+                        full_response = override
+                        await _audit(
+                            "safety_block",
+                            {"shield": "output", "blocked": True},
+                        )
+
+        return full_response
+
+    async def _wait_disconnect() -> None:
+        """Block until the WebSocket client disconnects.
+
+        Consumes incoming messages while the agent is streaming so the
+        disconnect exception surfaces promptly.  Any messages received
+        during agent execution are silently dropped (the protocol only
+        supports one exchange at a time).
+        """
+        from fastapi import WebSocketDisconnect
+
+        try:
+            while True:
+                await ws.receive_text()
+        except (WebSocketDisconnect, RuntimeError):
+            return
+
     try:
         while True:
             raw = await ws.receive_text()
@@ -226,99 +335,39 @@ async def run_agent_stream(
                 messages_fallback.append(HumanMessage(content=user_text))
                 input_messages = messages_fallback
 
-            config = {
-                **build_langfuse_config(session_id=session_id),
-                "configurable": {"thread_id": thread_id},
-            }
+            # Race the agent against a disconnect sentinel.
+            # If the client disconnects while the agent is streaming,
+            # the agent task is cancelled immediately -- freeing the LLM slot.
+            agent_task = asyncio.create_task(_run_agent(user_text, input_messages))
+            disconnect_task = asyncio.create_task(_wait_disconnect())
+
+            done, pending = await asyncio.wait(
+                {agent_task, disconnect_task},
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+
+            if disconnect_task in done:
+                # Client disconnected while agent was running -- cancel agent
+                agent_task.cancel()
+                try:
+                    await agent_task
+                except (asyncio.CancelledError, Exception):
+                    pass
+                logger.debug(
+                    "Agent cancelled for session %s (client disconnected mid-stream)",
+                    session_id,
+                )
+                return
+
+            # Agent finished -- cancel the disconnect watcher
+            disconnect_task.cancel()
+            try:
+                await disconnect_task
+            except (asyncio.CancelledError, Exception):
+                pass
 
             try:
-                full_response = ""
-                think_filter = ThinkTagFilter()
-                async for event in graph.astream_events(
-                    {
-                        "messages": input_messages,
-                        "user_role": user_role,
-                        "user_id": user_id,
-                        "user_email": user_email,
-                        "user_name": user_name,
-                    },
-                    config=config,
-                    version="v2",
-                ):
-                    kind = event.get("event")
-                    node = event.get("metadata", {}).get("langgraph_node")
-
-                    if kind == "on_chat_model_stream" and node in (
-                        "agent",
-                        "agent_fast",
-                        "agent_capable",
-                    ):
-                        chunk = event.get("data", {}).get("chunk")
-                        if isinstance(chunk, AIMessageChunk) and chunk.content:
-                            clean = think_filter.feed(chunk.content)
-                            if clean:
-                                clean = clean.replace("**", "")
-                                await _send({"type": "token", "content": clean})
-                            full_response += chunk.content
-
-                    elif kind == "on_chain_end" and node == "input_shield":
-                        output = event.get("data", {}).get("output")
-                        if isinstance(output, dict) and output.get("safety_blocked"):
-                            for msg in output.get("messages", []):
-                                if hasattr(msg, "content") and msg.content:
-                                    await _send({"type": "token", "content": msg.content})
-                                    full_response = msg.content
-                            await _audit("safety_block", {"shield": "input", "blocked": True})
-
-                    elif kind == "on_chain_end" and node == "tool_auth":
-                        output = event.get("data", {}).get("output")
-                        if isinstance(output, dict):
-                            auth_msgs = output.get("messages", [])
-                            if auth_msgs:
-                                logger.info("Tool auth denied for session %s", session_id)
-                                await _audit(
-                                    "tool_auth_denied",
-                                    {
-                                        "message": auth_msgs[-1].content
-                                        if hasattr(auth_msgs[-1], "content")
-                                        else str(auth_msgs[-1]),
-                                    },
-                                )
-
-                    elif kind == "on_tool_end":
-                        tool_output = event.get("data", {}).get("output")
-                        tool_name = event.get("name", "unknown")
-                        await _audit(
-                            "agent_tool_called",
-                            {
-                                "tool_name": tool_name,
-                                "result_length": len(str(tool_output)) if tool_output else 0,
-                            },
-                        )
-
-                    elif kind == "on_chain_end" and node == "output_shield":
-                        output = event.get("data", {}).get("output")
-                        if isinstance(output, dict):
-                            shield_msgs = output.get("messages", [])
-                            if shield_msgs:
-                                override = shield_msgs[-1].content
-                                await _send({"type": "safety_override", "content": override})
-                                full_response = override
-                                await _audit(
-                                    "safety_block",
-                                    {"shield": "output", "blocked": True},
-                                )
-
-                # Strip think tags and markdown bold markers from accumulated response
-                full_response = re.sub(r"<think>.*?</think>", "", full_response, flags=re.DOTALL)
-                full_response = full_response.replace("**", "").strip()
-
-                # Without checkpointer, manually track history for this session
-                if not use_checkpointer and full_response:
-                    messages_fallback.append(AIMessage(content=full_response))
-
-                await _send({"type": "done"})
-
+                full_response = agent_task.result()
             except Exception:
                 logger.exception("Agent invocation failed")
                 await _send(
@@ -328,6 +377,17 @@ async def run_agent_stream(
                         "Please try again later.",
                     }
                 )
+                continue
+
+            # Strip think tags and markdown bold markers from accumulated response
+            full_response = re.sub(r"<think>.*?</think>", "", full_response, flags=re.DOTALL)
+            full_response = full_response.replace("**", "").strip()
+
+            # Without checkpointer, manually track history for this session
+            if not use_checkpointer and full_response:
+                messages_fallback.append(AIMessage(content=full_response))
+
+            await _send({"type": "done"})
 
     except Exception as exc:
         from fastapi import WebSocketDisconnect

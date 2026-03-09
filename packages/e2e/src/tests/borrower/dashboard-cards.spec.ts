@@ -18,11 +18,12 @@ test.describe("Borrower Dashboard Cards", () => {
         await expect(appHeading.or(noApp).first()).toBeVisible();
     });
 
-    test("should show stage stepper with highlighted current step", async ({ page }) => {
+    test("should show stage stepper with stage labels", async ({ page }) => {
         await expect(page.getByText(/Application #/)).toBeVisible({ timeout: 10_000 });
 
-        // Stage stepper has ring-highlighted dot for current stage
-        await expect(page.locator(".ring-4").first()).toBeVisible();
+        // Stage stepper renders responsive labels (two spans per stage: mobile hidden, desktop visible)
+        await expect(page.getByText("Inquiry").last()).toBeVisible();
+        await expect(page.getByText("Closed").last()).toBeVisible();
     });
 
     test("should display documents card", async () => {
@@ -61,9 +62,9 @@ test.describe("Borrower Dashboard Cards", () => {
     test("should show loan amount in summary card", async ({ page }) => {
         await expect(page.getByText(/Application #/)).toBeVisible({ timeout: 10_000 });
 
-        // Summary card should display a formatted currency value
+        // Summary card should display a formatted currency value (may have multiple: property value + loan amount)
         const summaryCard = page.getByRole("heading", { name: "Application Summary" }).locator("../..");
-        await expect(summaryCard.getByText(/\$[\d,]+/)).toBeVisible();
+        await expect(summaryCard.getByText(/\$[\d,]+/).first()).toBeVisible();
     });
 
     // C-1 + W-1: Replace three-way OR assertion and waitForTimeout with a

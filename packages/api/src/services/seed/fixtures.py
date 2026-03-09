@@ -11,7 +11,7 @@ Simulated for demonstration purposes -- not real financial data.
 
 import hashlib
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from db.enums import (
@@ -1506,7 +1506,7 @@ def compute_config_hash() -> str:
     def _default(obj: object) -> object:
         if isinstance(obj, enum.Enum):
             return obj.value
-        if isinstance(obj, (datetime.date, datetime.datetime)):
+        if isinstance(obj, (date, datetime)):
             return obj.isoformat()
         if isinstance(obj, Decimal):
             return str(obj)
