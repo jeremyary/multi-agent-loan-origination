@@ -5,6 +5,10 @@ import { test, expect, type Locator, type Page } from "@playwright/test";
 // S-01: Extract repeated "ensure chat visible" pattern into a local helper.
 async function ensureChatVisible(page: Page): Promise<Locator> {
     const textarea = page.locator('textarea[placeholder="Type your message..."]').first();
+    // Wait for the chat sidebar to render (may take a moment after navigation)
+    await textarea.waitFor({ state: "visible", timeout: 10_000 }).catch(() => {
+        // On mobile viewports the sidebar is hidden behind a FAB
+    });
     if (!(await textarea.isVisible())) {
         const fab = page.locator('button[aria-label="Open chat assistant"]');
         if (await fab.isVisible()) await fab.click();
@@ -15,6 +19,12 @@ async function ensureChatVisible(page: Page): Promise<Locator> {
 test.describe("Chat Panel", () => {
     test.beforeEach(async ({ page }) => {
         await page.goto("/borrower");
+    });
+
+    // This test MUST be first -- later tests send messages via WS which leave
+    // conversation history that hides the empty state.
+    test("should show empty state with suggestion text before messages", async ({ page }) => {
+        await expect(page.getByText("How can I help?")).toBeVisible({ timeout: 15_000 });
     });
 
     test("should display chat sidebar on authenticated pages", async ({ page }) => {
@@ -88,16 +98,17 @@ test.describe("Chat Panel", () => {
         // Send a message so the trash button appears
         await textarea.fill("Message to be cleared");
         await page.locator('button[aria-label="Send message"]').click();
-        await expect(page.getByText("Message to be cleared")).toBeVisible({ timeout: 5_000 });
+        await expect(page.getByText("Message to be cleared").first()).toBeVisible({ timeout: 5_000 });
 
         // Trash button should now be visible
         await expect(clearButton).toBeVisible();
 
-        // Click it to clear history
+        // Wait for streaming to finish (button becomes enabled) before clicking
+        await expect(clearButton).toBeEnabled({ timeout: 15_000 });
         await clearButton.click();
 
         // The message should be gone and empty state should return
-        await expect(page.getByText("Message to be cleared")).not.toBeVisible();
+        await expect(page.getByText("Message to be cleared")).toHaveCount(0);
         await expect(page.getByText("How can I help?")).toBeVisible({ timeout: 5_000 });
     });
 
@@ -121,22 +132,4 @@ test.describe("Chat Panel", () => {
         expect(ws).not.toBeNull();
     });
 
-    // C-1: Replaced `visible || true` with an explicit fixme when the state is non-deterministic.
-    test("should show empty state with suggestion text before messages", async ({ page }) => {
-        // On first load with no messages, chat should show the empty state
-        const emptyPrompt = page.getByText("How can I help?");
-        const textarea = await ensureChatVisible(page);
-        const chatIsOpen = await textarea.isVisible();
-
-        test.skip(!chatIsOpen, "Chat panel could not be opened");
-
-        // C-1 fix: if empty state is not deterministic (e.g., prior test left messages),
-        // mark as fixme rather than using a vacuous assertion.
-        const visible = await emptyPrompt.isVisible().catch(() => false);
-        test.fixme(
-            !visible,
-            "Empty state is not deterministic across test runs -- prior tests may have sent messages",
-        );
-        await expect(emptyPrompt).toBeVisible();
-    });
 });

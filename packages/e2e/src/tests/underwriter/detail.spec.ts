@@ -14,7 +14,7 @@ test.describe("Underwriter Application Detail", () => {
 
         await expect(queue.tableRows.first()).toBeVisible({ timeout: 10_000 });
         await queue.tableRows.first().click();
-        await page.waitForURL(/\/underwriter\/\d+/);
+        await page.waitForURL(/\/underwriter\/\d+/, { timeout: 15_000 });
 
         detail = new UWDetailPage(page);
     });

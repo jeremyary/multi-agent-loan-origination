@@ -126,15 +126,12 @@ test.describe("Loan Officer Application Detail", () => {
         await expect(detail.docUploadZone).toBeVisible();
     });
 
-    // C-2: Replace silent if-guard with explicit test.skip so CI reports a skip
-    // rather than a silent pass when no documents exist for the application.
     test("should expand document row to show extraction details", async ({ page }) => {
         await detail.documentsTab.click();
 
-        // Find document rows in the table
+        // Wait for document rows to load
         const docRows = page.locator("table tbody tr").filter({ hasNot: page.locator("td[colspan]") });
-        const count = await docRows.count();
-        test.skip(count === 0, "No document rows for this application in seed data");
+        await expect(docRows.first()).toBeVisible({ timeout: 10_000 });
 
         await docRows.first().click();
         // Expanded row should appear below (extraction details or "No extraction data")

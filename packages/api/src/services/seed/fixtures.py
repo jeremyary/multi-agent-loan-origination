@@ -11,7 +11,7 @@ Simulated for demonstration purposes -- not real financial data.
 
 import hashlib
 import json
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
 from db.enums import (
@@ -1102,6 +1102,12 @@ ACTIVE_APPLICATIONS: list[dict] = [
                 "issued_by": MARIA_CHEN_ID,
                 "cleared_by": JAMES_TORRES_ID,
             },
+            {
+                "description": "Provide updated proof of homeowners insurance",
+                "severity": ConditionSeverity.PRIOR_TO_CLOSING,
+                "status": ConditionStatus.OPEN,
+                "issued_by": MARIA_CHEN_ID,
+            },
         ],
         "decisions": [
             {
@@ -1490,16 +1496,30 @@ CREDIT_PROFILES: dict[str, dict] = {
 
 
 def compute_config_hash() -> str:
-    """Compute a SHA-256 hash of the fixture data for idempotency checks."""
+    """Compute a SHA-256 hash of the fixture data for idempotency checks.
+
+    Hashes the full serialized fixture content so ANY change (new conditions,
+    modified fields, reordered records) triggers a re-seed.
+    """
+    import enum
+
+    def _default(obj: object) -> object:
+        if isinstance(obj, enum.Enum):
+            return obj.value
+        if isinstance(obj, (date, datetime)):
+            return obj.isoformat()
+        if isinstance(obj, Decimal):
+            return str(obj)
+        raise TypeError(f"Not serializable: {type(obj)}")
+
     content = json.dumps(
         {
-            "borrower_count": len(BORROWERS),
-            "active_count": len(ACTIVE_APPLICATIONS),
-            "historical_count": len(HISTORICAL_LOANS),
-            "hmda_count": len(HMDA_DEMOGRAPHICS),
-            "borrower_ids": [b["keycloak_user_id"] for b in BORROWERS],
-            "co_borrower_apps": sum(1 for a in ACTIVE_APPLICATIONS if a.get("co_borrower_refs")),
+            "borrowers": BORROWERS,
+            "active": ACTIVE_APPLICATIONS,
+            "historical": HISTORICAL_LOANS,
+            "hmda": HMDA_DEMOGRAPHICS,
         },
         sort_keys=True,
+        default=_default,
     )
     return hashlib.sha256(content.encode()).hexdigest()
