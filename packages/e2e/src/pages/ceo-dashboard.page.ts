@@ -1,6 +1,7 @@
 // This project was developed with assistance from AI tools.
 
 import type { Locator, Page } from "@playwright/test";
+import { COMPANY_NAME } from "../helpers/env";
 
 export class CeoDashboardPage {
     readonly page: Page;
@@ -73,7 +74,7 @@ export class CeoDashboardPage {
         this.auditTableRows = this.auditTable.locator("tbody tr");
         this.viewFullAuditTrail = page.getByText("View Full Audit Trail");
 
-        this.disclaimer = page.getByText("Summit Cap Financial is a fictional company");
+        this.disclaimer = page.getByText(`${COMPANY_NAME} is a fictional company`);
     }
 
     async goto(): Promise<void> {

@@ -26,7 +26,7 @@ Red Hat AI reference application demonstrating agentic AI orchestration across t
 
 ## Detailed description
 
-This Red Hat AI reference application showcases multi-agent AI systems on Red Hat OpenShift AI through a realistic, regulated-industry use case. Built for Red Hat Summit, Summit Cap Financial is a fictional mortgage lender that demonstrates how AI can orchestrate complex, multi-persona workflows in financial services.
+This Red Hat AI reference application showcases multi-agent AI systems on Red Hat OpenShift AI through a realistic, regulated-industry use case. Built for Red Hat Summit, this application uses a fictional mortgage lender to demonstrate how AI can orchestrate complex, multi-persona workflows in financial services.
 
 The application covers the complete mortgage lending lifecycle with five distinct persona experiences: prospect inquiry, borrower application intake, loan officer pipeline management, underwriter compliance checks and risk assessment, and executive analytics. Each persona interacts with a specialized LangGraph agent backed by role-scoped tools, compliance knowledge retrieval, and comprehensive audit trails.
 
@@ -67,7 +67,7 @@ Demo video inclusion/timeline TBD.
 
 - OpenShift cluster with OpenShift AI installed
 - Persistent volume claims for PostgreSQL and MinIO storage
-- See the [documentation site](https://jeremyary.github.io/multi-agent-loan-origination/) for detailed cluster requirements
+- See the [documentation site](https://rh-ai-quickstart.github.io/multi-agent-loan-origination/) for detailed cluster requirements
 
 ### Minimum software requirements
 
@@ -136,7 +136,7 @@ make status      # Show deployment status
 make undeploy    # Remove deployment
 ```
 
-See the [documentation site](https://jeremyary.github.io/multi-agent-loan-origination/) for detailed OpenShift deployment configuration, resource requirements, and troubleshooting.
+See the [documentation site](https://rh-ai-quickstart.github.io/multi-agent-loan-origination/) for detailed OpenShift deployment configuration, resource requirements, and troubleshooting.
 
 ### Delete
 
@@ -155,7 +155,7 @@ make undeploy   # Remove Helm deployment
 
 ## References
 
-- [Documentation Site](https://jeremyary.github.io/multi-agent-loan-origination/)
+- [Documentation Site](https://rh-ai-quickstart.github.io/multi-agent-loan-origination/)
 - [API Documentation](http://localhost:8000/docs) (available when running locally)
 - [Red Hat AI Quickstart Catalog](https://github.com/rh-ai-quickstart)
 - Package READMEs:
@@ -192,7 +192,7 @@ This quickstart demonstrates production-ready AI patterns for regulated industri
 ### Project structure
 
 ```
-summit-cap/
+mortgage-ai/
 ├── packages/
 │   ├── ui/              # React frontend (pnpm)
 │   ├── api/             # FastAPI backend + agents (uv)

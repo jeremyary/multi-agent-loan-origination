@@ -35,7 +35,7 @@ describe('staffName', () => {
 
 describe('STAFF_NAMES', () => {
     it('should contain all expected staff entries', () => {
-        expect(Object.keys(STAFF_NAMES)).toHaveLength(7);
+        expect(Object.keys(STAFF_NAMES)).toHaveLength(16);
     });
 
     it('should have UUIDs as keys', () => {

@@ -8,6 +8,7 @@ export const BASE_URL = process.env.BASE_URL || "http://localhost:5173";
 export const API_URL = process.env.API_URL || "http://localhost:8000";
 export const KEYCLOAK_URL = process.env.KEYCLOAK_URL || "http://localhost:8080";
 export const IS_DEV_AUTH = process.env.E2E_DEV_AUTH === "true";
+export const COMPANY_NAME = process.env.COMPANY_NAME || "Acme FinTech Company";
 
 export const DEV_PASSWORD = process.env.E2E_DEV_PASSWORD || "demo1234";
 export const KEYCLOAK_PASSWORD = process.env.E2E_KEYCLOAK_PASSWORD || "demo";
@@ -24,17 +25,17 @@ export const PERSONAS = {
     },
     loan_officer: {
         title: "Loan Officer",
-        email: "james.torres@summit-cap.com",
+        email: "james.torres@example.com",
         homeRoute: "/loan-officer",
     },
     underwriter: {
         title: "Underwriter",
-        email: "maria.chen@summit-cap.com",
+        email: "maria.chen@example.com",
         homeRoute: "/underwriter",
     },
     ceo: {
         title: "CEO",
-        email: "david.park@summit-cap.com",
+        email: "david.park@example.com",
         homeRoute: "/ceo",
     },
 } as const;

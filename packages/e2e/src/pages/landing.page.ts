@@ -1,6 +1,7 @@
 // This project was developed with assistance from AI tools.
 
 import type { Locator, Page } from "@playwright/test";
+import { COMPANY_NAME } from "../helpers/env";
 
 export class LandingPage {
     readonly page: Page;
@@ -34,7 +35,7 @@ export class LandingPage {
         this.heroHeading = page.getByRole("heading", { level: 1 });
         this.getPreQualifiedLink = page.getByRole("link", { name: "Get Pre-Qualified" });
         this.exploreProductsButton = page.getByRole("button", { name: "Explore Products" });
-        this.brandingText = page.getByText("Summit Cap Financial").first();
+        this.brandingText = page.getByText(COMPANY_NAME).first();
 
         this.calculatorForm = page.getByRole("form", { name: "Affordability calculator form" });
         this.incomeInput = page.locator("#gross_annual_income");
