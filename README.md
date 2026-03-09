@@ -100,11 +100,9 @@ summit-cap/
 ## Common Commands
 
 ```bash
-# Development
-make setup              # Install all dependencies
+# Development (daily)
+make db-start           # Start database + MinIO (if not already running)
 make dev                # Start dev servers (frontend + API with hot reload)
-make db-start           # Start database + MinIO containers
-make db-upgrade         # Run migrations
 
 # Testing
 make test               # Run all tests
