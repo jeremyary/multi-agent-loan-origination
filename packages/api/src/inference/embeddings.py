@@ -11,6 +11,7 @@ or ``provider: openai_compatible`` to delegate to a remote server.
 """
 
 import logging
+import os
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -91,10 +92,14 @@ def _build_provider() -> EmbeddingProvider:
         )
 
     # Default: openai_compatible (covers vLLM, LMStudio, TEI, etc.)
+    # Fall back to LLM_BASE_URL / LLM_API_KEY when embedding-specific vars
+    # are not set (keeps the common single-endpoint dev setup working).
+    endpoint = cfg.get("endpoint") or os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1")
+    api_key = cfg.get("api_key") or os.environ.get("LLM_API_KEY", "not-needed")
     return RemoteEmbeddingProvider(
-        endpoint=cfg["endpoint"],
+        endpoint=endpoint,
         model_name=cfg["model_name"],
-        api_key=cfg.get("api_key", "not-needed"),
+        api_key=api_key,
     )
 
 
