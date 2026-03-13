@@ -1,12 +1,17 @@
 # This project was developed with assistance from AI tools.
-"""Tests for LangFuse observability integration."""
+"""Tests for MLFlow observability integration."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
 from src.core.config import settings
-from src.observability import build_langfuse_config, flush_langfuse
+from src.observability import (
+    _is_configured,
+    init_mlflow_tracing,
+    log_observability_status,
+    set_trace_context,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -14,90 +19,150 @@ def _disable_auth(monkeypatch):
     monkeypatch.setattr(settings, "AUTH_DISABLED", True)
 
 
-def test_build_config_returns_empty_when_unconfigured(monkeypatch):
-    """should return {} when LangFuse keys are not set."""
-    monkeypatch.setattr(settings, "LANGFUSE_PUBLIC_KEY", None)
-    monkeypatch.setattr(settings, "LANGFUSE_SECRET_KEY", None)
+@pytest.fixture
+def reset_autolog():
+    """Reset the _autolog_enabled flag before each test."""
+    import src.observability as obs
 
-    config = build_langfuse_config(session_id="test-session")
-    assert config == {}
-
-
-def test_build_config_returns_empty_when_partial_config(monkeypatch):
-    """should return {} when only public key is set (no secret)."""
-    monkeypatch.setattr(settings, "LANGFUSE_PUBLIC_KEY", "pk-lf-test")
-    monkeypatch.setattr(settings, "LANGFUSE_SECRET_KEY", None)
-
-    config = build_langfuse_config(session_id="test-session")
-    assert config == {}
+    obs._autolog_enabled = False
+    yield
+    obs._autolog_enabled = False
 
 
-@patch("langfuse.langchain.CallbackHandler")
-def test_build_config_returns_callbacks_when_configured(mock_cls, monkeypatch):
-    """should return config with callbacks and metadata when both keys are set."""
-    monkeypatch.setattr(settings, "LANGFUSE_PUBLIC_KEY", "pk-lf-test")
-    monkeypatch.setattr(settings, "LANGFUSE_SECRET_KEY", "sk-lf-test")
-    monkeypatch.setattr(settings, "LANGFUSE_HOST", "http://localhost:3001")
-
-    mock_handler = MagicMock()
-    mock_cls.return_value = mock_handler
-
-    config = build_langfuse_config(session_id="sess-123", user_id="user-1")
-
-    assert config["callbacks"] == [mock_handler]
-    assert config["metadata"]["langfuse_session_id"] == "sess-123"
-    assert config["metadata"]["langfuse_user_id"] == "user-1"
-    mock_cls.assert_called_once()
+def test_is_configured_returns_false_when_no_uri(monkeypatch):
+    """should return False when MLFLOW_TRACKING_URI is not set."""
+    monkeypatch.setattr(settings, "MLFLOW_TRACKING_URI", None)
+    assert _is_configured() is False
 
 
-@patch("langfuse.langchain.CallbackHandler")
-def test_build_config_omits_optional_metadata(mock_cls, monkeypatch):
-    """should not include user_id or tags in metadata when not provided."""
-    monkeypatch.setattr(settings, "LANGFUSE_PUBLIC_KEY", "pk-lf-test")
-    monkeypatch.setattr(settings, "LANGFUSE_SECRET_KEY", "sk-lf-test")
-    mock_cls.return_value = MagicMock()
-
-    config = build_langfuse_config(session_id="sess-456")
-
-    assert "langfuse_user_id" not in config["metadata"]
-    assert "langfuse_tags" not in config["metadata"]
+def test_is_configured_returns_false_when_empty_uri(monkeypatch):
+    """should return False when MLFLOW_TRACKING_URI is empty string."""
+    monkeypatch.setattr(settings, "MLFLOW_TRACKING_URI", "")
+    assert _is_configured() is False
 
 
-@patch("langfuse.langchain.CallbackHandler")
-def test_build_config_catches_init_error(mock_cls, monkeypatch):
-    """should return {} and log warning if CallbackHandler init fails."""
-    monkeypatch.setattr(settings, "LANGFUSE_PUBLIC_KEY", "pk-lf-test")
-    monkeypatch.setattr(settings, "LANGFUSE_SECRET_KEY", "sk-lf-test")
-    mock_cls.side_effect = RuntimeError("connection refused")
-
-    config = build_langfuse_config(session_id="sess-err")
-    assert config == {}
+def test_is_configured_returns_true_when_uri_set(monkeypatch):
+    """should return True when MLFLOW_TRACKING_URI is set."""
+    monkeypatch.setattr(settings, "MLFLOW_TRACKING_URI", "http://localhost:5000")
+    assert _is_configured() is True
 
 
-def test_flush_noop_when_unconfigured(monkeypatch):
-    """should not raise when flushing with no keys configured."""
-    monkeypatch.setattr(settings, "LANGFUSE_PUBLIC_KEY", None)
-    monkeypatch.setattr(settings, "LANGFUSE_SECRET_KEY", None)
-    flush_langfuse()
+def test_init_tracing_noop_when_unconfigured(monkeypatch, reset_autolog):
+    """should do nothing when MLFlow is not configured."""
+    monkeypatch.setattr(settings, "MLFLOW_TRACKING_URI", None)
+
+    init_mlflow_tracing()
+
+    import src.observability as obs
+
+    assert obs._autolog_enabled is False
 
 
-@patch("langfuse.get_client")
-def test_flush_calls_client_flush(mock_get_client, monkeypatch):
-    """should call get_client().flush() when configured."""
-    monkeypatch.setattr(settings, "LANGFUSE_PUBLIC_KEY", "pk-lf-test")
-    monkeypatch.setattr(settings, "LANGFUSE_SECRET_KEY", "sk-lf-test")
-    mock_client = MagicMock()
-    mock_get_client.return_value = mock_client
+@patch("mlflow.langchain.autolog")
+@patch("mlflow.set_experiment")
+@patch("mlflow.set_tracking_uri")
+def test_init_tracing_when_configured(
+    mock_set_uri, mock_set_exp, mock_autolog, monkeypatch, reset_autolog
+):
+    """should initialize MLFlow autolog when configured."""
+    monkeypatch.setattr(settings, "MLFLOW_TRACKING_URI", "http://localhost:5000")
+    monkeypatch.setattr(settings, "MLFLOW_EXPERIMENT_NAME", "test-experiment")
 
-    flush_langfuse()
+    init_mlflow_tracing()
 
-    mock_client.flush.assert_called_once()
+    mock_set_uri.assert_called_once_with("http://localhost:5000")
+    mock_set_exp.assert_called_once_with("test-experiment")
+    mock_autolog.assert_called_once_with()
+
+    import src.observability as obs
+
+    assert obs._autolog_enabled is True
 
 
-@patch("langfuse.get_client")
-def test_flush_swallows_errors(mock_get_client, monkeypatch):
-    """should not raise when flush() throws."""
-    monkeypatch.setattr(settings, "LANGFUSE_PUBLIC_KEY", "pk-lf-test")
-    monkeypatch.setattr(settings, "LANGFUSE_SECRET_KEY", "sk-lf-test")
-    mock_get_client.side_effect = RuntimeError("network error")
-    flush_langfuse()
+@patch("mlflow.langchain.autolog")
+def test_init_tracing_catches_errors(mock_autolog, monkeypatch, reset_autolog):
+    """should catch and log errors during initialization."""
+    monkeypatch.setattr(settings, "MLFLOW_TRACKING_URI", "http://localhost:5000")
+    mock_autolog.side_effect = RuntimeError("connection refused")
+
+    # Should not raise
+    init_mlflow_tracing()
+
+    import src.observability as obs
+
+    assert obs._autolog_enabled is False
+
+
+def test_set_context_noop_when_unconfigured(monkeypatch, reset_autolog):
+    """should do nothing when autolog is not enabled."""
+    import src.observability as obs
+
+    obs._autolog_enabled = False
+
+    # Should not raise
+    set_trace_context(session_id="test-session", user_id="test-user")
+
+
+@patch("mlflow.set_tag")
+def test_set_context_sets_tags_when_enabled(mock_set_tag, monkeypatch, reset_autolog):
+    """should set MLFlow tags when autolog is enabled."""
+    import src.observability as obs
+
+    obs._autolog_enabled = True
+
+    set_trace_context(session_id="sess-123", user_id="user-1", tags=["test", "demo"])
+
+    mock_set_tag.assert_any_call("session_id", "sess-123")
+    mock_set_tag.assert_any_call("user_id", "user-1")
+    mock_set_tag.assert_any_call("tags", "test,demo")
+
+
+@patch("mlflow.set_tag")
+def test_set_context_omits_optional_fields(mock_set_tag, monkeypatch, reset_autolog):
+    """should not set user_id or tags when not provided."""
+    import src.observability as obs
+
+    obs._autolog_enabled = True
+
+    set_trace_context(session_id="sess-456")
+
+    assert mock_set_tag.call_count == 1
+    mock_set_tag.assert_called_once_with("session_id", "sess-456")
+
+
+@patch("mlflow.set_tag")
+def test_set_context_catches_errors(mock_set_tag, monkeypatch, reset_autolog):
+    """should not raise when setting tags fails."""
+    import src.observability as obs
+
+    obs._autolog_enabled = True
+    mock_set_tag.side_effect = RuntimeError("mlflow error")
+
+    # Should not raise
+    set_trace_context(session_id="sess-err")
+
+
+def test_log_status_when_unconfigured(monkeypatch, caplog):
+    """should log DISABLED status when MLFlow is not configured."""
+    monkeypatch.setattr(settings, "MLFLOW_TRACKING_URI", None)
+
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        log_observability_status()
+
+    assert "DISABLED" in caplog.text
+
+
+def test_log_status_when_configured(monkeypatch, reset_autolog, caplog):
+    """should log CONFIGURED status when MLFlow URI is set."""
+    monkeypatch.setattr(settings, "MLFLOW_TRACKING_URI", "http://localhost:5000")
+    monkeypatch.setattr(settings, "MLFLOW_EXPERIMENT_NAME", "test-exp")
+
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        log_observability_status()
+
+    assert "http://localhost:5000" in caplog.text
+    assert "test-exp" in caplog.text

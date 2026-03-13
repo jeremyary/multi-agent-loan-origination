@@ -6,8 +6,8 @@ psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-E
     -- Enable pgvector extension (required by KB and embedding features)
     CREATE EXTENSION IF NOT EXISTS vector;
 
-    -- Create langfuse database for observability stack
-    CREATE DATABASE langfuse;
+    -- Create mlflow database for observability stack
+    CREATE DATABASE mlflow;
 
     -- HMDA isolation: dual PostgreSQL roles
     CREATE ROLE lending_app WITH LOGIN PASSWORD 'lending_pass';

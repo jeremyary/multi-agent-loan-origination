@@ -117,18 +117,26 @@ class Settings(BaseSettings):
     S3_REGION: str = "us-east-1"
     UPLOAD_MAX_SIZE_MB: int = 50
 
-    # -- Observability (LangFuse) --
-    LANGFUSE_PUBLIC_KEY: str | None = Field(
+    # -- Observability (MLFlow) --
+    MLFLOW_TRACKING_URI: str | None = Field(
         default=None,
-        description="LangFuse public key. When set (with secret key), tracing is active.",
+        description="MLFlow tracking server URI. When set, tracing is active.",
     )
-    LANGFUSE_SECRET_KEY: str | None = Field(
-        default=None,
-        description="LangFuse secret key.",
+    MLFLOW_EXPERIMENT_NAME: str = Field(
+        default="mortgage-ai",
+        description="MLFlow experiment name for grouping traces.",
     )
-    LANGFUSE_HOST: str | None = Field(
+    MLFLOW_TRACKING_TOKEN: str | None = Field(
         default=None,
-        description="LangFuse server URL (e.g. http://localhost:3001).",
+        description="Bearer token for MLFlow authentication (e.g., OpenShift OAuth token).",
+    )
+    MLFLOW_WORKSPACE: str | None = Field(
+        default=None,
+        description="MLFlow workspace name for multi-tenant deployments.",
+    )
+    MLFLOW_TRACKING_INSECURE_TLS: bool = Field(
+        default=False,
+        description="Skip TLS verification for MLFlow tracking server.",
     )
 
 

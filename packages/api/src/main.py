@@ -15,7 +15,7 @@ from .admin import setup_admin
 from .core.config import settings
 from .inference.safety import log_safety_status
 from .middleware.pii import PIIMaskingMiddleware
-from .observability import log_observability_status
+from .observability import init_mlflow_tracing, log_observability_status
 from .routes import (
     admin,
     analytics,
@@ -64,6 +64,7 @@ async def _auto_seed() -> None:
 async def lifespan(_app: FastAPI):
     """Application startup/shutdown lifecycle."""
     log_safety_status()
+    init_mlflow_tracing()
     log_observability_status()
     from .services.conversation import get_conversation_service
     from .services.extraction import init_extraction_service
