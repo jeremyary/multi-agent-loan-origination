@@ -21,7 +21,7 @@ from ..core.auth import build_data_scope
 from ..core.config import settings
 from ..middleware.auth import CurrentUser, _decode_token, _resolve_role, require_roles
 from ..middleware.pii import _mask_pii_recursive
-from ..observability import build_langfuse_config, flush_langfuse
+from ..observability import set_trace_context
 from ..schemas.auth import UserContext
 from ..schemas.conversation import ConversationHistoryResponse
 from ..services.audit import write_audit_event
@@ -161,10 +161,9 @@ async def run_agent_stream(
 
         Returns the raw response text (caller applies cleanup).
         """
-        config = {
-            **build_langfuse_config(session_id=session_id),
-            "configurable": {"thread_id": thread_id},
-        }
+        # Set MLFlow trace context for correlation (autolog handles callbacks)
+        set_trace_context(session_id=session_id, user_id=user_id)
+        config = {"configurable": {"thread_id": thread_id}}
 
         full_response = ""
         safety_blocked = False
@@ -354,7 +353,7 @@ async def run_agent_stream(
             logger.error("Unexpected error in chat handler", exc_info=True)
             raise
     finally:
-        flush_langfuse()
+        pass  # MLFlow autolog flushes automatically
 
 
 async def _build_application_context(user: UserContext) -> str:

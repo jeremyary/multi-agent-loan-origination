@@ -1,8 +1,9 @@
 # This project was developed with assistance from AI tools.
 """Model monitoring aggregation service (F39).
 
-Pure functions that take LangFuse observation lists and produce Pydantic schemas.
+Pure functions that take observation lists and produce Pydantic schemas.
 The ``get_model_monitoring_summary`` function orchestrates fetch + aggregate.
+Works with MLFlow traces (converted to observation format) or demo data.
 """
 
 import logging
@@ -27,7 +28,7 @@ from ..schemas.model_monitoring import (
     TokenTrendPoint,
     TokenUsage,
 )
-from .langfuse_client import fetch_observations
+from .mlflow_client import fetch_traces
 
 logger = logging.getLogger(__name__)
 
@@ -384,35 +385,35 @@ async def get_model_monitoring_summary(
     hours: int = 24,
     model: str | None = None,
 ) -> ModelMonitoringSummary:
-    """Fetch observations from LangFuse and compute all monitoring metrics.
+    """Fetch traces from MLFlow and compute all monitoring metrics.
 
     Args:
         hours: Time range in hours (1-2160).
         model: Optional model name filter.
 
     Returns:
-        Full monitoring summary. When LangFuse is not configured,
-        ``langfuse_available`` is False and all metric fields are None.
+        Full monitoring summary. When MLFlow is not configured,
+        ``mlflow_available`` is False and demo data is used.
     """
     now = datetime.now(UTC)
     start_time = now - timedelta(hours=hours)
 
     try:
-        observations = await fetch_observations(start_time, now, model=model)
+        observations = await fetch_traces(start_time, now, model=model)
     except httpx.HTTPStatusError as exc:
-        logger.warning("LangFuse API error: %s", exc)
+        logger.warning("MLFlow API error: %s", exc)
         raise
     except httpx.RequestError as exc:
-        logger.warning("LangFuse connection error: %s", exc)
+        logger.warning("MLFlow connection error: %s", exc)
         raise
 
     if observations is None:
         # Generate demo data so the dashboard card renders with realistic metrics
-        # even when LangFuse is not deployed. The synthetic observations flow
+        # even when MLFlow is not deployed. The synthetic observations flow
         # through the same aggregation pipeline as real data.
         observations = _generate_demo_observations(hours)
         return ModelMonitoringSummary(
-            langfuse_available=False,
+            mlflow_available=False,
             latency=compute_latency_metrics(observations),
             token_usage=compute_token_usage(observations),
             errors=compute_error_metrics(observations),
@@ -422,7 +423,7 @@ async def get_model_monitoring_summary(
         )
 
     return ModelMonitoringSummary(
-        langfuse_available=True,
+        mlflow_available=True,
         latency=compute_latency_metrics(observations),
         token_usage=compute_token_usage(observations),
         errors=compute_error_metrics(observations),
