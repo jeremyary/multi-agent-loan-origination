@@ -6,50 +6,13 @@
 #   (none)          postgres + minio + api + ui
 #   auth            + keycloak
 #   ai              + llamastack
-#   observability   + redis, clickhouse, langfuse-web, langfuse-worker
+#   observability   + mlflow
 #   full            everything
 #
 # Usage:
 #   podman-compose up -d                          # minimal stack
 #   podman-compose --profile full up -d           # full stack
 #   make run                                      # alias for full
-
-x-langfuse-environment: &langfuse-env
-  DATABASE_URL: postgresql://user:password@mortgage-ai-db:5432/langfuse #notsecret
-  NEXTAUTH_URL: http://localhost:3001
-  NEXTAUTH_SECRET: mysecret
-  SALT: mysalt
-  ENCRYPTION_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
-  TELEMETRY_ENABLED: "false"
-  LANGFUSE_INIT_ORG_ID: mortgage-ai
-  LANGFUSE_INIT_ORG_NAME: "${COMPANY_NAME:-Acme FinTech Company}"
-  LANGFUSE_INIT_PROJECT_ID: mortgage-ai-dev
-  LANGFUSE_INIT_PROJECT_NAME: "${COMPANY_NAME:-Acme FinTech Company} Dev"
-  LANGFUSE_INIT_PROJECT_PUBLIC_KEY: pk-lf-dev-public
-  LANGFUSE_INIT_PROJECT_SECRET_KEY: sk-lf-dev-secret
-  LANGFUSE_INIT_USER_EMAIL: admin@example.com
-  LANGFUSE_INIT_USER_NAME: Admin
-  LANGFUSE_INIT_USER_PASSWORD: password
-  CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:clickhouse@clickhouse:9000/default #notsecret
-  CLICKHOUSE_URL: http://clickhouse:8123
-  CLICKHOUSE_USER: clickhouse
-  CLICKHOUSE_PASSWORD: clickhouse
-  CLICKHOUSE_CLUSTER_ENABLED: "false"
-  REDIS_HOST: redis
-  REDIS_PORT: "6379"
-  REDIS_AUTH: myredissecret
-  LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
-  LANGFUSE_S3_EVENT_UPLOAD_REGION: us-east-1
-  LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
-  LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
-  LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
-  LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
-  LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
-  LANGFUSE_S3_MEDIA_UPLOAD_REGION: us-east-1
-  LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
-  LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
-  LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
-  LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
 
 services:
   # ------------------------------------------------------------------ always --
@@ -109,9 +72,8 @@ services:
       S3_BUCKET: documents
       S3_REGION: us-east-1
       UPLOAD_MAX_SIZE_MB: "${UPLOAD_MAX_SIZE_MB:-50}"
-      LANGFUSE_SECRET_KEY: "${LANGFUSE_SECRET_KEY:-sk-lf-dev-secret}"
-      LANGFUSE_PUBLIC_KEY: "${LANGFUSE_PUBLIC_KEY:-pk-lf-dev-public}"
-      LANGFUSE_HOST: "${LANGFUSE_HOST:-http://langfuse-web:3000}"
+      MLFLOW_TRACKING_URI: "${MLFLOW_TRACKING_URI:-http://mlflow:5000}"
+      MLFLOW_EXPERIMENT_NAME: "${MLFLOW_EXPERIMENT_NAME:-mortgage-ai}"
       COMPANY_NAME: "${COMPANY_NAME:-Acme FinTech Company}"
     volumes:
       - ./config:/app/config:ro
@@ -190,48 +152,38 @@ services:
       start_period: 15s
 
   # ----------------------------------------------------------- observability --
-  redis:
-    image: docker.io/redis:7-alpine
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.21.3
     profiles: ["observability", "full"]
     labels:
       com.quickstart.package: observability
-    command: --requirepass myredissecret --maxmemory-policy noeviction
     ports:
-      - "6380:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "-a", "myredissecret", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  clickhouse:
-    image: docker.io/clickhouse/clickhouse-server:24
-    profiles: ["observability", "full"]
-    labels:
-      com.quickstart.package: observability
-    user: "101:101"
+      - "5000:5000"
+    depends_on:
+      mortgage-ai-db:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
     environment:
-      CLICKHOUSE_DB: default
-      CLICKHOUSE_USER: clickhouse
-      CLICKHOUSE_PASSWORD: clickhouse
-    ports:
-      - "8123:8123"
-      - "9000:9000"
-    volumes:
-      - langfuse_clickhouse_data:/var/lib/clickhouse
-      - langfuse_clickhouse_logs:/var/log/clickhouse-server
+      MLFLOW_BACKEND_STORE_URI: postgresql://user:password@mortgage-ai-db:5432/mlflow #notsecret
+      MLFLOW_DEFAULT_ARTIFACT_ROOT: s3://mlflow
+      AWS_ACCESS_KEY_ID: minio
+      AWS_SECRET_ACCESS_KEY: miniosecret
+      MLFLOW_S3_ENDPOINT_URL: http://minio:9000
+    command: mlflow server --host 0.0.0.0 --port 5000 --backend-store-uri postgresql://user:password@mortgage-ai-db:5432/mlflow --default-artifact-root s3://mlflow
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8123/ping || exit 1"]
-      interval: 5s
-      timeout: 3s
+      test: ["CMD-SHELL", "curl -sf http://localhost:5000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 5
+      start_period: 15s
 
   minio:
     image: docker.io/minio/minio:latest
     labels:
       com.quickstart.package: storage
     entrypoint: sh
-    command: -c 'mkdir -p /data/langfuse /data/documents && exec minio server --address ":9000" --console-address ":9001" /data'
+    command: -c 'mkdir -p /data/mlflow /data/documents && exec minio server --address ":9000" --console-address ":9001" /data'
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: miniosecret
@@ -239,58 +191,13 @@ services:
       - "9090:9000"
       - "9091:9001"
     volumes:
-      - langfuse_minio_data:/data
+      - minio_data:/data
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/live || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
 
-  langfuse-web:
-    image: docker.io/langfuse/langfuse:3
-    profiles: ["observability", "full"]
-    labels:
-      com.quickstart.package: observability
-    ports:
-      - "3001:3000"
-    depends_on:
-      mortgage-ai-db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    environment:
-      <<: *langfuse-env
-      HOSTNAME: "0.0.0.0"
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:3000/api/public/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  langfuse-worker:
-    image: docker.io/langfuse/langfuse-worker:3
-    profiles: ["observability", "full"]
-    labels:
-      com.quickstart.package: observability
-    depends_on:
-      mortgage-ai-db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      clickhouse:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    environment:
-      <<: *langfuse-env
-
 volumes:
   mortgage_ai_postgres_data:
-  langfuse_clickhouse_data:
-  langfuse_clickhouse_logs:
-  langfuse_minio_data:
+  minio_data:

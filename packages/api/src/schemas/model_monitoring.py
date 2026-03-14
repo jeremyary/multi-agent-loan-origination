@@ -122,9 +122,7 @@ class RoutingDistribution(BaseModel):
 class ModelMonitoringSummary(BaseModel):
     """Top-level response combining all monitoring panels."""
 
-    langfuse_available: bool = Field(
-        ..., description="Whether LangFuse is configured and reachable"
-    )
+    mlflow_available: bool = Field(..., description="Whether MLFlow is configured and reachable")
     latency: LatencyMetrics | None = None
     token_usage: TokenUsage | None = None
     errors: ErrorMetrics | None = None
