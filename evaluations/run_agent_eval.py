@@ -42,6 +42,7 @@ logging.getLogger("mlflow").setLevel(logging.ERROR)
 logging.getLogger("mlflow.utils.autologging_utils").setLevel(logging.CRITICAL)
 
 import mlflow
+from mlflow.genai.datasets import create_dataset
 from mlflow.genai.scorers import (
     Guidelines,
     RelevanceToQuery,
@@ -221,11 +222,37 @@ def get_agent_scorers(mode: str = "llm-judge", judge_model: str | None = None) -
         return get_llm_judge_scorers(judge_model)
 
 
+def create_mlflow_dataset(
+    test_cases: list,
+    name: str = "public_assistant_eval",
+    version: str = "1",
+):
+    """Create an MLflow dataset from test cases.
+
+    Args:
+        test_cases: List of test case dicts with 'inputs' and 'expectations'
+        name: Dataset name
+        version: Dataset version tag
+
+    Returns:
+        MLflow dataset object
+    """
+    dataset = create_dataset(
+        name=name,
+        tags={"stage": "validation", "version": version, "agent": "public-assistant"},
+    )
+    dataset = dataset.merge_records(test_cases)
+    print(f"Dataset created: {dataset.dataset_id}")
+    return dataset
+
+
 def run_agent_evaluation(
     agent_name: str = "public-assistant",
     dataset: list | None = None,
     mode: str = "llm-judge",
     judge_model: str | None = None,
+    save_dataset: bool = False,
+    dataset_name: str = "public_assistant_eval",
 ) -> None:
     """Run agent evaluation with configurable mode.
 
@@ -234,9 +261,19 @@ def run_agent_evaluation(
         dataset: Evaluation dataset (uses default if None)
         mode: Evaluation mode - "simple" or "llm-judge"
         judge_model: LLM judge model (only used in llm-judge mode)
+        save_dataset: If True, save the dataset to MLflow server
+        dataset_name: Name for the MLflow dataset (used if save_dataset=True)
     """
     if dataset is None:
         dataset = PUBLIC_ASSISTANT_SIMPLE_DATASET
+
+    # Optionally save dataset to MLflow
+    mlflow_dataset = None
+    if save_dataset:
+        mlflow_dataset = create_mlflow_dataset(
+            test_cases=dataset,
+            name=dataset_name,
+        )
 
     predict_fn = get_predictor(agent_name)
     scorers = get_agent_scorers(mode=mode, judge_model=judge_model)
@@ -252,9 +289,10 @@ def run_agent_evaluation(
     print(f"Scorers: {len(scorers)} ({llm_judge_count} LLM judges)")
     print()
 
-    # Run evaluation
+    # Run evaluation (use MLflow dataset if created, otherwise use raw list)
+    eval_data = mlflow_dataset if mlflow_dataset else dataset
     result = mlflow.genai.evaluate(
-        data=dataset,
+        data=eval_data,
         predict_fn=predict_fn,
         scorers=scorers,
     )
@@ -310,6 +348,17 @@ def main():
         help="LLM judge model (e.g., 'openai:/gpt-4.1-mini') - only used with llm-judge mode"
     )
     parser.add_argument(
+        "--save-dataset", "-s",
+        action="store_true",
+        help="Save the evaluation dataset to MLflow server"
+    )
+    parser.add_argument(
+        "--dataset-name", "-d",
+        type=str,
+        default="public_assistant_eval",
+        help="Name for the MLflow dataset (used with --save-dataset)"
+    )
+    parser.add_argument(
         "--verbose", "-v",
         action="store_true",
         help="Enable verbose logging"
@@ -333,6 +382,8 @@ def main():
             agent_name=args.agent,
             mode=args.mode,
             judge_model=args.judge_model,
+            save_dataset=args.save_dataset,
+            dataset_name=args.dataset_name,
         )
     except ValueError as e:
         print(f"\nConfiguration error: {e}")
